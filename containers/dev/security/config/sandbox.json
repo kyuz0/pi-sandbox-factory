@@ -1,0 +1,8 @@
+{
+  "subagents": {
+    "provider": "off"
+  },
+  "hostIPC": {
+    "mode": "off"
+  }
+}

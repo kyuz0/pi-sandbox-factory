@@ -1,0 +1,9 @@
+{
+  "name": "local-ai-sandbox-browser",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "betterwright": "2.8.9",
+    "bun": "1.4.0"
+  }
+}

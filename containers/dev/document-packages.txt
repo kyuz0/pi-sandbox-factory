@@ -1,0 +1,13 @@
+python3-pip
+python3-venv
+python-is-python3
+poppler-utils
+tesseract-ocr
+tesseract-ocr-eng
+libreoffice-writer
+libreoffice-calc
+libreoffice-impress
+pandoc
+libmagic1
+fonts-dejavu-core
+fonts-liberation

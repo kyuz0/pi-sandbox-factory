@@ -1,0 +1,21 @@
+{
+  "authorizerChain": ["pi-auto-review"],
+  "yoloMode": false,
+  "permissionReviewLog": true,
+  "piInfrastructureReadPaths": ["/opt/", "/usr/", "/etc/fonts/", "/etc/ssl/"],
+  "permission": {
+    "*": "ask",
+    "read": "allow", "grep": "allow", "find": "allow", "ls": "allow",
+    "write": "allow", "edit": "allow", "skill": "allow",
+    "bash": "allow", "bash_escalate": "allow", "subagent": "allow",
+    "external_directory": "ask",
+    "path": {
+      "*": "allow",
+      "/opt/pi-security/*": "deny",
+      "/home/node/.pi/agent/settings.json": "deny",
+      "/home/node/.pi/agent/auth.json": "deny",
+      "*.pem": "deny", "*.key": "deny",
+      "*.env": "deny", "*.env.*": "deny", "*.env.example": "allow"
+    }
+  }
+}
