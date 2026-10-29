@@ -27,7 +27,7 @@ flowchart TD
     EXEC --> RESULT
 ```
 
-The default is an inner command sandbox with automatic approval review using the current Pi model. Manual mode asks the user instead. With the inner sandbox enabled and approval prompts disabled, commands requiring elevation are refused. Disabling the inner sandbox changes how ordinary shell commands are authorized; it does not remove container isolation or the outer network policy.
+The default is an inner command sandbox with automatic approval review using the current Pi model. The reviewer keeps a separate, bounded conversation with original user instructions and the exact proposed action; it has no inspection tools. See [Automatic approval](approvals.md) for context handling, limits and updates. Manual mode asks the user instead. With the inner sandbox enabled and approval prompts disabled, commands requiring elevation are refused. Disabling the inner sandbox changes how ordinary shell commands are authorized; it does not remove container isolation or the outer network policy.
 
 Elevation means leaving the inner command restrictions for one approved command. It is not host execution, container privilege escalation or an unrestricted network connection. These inner restrictions apply to shell execution; do not mistake them for a separate OS sandbox around every extension or every Pi process.
 

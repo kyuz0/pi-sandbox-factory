@@ -1,5 +1,8 @@
 {
   "model": "current",
   "maxTokens": 4096,
-  "timeoutMs": 240000
+  "timeoutMs": 600000,
+  "retainedContext": true,
+  "reviewerConversation": true,
+  "investigationTools": false
 }

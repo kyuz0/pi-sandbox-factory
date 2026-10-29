@@ -1,6 +1,10 @@
 Automatic approval and nested execution are installed for every profile.
-The reviewer uses the current Pi model and retains explicit denials. Use ordinary
-bash for work inside the inner OS sandbox; ordinary commands run without
+The reviewer uses the current Pi model in a separate conversation. It receives
+original user instructions from the active session branch, the exact proposed
+action and selected evidence. It retains earlier review turns within a bounded
+budget; earlier approvals do not authorize a different action. It has no tools.
+Missing evidence, invalid responses and unavailable models do not grant access.
+Use ordinary bash for work inside the inner OS sandbox; ordinary commands run without
 command-level model review. It allows workspace edits, protects
 private home files, and reviews outbound destinations. If required access is
 unavailable there, use bash_escalate with the exact command and justification.
