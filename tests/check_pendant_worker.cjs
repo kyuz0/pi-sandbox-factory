@@ -106,6 +106,17 @@ async function main() {
   const inventory = await create('inventory');
   const commands = new Set(inventory.commands.map(c => c.name));
   assert(commands.has('local-models'), 'Model discovery extension missing');
+  if (process.argv.includes('--advisor')) {
+    assert(commands.has('advisor'), 'Advisor command missing');
+    for (const name of ['advisor_ask', 'advisor_status'])
+      assert(inventory.tools.some(t => t.name === name), 'Advisor tool missing: ' + name);
+    await request({ type: 'session_prompt', text: '/advisor usage', images: [], source: 'interactive' }, 'inventory');
+    const state = await request({ type: 'session_get_state' }, 'inventory');
+    assert(!JSON.stringify(state.messages).includes('connection failed'), JSON.stringify(state.messages));
+    assert(state.messages.some(m => m.customType === 'advisor-report'), 'Advisor usage response missing');
+    console.log('PASS actual Pendant startup: advisor tools, command and remote usage');
+    return;
+  }
   if (process.argv.includes('--initialized')) {
     const expected = process.env.TEST_INITIAL_MODEL;
     assert(expected, 'Set TEST_INITIAL_MODEL');

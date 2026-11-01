@@ -62,11 +62,11 @@ if 'packages' in settings:
     settings['packages'] = [p for p in settings['packages'] if not managed_package(p)]
 
 subagents_enabled = os.environ.get('SANDBOX_SUBAGENTS') == '1'
-subagent_extensions = [('/opt/pi-security/child-policy.ts' if selection else '/opt/pi-security/packages/pi-sandbox/src/container-subagents.ts'),
+subagent_extensions = [('/opt/pi-security/packages/pi-sandbox/src/container-child-policy.ts' if selection else '/opt/pi-security/packages/pi-sandbox/src/container-subagents.ts'),
                        '/opt/pi-security/node_modules/pi-subagents/index.js']
 # Migrate both versions of the required child policy when toggling settings.
 settings['extensions'] = [p for p in settings.get('extensions', []) if p not in
-    ('/opt/pi-security/child-policy.ts', '/opt/pi-security/packages/pi-sandbox/src/container-subagents.ts')]
+    ('/opt/pi-security/child-policy.ts', '/opt/pi-security/packages/pi-sandbox/src/container-child-policy.ts', '/opt/pi-security/packages/pi-sandbox/src/container-subagents.ts')]
 # Remove only launcher-managed registrations when the saved choice is disabled.
 if not subagents_enabled:
     settings['extensions'] = [p for p in settings.get('extensions', []) if p not in subagent_extensions]
@@ -100,17 +100,22 @@ for resource_file in (profile_resources, Path('/opt/sandbox/extra-resources.json
 settings['skills'] = [p for p in settings.get('skills', []) if not isinstance(p, str) or not p.startswith('/opt/extra-skills/')]
 # Remove only registrations owned by this launcher, then apply the saved choice.
 managed = {key: set(values) for key, values in image_resources.items()}
-managed['extensions'].add('/opt/pi-security/approval-mode.ts')
+managed['extensions'].add('/opt/pi-advisor/extensions/advisor.js')
+managed['skills'].add('/opt/pi-advisor/skills/advisor')
+managed['extensions'].update(['/opt/pi-security/approval-mode.ts', '/opt/pi-security/packages/pi-auto-review/src/container-approval-mode.ts'])
 managed['extensions'].add('/opt/betterwright/extension.mjs')
 for key, values in managed.items():
     settings[key] = [p for p in settings.get(key, []) if not isinstance(p, str) or p not in values]
+if os.environ.get('PI_ADVISOR_SOCKET'):
+    image_resources['extensions'].append('/opt/pi-advisor/extensions/advisor.js')
+    image_resources['skills'].append('/opt/pi-advisor/skills/advisor')
 if browser_enabled:
     if not Path('/opt/betterwright/extension.mjs').is_file():
         raise ValueError('Betterwright is enabled but missing from this image; recreate with --browser')
     image_resources['extensions'].append('/opt/betterwright/extension.mjs')
 if approval != 'automatic':
     image_resources['extensions'].remove('/opt/pi-security/packages/pi-auto-review/src/index.ts')
-    image_resources['extensions'].insert(0, '/opt/pi-security/approval-mode.ts')
+    image_resources['extensions'].insert(0, '/opt/pi-security/packages/pi-auto-review/src/container-approval-mode.ts')
 if not inner_sandbox:
     image_resources['extensions'].remove('/opt/pi-security/packages/pi-sandbox/src/index.ts')
 if not inner_sandbox or approval == 'off':

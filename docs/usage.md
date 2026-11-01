@@ -10,19 +10,17 @@ python3 -m venv .venv
 .venv/bin/python sandbox.py
 ```
 
-The manager uses the yellow `cockpit-gold` theme. Select **New**, choose a name and workspace, review settings, then create the sandbox. The base profile includes Pi, Pendant, Goal and document tools. Custom profiles can be selected by folder.
+Select **New**, choose a name and workspace, review settings, then create the sandbox. The base profile includes Pi, Pendant, Goal and document tools. Custom profiles can be selected by folder.
 
-Select a saved sandbox to start, stop, open VS Code, change settings, inspect logs, open Pi/a shell, preview/refresh models, rebuild or delete it. Start/Stop, Pi, shell, logs, rebuild and Delete are under **Actions**. Delete asks for confirmation. **Settings** groups Network, Models and Configuration; defaults for future sandboxes are available with **D** on the home screen. It removes that sandbox's containers, private home, sessions and editor state; it keeps the host workspace, seed configuration and shared images. Closing the manager or editor does not stop containers.
+Use **Open in VS Code** for the selected sandbox, **Settings** for its configuration and **Actions** for start/stop, Pi, shell, logs, rebuild and deletion. Press **D** on the home screen to configure defaults for new sandboxes.
+
+Deleting a sandbox removes its containers, private home and editor state while preserving the workspace. Closing the manager or editor leaves containers running.
 
 ## Local models
 
 You can start your inference server before or after creating the sandbox. During creation or in Settings, enable host-local models and enter its ports, such as `8000` or `8000-8002`. The launcher adds those exact destinations to the restricted gateway policy. The development container keeps its isolated network; only the gateway maps `local-model.internal` to host loopback.
 
-After starting the containers, creation runs `pi-local-model-manager` directly with Node and writes any discovered models to the private catalogue before opening VS Code. No Pi session, selected model or Pendant command is required. The same initialization runs before later editor opens.
-
-If no usable model is found, creation and editor opening still complete with **Model not connected**. Files, the shell and VS Code remain usable; model chat needs a connected server. Start the configured server (or correct its ports in Settings), then choose **Settings → Models → Refresh catalogue**. This action runs outside Pi/Pendant and works even with an empty catalogue. Reopen the editor or refresh its model list afterward. CLI: `python sandbox.py configure NAME`.
-
-Invalid configuration or an actual tool failure remains an error; an unavailable model is not a failed sandbox.
+The manager initializes the model catalogue before opening VS Code. If the server is offline, the editor still opens with **Model not connected**. Start the server, then choose **Settings → Models → Refresh catalogue** or run `python sandbox.py configure NAME`.
 
 For later model changes within an open Pi or Pendant session:
 
@@ -32,9 +30,9 @@ For later model changes within an open Pi or Pendant session:
 /model
 ```
 
-New model entries use a 32,768-token output allowance, capped by the active context and any advertised server output limit. Thinking uses part of this allowance. A saved `maxTokens` value in the sandbox’s private `local-pi-models.json` overrides the default. After updating the sandbox image, refresh the catalogue; remove an explicit old limit if you want the new default.
+New model entries use a 32,768-token output allowance, capped by the active context and any advertised server output limit. Thinking uses part of this allowance. A saved `maxTokens` value in the sandbox’s private `local-pi-models.json` overrides the default. Refresh the catalogue after changing these settings.
 
-The bundled `pi-local-model-manager` extension discovers server metadata and maintains the private model catalogue. It does not start inference servers, download weights or guess missing context/image capabilities. Preview is read-only. The manager's Refresh models writes the same configuration; existing Pi/Pendant sessions should also refresh before selecting the new model.
+[Pi Local Model Manager](https://github.com/kyuz0/pi-local-model-manager) provides discovery and thinking controls. Preview shows proposed changes; refresh writes them and updates Pi's model list.
 
 Other remote destinations may be added explicitly in Settings. Disabling host-local access removes its generated allowlist entries. Model credentials belong in private configuration, not source files or images.
 
@@ -53,8 +51,6 @@ python sandbox.py delete example
 CLI `delete` is an explicit destructive command; the TUI adds a confirmation dialog.
 
 Saved state defaults to `~/.local/state/local-ai-sandbox`. Use `--state-dir PATH` before the command for an independent inventory. TUI defaults live in `~/.config/local-ai-sandbox/cockpit.json` (or under `XDG_CONFIG_HOME`). Workspaces are user-selected folders outside source/state. Container names and ownership labels are specific to this application.
-
-Choose each sandbox's name and workspace when creating it.
 
 ### pip network preset
 

@@ -10,7 +10,7 @@ Each sandbox has a separate persistent home volume for Pi configuration and sess
 
 The development container uses `--network=none`. HTTP clients use its inherited proxy environment and a local relay to a Unix socket in a shared volume. A separate gateway container runs the socket relay and Squid, which checks exact destination hostname/port pairs. The development container mounts the socket volume read-only.
 
-For host-local models, the rootless Podman gateway uses pasta's host-loopback mapping. `local-model.internal:8000` reaches the host model server at port 8000; it is not a server running in the development container. The discovery extension reads server metadata and writes the private Pi catalogue. It does not start servers or download model files.
+For host-local models, the rootless Podman gateway uses pasta's host-loopback mapping. `local-model.internal:8000` reaches the host model server at port 8000. The discovery extension reads that server’s metadata and updates Pi’s model catalogue.
 
 Updating allowed destinations restarts only the gateway. Existing network requests may fail and need retrying. Changing networking mode or model-port configuration through Configuration recreates containers and interrupts their processes. Unrestricted mode instead gives the development container ordinary bridge networking.
 
@@ -29,6 +29,6 @@ flowchart TD
 
 The default is an inner command sandbox with automatic approval review using the current Pi model. The reviewer keeps a separate, bounded conversation with original user instructions and the exact proposed action; it has no inspection tools. See [Automatic approval](approvals.md) for context handling, limits and updates. Manual mode asks the user instead. With the inner sandbox enabled and approval prompts disabled, commands requiring elevation are refused. Disabling the inner sandbox changes how ordinary shell commands are authorized; it does not remove container isolation or the outer network policy.
 
-Elevation means leaving the inner command restrictions for one approved command. It is not host execution, container privilege escalation or an unrestricted network connection. These inner restrictions apply to shell execution; do not mistake them for a separate OS sandbox around every extension or every Pi process.
+An approved escalation runs one command in the development container under its existing user, mounts and network rules. The inner restrictions apply to shell commands; Pi and its extensions run in the development container.
 
 Skills supply task instructions. Extensions add capabilities such as model discovery, Goal and scheduled prompts. Additional skills are configured explicitly; browser support and subagents are optional. Installing a skill does not automatically allow the websites it might use. Scheduled prompts run only while their originating Pi session is open.

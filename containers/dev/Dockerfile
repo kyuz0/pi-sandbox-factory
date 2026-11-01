@@ -37,7 +37,8 @@ RUN curl -fSL --retry 3 \
 COPY check-pendant.py /opt/sandbox/check-pendant.py
 RUN python3 /opt/sandbox/check-pendant.py "${PENDANT_VERSION}"
 COPY entrypoint.sh /usr/local/bin/sandbox-entrypoint
-COPY local-model-manager/ /opt/pi-local-model-manager/
+COPY --from=pi-local-model-manager / /opt/pi-local-model-manager/
+COPY --from=pi-advisor / /opt/pi-advisor/
 COPY bootstrap.py /usr/local/lib/sandbox-bootstrap.py
 RUN chmod 755 /usr/local/bin/sandbox-entrypoint \
     && mkdir -p /workspace /pi-config /run/egress \

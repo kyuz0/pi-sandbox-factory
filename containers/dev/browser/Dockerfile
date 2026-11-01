@@ -13,6 +13,7 @@ RUN node --input-type=module -e "import {installChromiumFork} from '/opt/betterw
     && ln -s /opt/betterwright/node_modules/.bin/bun /usr/local/bin/bun \
     && ln -s /opt/betterwright/node_modules/.bin/betterwright /usr/local/bin/betterwright \
     && chmod -R a+rX /opt/betterwright
-COPY browser.mjs extension.mjs check.mjs browser.md /opt/betterwright/
+RUN cp /opt/pi-security/packages/pi-sandbox/src/browser/*.mjs /opt/betterwright/
+COPY check.mjs browser.md /opt/betterwright/
 ENV BETTERWRIGHT_CHROMIUM_ROOT=/opt/betterwright/.betterwright/chromium
 USER node

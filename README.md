@@ -6,7 +6,7 @@ Run Pi and Pendant in a container, with a dedicated VS Code window and a termina
 
 ## Get started
 
-You need Linux, Python 3.9+, Git, rootless Podman and desktop VS Code with `code` on your PATH. Docker is also supported, but connecting to a model on host loopback requires rootless Podman. The first build downloads Pi, Pendant and the bundled tools.
+You need Linux, Python 3.9+, Git, rootless Podman and desktop VS Code with `code` on your PATH. Docker is also supported, but connecting to a model on host loopback requires rootless Podman. The first build downloads Pi, Pendant, extensions and document tools.
 
 ```sh
 git clone https://github.com/kyuz0/local-ai-sandboxes.git
@@ -17,8 +17,6 @@ python3 -m venv .venv
 ```
 
 Choose **New sandbox**, select a workspace folder and create it. Start your model server separately, for example with AI Toolbox Cockpit on port `8000`. Enable that host port in the sandbox configuration, then **Open in VS Code**. Model discovery runs before the editor opens; if the server starts later, use **Settings → Models → Refresh catalogue**.
-
-The repository is currently private; cloning requires access through your GitHub account.
 
 ## How it fits together
 
@@ -47,8 +45,9 @@ Pi's inner command sandbox restricts shell commands further. Requests beyond it 
 
 - **Settings → Network:** edit allowed destinations or enable the pip preset. Applying rules briefly restarts only the gateway.
 - **Settings → Models:** preview discovery or refresh the saved catalogue.
+- **Settings → Advisors:** enable Codex or Antigravity in a separate container and sign in. [Setup and diagram](docs/advisors.md).
 - **Actions:** start or stop a sandbox, open Pi or a shell, view logs, rebuild or delete it.
 
 The base environment includes document tools, Goal and scheduled prompts. Browser support, subagents and additional skills are optional. Closing the manager or editor leaves containers running. Deleting a sandbox removes its private state but preserves your workspace folder.
 
-[Usage and CLI](docs/usage.md) · [Architecture and permissions](docs/architecture.md) · [Tests](TESTING.md)
+[Extensions](docs/extensions.md) · [Usage and CLI](docs/usage.md) · [Architecture and permissions](docs/architecture.md) · [Tests](TESTING.md)

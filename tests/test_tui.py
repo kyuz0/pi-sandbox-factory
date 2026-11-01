@@ -51,6 +51,26 @@ class TUITests(unittest.TestCase):
         menu.highlighted=6;menu.focus()
         await pilot.press('enter');await pilot.pause()
 
+    async def test_advisors_live_in_settings_and_allow_initial_setup(self):
+        from sandbox_tui import AdvisorsScreen
+        service=FakeService(self.records)
+        service.advisors=lambda name,settings,log:service.calls.append(['advisors',name,settings])
+        app=Cockpit(self.root,service)
+        async with app.run_test(size=(100,36)) as pilot:
+            await self.ready(app,pilot)
+            await self.settings_page(app,pilot,index=3)
+            self.assertIsInstance(app.screen,AdvisorsScreen)
+            self.assertTrue(app.screen.query_one('#advisor-login-codex',Button).disabled)
+            self.assertLess(app.screen.query_one('#advisor-login-codex',Button).region.bottom, 34)
+            app.screen.query_one('#advisor-agy',Checkbox).value=True
+            await pilot.click('#advisor-apply');await pilot.pause()
+            self.assertIsInstance(app.screen,Confirm)
+            await pilot.click('#yes');await self.ready(app,pilot)
+            self.assertEqual(service.calls[0][0:2],['advisors','alpha'])
+            self.assertEqual(service.calls[0][2]['providers'],['agy'])
+            self.assertEqual(service.calls[0][2]['agy_model'],'')
+            await pilot.press('q')
+
     async def test_selection_delete_cancel_and_preserved_other_entry(self):
         service=FakeService(self.records);app=Cockpit(self.root,service)
         async with app.run_test(size=(100,32)) as pilot:

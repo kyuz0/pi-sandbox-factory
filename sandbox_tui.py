@@ -194,6 +194,12 @@ class Service:
             self.run(['update', name, '--settings-file', str(path)], log)
         self.setup(name, {**draft, 'options': {**draft['options'], 'burp_url': ''}}, key, log)
 
+    def advisors(self, name, settings, log):
+        with tempfile.TemporaryDirectory(prefix='sandbox-advisors-') as temp:
+            path = Path(temp) / 'settings.json'
+            write_json(path, {'advisors': settings})
+            self.run(['update', name, '--settings-file', str(path)], log)
+
     def models(self, name, mode, log):
         if mode not in ('preview', 'refresh'):
             raise ValueError('Unknown discovery action')
@@ -334,7 +340,8 @@ class SettingsMenu(ModalScreen[Optional[str]]):
     BINDINGS = [('escape', 'cancel', 'Back')]
     ACTIONS = [('Network · allowed destinations and package presets', 'network-settings'),
                ('Models · endpoints and discovery', 'models'),
-               ('Configuration · resources, tools and network mode', 'configuration')]
+               ('Configuration · resources, tools and network mode', 'configuration'),
+               ('Advisors · Codex and Antigravity', 'advisors')]
 
     def __init__(self, name):
         super().__init__()
@@ -358,6 +365,85 @@ class SettingsMenu(ModalScreen[Optional[str]]):
 
     def action_cancel(self):
         self.dismiss(None)
+
+
+class AdvisorsScreen(Screen):
+    BINDINGS = [('escape', 'back', 'Back')]
+
+    def __init__(self, record):
+        super().__init__()
+        self.record = record
+
+    def compose(self):
+        settings = self.record['config'].get('advisors', {})
+        providers = settings.get('providers', [])
+        yield Header()
+        with VerticalScroll(classes='form'):
+            yield Label('Advisors · ' + self.record['name'], classes='title')
+            yield Static('Ask Codex (OpenAI models) or Antigravity (Gemini models) for advice from Pi. Login stays in a separate container.')
+            yield Checkbox('Codex', value='codex' in providers, id='advisor-codex')
+            yield Checkbox('Antigravity · Gemini', value='agy' in providers, id='advisor-agy')
+            yield Static('Apply builds the companion and reconnects the sandbox. Workspace and login state are preserved. Then sign in below; no host credentials are imported.')
+            with Horizontal(classes='buttons'):
+                yield Button('Sign in to Codex', id='advisor-login-codex', disabled='codex' not in providers)
+                yield Button('Open Antigravity', id='advisor-login-agy', disabled='agy' not in providers)
+                yield Button('Check providers', id='advisor-check', disabled=not providers)
+            with Collapsible(title='Antigravity model', collapsed=True):
+                yield Label('Exact Gemini model ID · leave blank to sign in first')
+                yield Input(settings.get('agy_model', ''), id='advisor-model')
+                yield Label('Quota group · from /usage')
+                yield Input(settings.get('agy_quota_group', ''), id='advisor-quota')
+                yield Label('Effort matching that model')
+                yield Select([(x.title(), x) for x in ('low', 'medium', 'high')], value=settings.get('agy_effort', 'medium'), allow_blank=False, id='advisor-effort')
+            with Collapsible(title='Usage and network', collapsed=True):
+                yield Label('Maximum calls per Pi session · blank for no limit')
+                yield Input(str(settings.get('max_calls') or ''), id='advisor-calls', type='integer')
+                yield Static('Provider hosts use a separate allowlist. These rules do not change the development container’s network.')
+                yield Label('Additional exact destinations · host:port, one per line')
+                yield TextArea(settings.get('extra_hosts', ''), id='advisor-hosts')
+        with Horizontal(classes='wizard-actions'):
+            yield Button('Apply', id='advisor-apply', variant='primary')
+            yield Button('Back', id='advisor-back')
+        yield Footer()
+
+    @on(Button.Pressed)
+    def pressed(self, event):
+        event.stop()
+        action = event.button.id
+        name = self.record['name']
+        if action == 'advisor-back':
+            self.action_back()
+        elif action == 'advisor-check':
+            self.app.pop_screen()
+            self.app.operation('Advisor login, models and quota · ' + name, ['advisor-check', name])
+        elif action and action.startswith('advisor-login-'):
+            provider = action.removeprefix('advisor-login-')
+            with self.app.suspend():
+                subprocess.run(self.app.service.command('advisor-login', name, provider), check=False)
+        elif action == 'advisor-apply':
+            import sandbox_advisors
+            try:
+                calls = self.query_one('#advisor-calls', Input).value.strip()
+                settings = sandbox_advisors.validate({
+                    'providers': [p for p in ('codex', 'agy') if self.query_one('#advisor-' + p, Checkbox).value],
+                    'agy_model': self.query_one('#advisor-model', Input).value.strip(),
+                    'agy_quota_group': self.query_one('#advisor-quota', Input).value.strip(),
+                    'agy_effort': self.query_one('#advisor-effort', Select).value,
+                    'max_calls': int(calls) if calls else None,
+                    'extra_hosts': self.query_one('#advisor-hosts', TextArea).text,
+                })
+            except ValueError as error:
+                self.notify(str(error), severity='error')
+                return
+            def apply(yes):
+                if not yes:
+                    return
+                self.app.pop_screen()
+                self.app.push_screen(Operation('Advisors · ' + name, lambda log: self.app.service.advisors(name, settings, log)))
+            self.app.push_screen(Confirm('Apply advisor settings?\nActive sandbox processes restart. Workspace, home and advisor logins are preserved.', 'Apply'), apply)
+
+    def action_back(self):
+        self.app.pop_screen()
 
 
 class ModelsScreen(Screen):
@@ -1046,6 +1132,8 @@ class Cockpit(App):
             self.push_screen(MoreActions(record), lambda choice: self.perform(choice) if choice else None)
         elif action == 'settings':
             self.push_screen(SettingsMenu(name), lambda choice: self.perform(choice) if choice else None)
+        elif action == 'advisors':
+            self.push_screen(AdvisorsScreen(record))
         elif action == 'models':
             self.push_screen(ModelsScreen(record))
         elif action == 'network-settings':

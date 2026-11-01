@@ -8,6 +8,7 @@
     "read": "allow", "grep": "allow", "find": "allow", "ls": "allow",
     "write": "allow", "edit": "allow", "skill": "allow",
     "bash": "allow", "bash_escalate": "allow", "subagent": "allow",
+    "advisor_status": "allow", "advisor_ask": "ask",
     "external_directory": "ask",
     "path": {
       "*": "allow",
