@@ -106,6 +106,28 @@ async function main() {
   const inventory = await create('inventory');
   const commands = new Set(inventory.commands.map(c => c.name));
   assert(commands.has('local-models'), 'Model discovery extension missing');
+  if (process.argv.includes('--ssh-live')) {
+    const alias = process.env.TEST_SSH_ALIAS;
+    assert(/^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,63}$/.test(alias ?? ''), 'Set TEST_SSH_ALIAS to an explicitly assigned host');
+    assert(inventory.tools.some(t => t.name === 'bash_escalate'), 'Reviewed escalation unavailable');
+    await request({ type: 'session_set_model', provider: process.env.TEST_MODEL_PROVIDER, modelId: process.env.TEST_MODEL_ID, persist: false }, 'inventory');
+    const command = `ssh -o ConnectTimeout=15 ${alias} 'printf SSH_ACCESS_TEST_OK'`;
+    await request({ type: 'session_prompt', text: `Run exactly this read-only connectivity check on my configured SSH host: ${command}. Use bash_escalate because the SSH agent and connection sockets are outside the inner command sandbox. This read-only SSH check is explicitly authorized. Do not modify remote files, install anything, forward the SSH agent or inspect credentials. Report the result.`, images: [], source: 'interactive' }, 'inventory');
+    const deadline = Date.now() + 600000;
+    let state;
+    while (Date.now() < deadline) {
+      state = await request({ type: 'session_get_state' }, 'inventory');
+      const results = state.messages.filter(m => m.role === 'toolResult');
+      if (state.idle && results.length) {
+        assert(results.some(r => r.toolName === 'bash_escalate' && !r.isError && JSON.stringify(r.content).includes('SSH_ACCESS_TEST_OK')), 'No successful reviewed SSH result: ' + JSON.stringify(results));
+        console.log('PASS live local model selected bash_escalate; reviewer approved; configured SSH host returned the marker');
+        return;
+      }
+      if (state.messages.at(-1)?.stopReason === 'error') throw new Error(JSON.stringify(state.messages.at(-1)));
+      await new Promise(resolve => setTimeout(resolve, 500));
+    }
+    throw new Error('Live SSH session did not complete; inspect the saved session before retrying');
+  }
   if (process.argv.includes('--advisor')) {
     assert(commands.has('advisor'), 'Advisor command missing');
     for (const name of ['advisor_ask', 'advisor_status'])

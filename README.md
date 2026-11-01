@@ -43,9 +43,10 @@ Pi's inner command sandbox restricts shell commands further. Requests beyond it 
 
 ## Everyday use
 
-- **Settings → Network:** edit allowed destinations or enable the pip preset. Applying rules briefly restarts only the gateway.
+- **Settings → Network:** edit allowed destinations or enable the pip and GitHub presets. Applying rules briefly restarts only the gateway.
 - **Settings → Models:** preview discovery or refresh the saved catalogue.
 - **Settings → Advisors:** enable Codex or Antigravity in a separate container and sign in. [Setup and diagram](docs/advisors.md).
+- **Settings → SSH:** choose hosts and import a key into a separate companion. [SSH and GitHub setup](docs/ssh.md).
 - **Actions:** start or stop a sandbox, open Pi or a shell, view logs, rebuild or delete it.
 
 The base environment includes document tools, Goal and scheduled prompts. Browser support, subagents and additional skills are optional. Closing the manager or editor leaves containers running. Deleting a sandbox removes its private state but preserves your workspace folder.

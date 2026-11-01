@@ -4,6 +4,7 @@ import argparse
 import sandbox_skills
 import sandbox_extensions
 import sandbox_advisors
+import sandbox_ssh
 from contextlib import closing
 import hashlib
 import ipaddress
@@ -219,7 +220,7 @@ def validate_env(path):
             raise ValueError('Env file must contain literal UPPERCASE_NAME=value entries')
         if (key in {'HOME', 'PATH', 'ENV', 'BASH_ENV', 'LD_PRELOAD', 'LD_LIBRARY_PATH',
                     'NODE_OPTIONS', 'NODE_USE_ENV_PROXY', 'SSL_CERT_FILE', 'SSL_CERT_DIR',
-                    'PI_ADVISOR_SOCKET', 'SANDBOX_NETWORK_MODE', 'SANDBOX_SUBAGENTS', 'SANDBOX_APPROVAL_MODE', 'PI_SANDBOX_CONTAINER', 'PI_AUTO_REVIEW_ALLOW_UNTRUSTED_DEV'}
+                    'SSH_AUTH_SOCK', 'PI_ADVISOR_SOCKET', 'SANDBOX_NETWORK_MODE', 'SANDBOX_SUBAGENTS', 'SANDBOX_APPROVAL_MODE', 'PI_SANDBOX_CONTAINER', 'PI_AUTO_REVIEW_ALLOW_UNTRUSTED_DEV'}
                 or any(x in key for x in ('PROXY', 'PI_CODING_AGENT_DIR'))):
             raise ValueError(f'{key} is controlled by the sandbox, not the credentials file')
 
@@ -289,6 +290,7 @@ def build(config):
         run([engine, 'build', '-t', target, '--build-arg', f'BASE_IMAGE={tools}',
              Path(common['path']) / 'browser'])
         tools = target
+    sandbox_ssh.build(config)
     sandbox_advisors.build(config)
     sandbox_skills.build(config, dev, SimpleNamespace(run=run, tree_digest=tree_digest), base_image=tools)
 
@@ -437,6 +439,7 @@ def up(config, state):
     dev, proxy, socket_volume, home_volume = names(config)
     restricted = network_mode(config) == 'allowlist'
     sandbox_advisors.check_ownership(config)
+    sandbox_ssh.check_ownership(config)
     # Verify both ownership labels before starting or recovering either one.
     current = {name: inspect(config, name) for name in (proxy, dev)}
     if restricted:
@@ -456,6 +459,7 @@ def up(config, state):
     if restricted and config.get('pi_config'):
         validate_models(Path(config['pi_config']), rules, strict=False)
     sandbox_advisors.up(config, state)
+    sandbox_ssh.up(config, state)
     for name in active:
         if current[name]:
             resume_existing(config, name, current[name])
@@ -491,6 +495,7 @@ def up(config, state):
             if not restricted and urlsplit(options(config.get('options'))['burp_url']).hostname == 'host.docker.internal':
                 args += ['--add-host=host.docker.internal:host-gateway']
             args += sandbox_advisors.mounts(config)
+            args += sandbox_ssh.mounts(config, state)
             if config.get('memory'):
                 args += ['--memory=' + memory_limit(config['memory'])]
             if 'options' in config:
@@ -548,7 +553,9 @@ def down(config, remove=False):
     for name in names(config)[:2]:
         inspect(config, name)
     sandbox_advisors.check_ownership(config)
+    sandbox_ssh.check_ownership(config)
     sandbox_advisors.down(config, remove=remove)
+    sandbox_ssh.down(config, remove=remove)
     for name in names(config)[:2]:
         if inspect(config, name):
             run([config['engine'], 'rm', '-f', name] if remove
@@ -563,6 +570,7 @@ def delete(config, state):
     if workspace == state or state in workspace.parents:
         raise ValueError('Refusing to delete state containing the host workspace')
     sandbox_advisors.check_ownership(config)
+    sandbox_ssh.check_ownership(config)
     # Verify ownership of both containers before removing either one.
     for name in names(config)[:2]:
         inspect(config, name)
@@ -574,6 +582,7 @@ def delete(config, state):
         if volume in volumes:
             run([config['engine'], 'volume', 'rm', volume])
     sandbox_advisors.delete_volumes(config)
+    sandbox_ssh.delete_volumes(config)
     shutil.rmtree(state)
     print(f'Deleted {config["name"]}: containers, private volumes, and saved state. Host workspace preserved.')
 
@@ -709,12 +718,14 @@ def configure_burp(config):
 
 
 def apply_settings(config, state, changes):
-    allowed = {'advisors', 'network', 'allowlist', 'memory', 'subagents', 'env_file', 'options', 'skill_source', 'skill_path', 'remove_skills', 'local_model_ports'}
+    allowed = {'ssh', 'advisors', 'network', 'allowlist', 'memory', 'subagents', 'env_file', 'options', 'skill_source', 'skill_path', 'remove_skills', 'local_model_ports'}
     if not isinstance(changes, dict) or set(changes) - allowed:
         raise ValueError('Unknown editable sandbox setting')
     updated = dict(config)
     updated.update({k: v for k, v in changes.items() if k not in ('allowlist', 'skill_source', 'skill_path', 'remove_skills')})
     updated['extra_skills'] = [s for s in config.get('extra_skills', []) if s['name'] not in changes.get('remove_skills', [])]
+    if 'ssh' in updated:
+        updated['ssh'] = sandbox_ssh.validate(updated['ssh'])
     if 'advisors' in updated:
         updated['advisors'] = sandbox_advisors.validate(updated['advisors'])
     updated['options'] = options(updated.get('options'))
@@ -902,9 +913,11 @@ def main():
         'delete': 'Remove both containers, private volumes, and saved state; keep the host workspace',
         'configure': 'Discover local models and update the private Pi catalogue',
     }
-    for command in ('update', 'build', 'up', 'down', 'delete', 'recreate', 'open', 'configure', 'shell', 'pi', 'exec', 'check', 'policy', 'network', 'advisor-login', 'advisor-check'):
+    for command in ('update', 'build', 'up', 'down', 'delete', 'recreate', 'open', 'configure', 'shell', 'pi', 'exec', 'check', 'policy', 'network', 'advisor-login', 'advisor-check', 'ssh-import-key', 'ssh-unlock'):
         cmd = sub.add_parser(command, **({'help': descriptions[command]} if command in descriptions else {}))
         cmd.add_argument('name')
+        if command == 'ssh-import-key':
+            cmd.add_argument('--key-file', required=True)
         if command == 'advisor-login':
             cmd.add_argument('provider', choices=['codex', 'agy'])
         if command == 'network':
@@ -965,6 +978,10 @@ def main():
             config['common'] = snapshot_profile(common_profile(), state)
             (state / 'config.json').write_text(json.dumps(config, indent=2) + '\n')
         build(config)
+    elif args.command == 'ssh-import-key':
+        sandbox_ssh.import_key(config, state, args.key_file)
+    elif args.command == 'ssh-unlock':
+        sandbox_ssh.unlock(config, state)
     elif args.command == 'advisor-check':
         sandbox_advisors.check(config, state)
     elif args.command == 'advisor-login':

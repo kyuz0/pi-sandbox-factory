@@ -61,3 +61,5 @@ This covers packages and build dependencies hosted on PyPI. Git URLs, private in
 To update an existing restricted sandbox, select it and choose **Settings → Network**. Edit destinations or check the pip preset, then **Apply network**. Only the gateway restarts; development processes, terminals and files remain in place. Active network requests may need to reconnect. A stopped gateway stays stopped and uses the new rules at its next start. Use **Settings → Configuration** for network mode or host model port changes.
 
 CLI equivalent: `python sandbox.py network NAME --allowlist /path/to/allowlist.txt`.
+
+The **GitHub** preset allows HTTPS repository and release access. For SSH hosts or authenticated Git access with an isolated key, see [SSH and GitHub](ssh.md). [Advisors](advisors.md) covers Codex and Antigravity setup.

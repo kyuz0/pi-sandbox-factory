@@ -8,6 +8,8 @@ python -m unittest discover -s tests -p 'test_*.py'
 
 The suites cover launcher ownership and lifecycle, configuration, network updates and rollback, TUI navigation, extension installation and model initialization. Model responses are fixtures.
 
+SSH checks cover destination validation, trusted host keys, companion ownership, client mounts, GitHub presets and TUI settings. The optional `--ssh-live` mode in `tests/check_pendant_worker.cjs` uses a running model to request an approved read-only SSH command; it requires a configured destination and unlocked companion.
+
 For integration tests, create a disposable running Podman sandbox with host-local port 8000 enabled. Port 8000 must be free on the host:
 
 ```sh

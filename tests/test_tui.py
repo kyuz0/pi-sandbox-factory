@@ -71,6 +71,29 @@ class TUITests(unittest.TestCase):
             self.assertEqual(service.calls[0][2]['agy_model'],'')
             await pilot.press('q')
 
+    async def test_github_preset_in_network_editor(self):
+        from sandbox_tui import GITHUB_HOSTS, preset_allowed
+        app=Cockpit(self.root,FakeService(self.records))
+        async with app.run_test(size=(100,36)) as pilot:
+            await self.ready(app,pilot);await self.settings_page(app,pilot,index=0)
+            await pilot.click('#github-preset');await pilot.pause()
+            text=app.screen.query_one('#allowlist',TextArea).text
+            self.assertTrue(preset_allowed(text,GITHUB_HOSTS))
+            self.assertIn('local-model.internal:8000',text)
+            await pilot.press('q')
+
+    async def test_ssh_settings_keep_key_import_separate(self):
+        from sandbox_tui import SSHScreen
+        service=FakeService(self.records);app=Cockpit(self.root,service)
+        async with app.run_test(size=(100,36)) as pilot:
+            await self.ready(app,pilot);await self.settings_page(app,pilot,index=4)
+            self.assertIsInstance(app.screen,SSHScreen)
+            self.assertTrue(app.screen.query_one('#ssh-import-key',Button).disabled)
+            self.assertEqual(app.screen.query_one('#ssh-key-file',Input).value,'')
+            await pilot.press('escape');await pilot.pause()
+            self.assertFalse(service.calls)
+            await pilot.press('q')
+
     async def test_selection_delete_cancel_and_preserved_other_entry(self):
         service=FakeService(self.records);app=Cockpit(self.root,service)
         async with app.run_test(size=(100,32)) as pilot:

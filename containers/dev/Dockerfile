@@ -38,6 +38,10 @@ COPY check-pendant.py /opt/sandbox/check-pendant.py
 RUN python3 /opt/sandbox/check-pendant.py "${PENDANT_VERSION}"
 COPY entrypoint.sh /usr/local/bin/sandbox-entrypoint
 COPY --from=pi-local-model-manager / /opt/pi-local-model-manager/
+RUN apt-get update && apt-get install -y --no-install-recommends openssh-client \
+    && rm -rf /var/lib/apt/lists/* \
+    && mkdir -p /etc/ssh/ssh_config.d \
+    && printf "Include /etc/sandbox-ssh/config\n" > /etc/ssh/ssh_config.d/10-sandbox.conf
 COPY --from=pi-advisor / /opt/pi-advisor/
 COPY bootstrap.py /usr/local/lib/sandbox-bootstrap.py
 RUN chmod 755 /usr/local/bin/sandbox-entrypoint \

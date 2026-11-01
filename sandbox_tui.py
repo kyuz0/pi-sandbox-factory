@@ -32,6 +32,9 @@ DEFAULT_SETTINGS = {'profile': 'base', 'workspace_parent': '', 'network': 'allow
                     'local_model_ports': '8000', 'options': DEFAULTS}
 
 
+GITHUB_HOSTS = {(h, 443) for h in ('github.com', 'api.github.com', 'raw.githubusercontent.com', 'codeload.github.com', 'objects.githubusercontent.com', 'release-assets.githubusercontent.com')}
+
+
 PIP_HOSTS = {('pypi.org', 443), ('files.pythonhosted.org', 443)}
 
 
@@ -42,18 +45,23 @@ def line_rules(line):
         return set()
 
 
-def pip_allowed(text):
-    return PIP_HOSTS <= set().union(*(line_rules(line) for line in text.splitlines()))
+def preset_allowed(text, hosts):
+    return hosts <= set().union(*(line_rules(line) for line in text.splitlines()))
 
 
-def pip_rules(text, enabled):
+def preset_rules(text, enabled, hosts):
     lines = text.splitlines()
     if enabled:
         existing = set().union(*(line_rules(line) for line in lines))
-        lines.extend(f'{host}:{port}' for host, port in sorted(PIP_HOSTS - existing))
+        lines.extend(f'{host}:{port}' for host, port in sorted(hosts - existing))
     else:
-        lines = [line for line in lines if not line_rules(line) & PIP_HOSTS]
+        lines = [line for line in lines if not line_rules(line) & hosts]
     return '\n'.join(lines)
+
+
+def pip_allowed(text): return preset_allowed(text, PIP_HOSTS)
+
+def pip_rules(text, enabled): return preset_rules(text, enabled, PIP_HOSTS)
 
 
 class Checkbox(TextualCheckbox):
@@ -194,6 +202,12 @@ class Service:
             self.run(['update', name, '--settings-file', str(path)], log)
         self.setup(name, {**draft, 'options': {**draft['options'], 'burp_url': ''}}, key, log)
 
+    def ssh_settings(self, name, settings, log):
+        with tempfile.TemporaryDirectory(prefix='sandbox-ssh-') as temp:
+            path = Path(temp) / 'settings.json'
+            write_json(path, {'ssh': settings})
+            self.run(['update', name, '--settings-file', str(path)], log)
+
     def advisors(self, name, settings, log):
         with tempfile.TemporaryDirectory(prefix='sandbox-advisors-') as temp:
             path = Path(temp) / 'settings.json'
@@ -222,6 +236,7 @@ class NetworkForm(Screen):
             yield Label('Network · ' + self.sandbox_name)
             yield Static('Update allowed destinations without restarting the development container. The gateway restarts briefly; active requests may need to reconnect. Host model ports stay unchanged.')
             yield Checkbox('pip · Python packages from PyPI', value=pip_allowed(self.rules), id='pip-preset')
+            yield Checkbox('GitHub · repositories, API and release downloads', value=preset_allowed(self.rules, GITHUB_HOSTS), id='github-preset')
             yield TextArea(self.rules, id='allowlist')
             with Collapsible(title='Import or export rules', collapsed=True):
                 yield Input(placeholder='Allowlist file path', id='network-file')
@@ -234,6 +249,11 @@ class NetworkForm(Screen):
             yield Button('Apply network', id='apply-network', variant='primary')
         yield Footer()
 
+    @on(Checkbox.Changed, '#github-preset')
+    def toggle_github(self, event):
+        field = self.query_one('#allowlist', TextArea)
+        field.load_text(preset_rules(field.text, event.value, GITHUB_HOSTS))
+
     @on(Checkbox.Changed, '#pip-preset')
     def toggle_pip(self, event):
         field = self.query_one('#allowlist', TextArea)
@@ -244,6 +264,9 @@ class NetworkForm(Screen):
         checkbox = self.query_one('#pip-preset', Checkbox)
         with checkbox.prevent(TextualCheckbox.Changed):
             checkbox.value = pip_allowed(self.query_one('#allowlist', TextArea).text)
+        github = self.query_one('#github-preset', Checkbox)
+        with github.prevent(TextualCheckbox.Changed):
+            github.value = preset_allowed(self.query_one('#allowlist', TextArea).text, GITHUB_HOSTS)
 
     @on(Button.Pressed)
     def pressed(self, event):
@@ -341,7 +364,8 @@ class SettingsMenu(ModalScreen[Optional[str]]):
     ACTIONS = [('Network · allowed destinations and package presets', 'network-settings'),
                ('Models · endpoints and discovery', 'models'),
                ('Configuration · resources, tools and network mode', 'configuration'),
-               ('Advisors · Codex and Antigravity', 'advisors')]
+               ('Advisors · Codex and Antigravity', 'advisors'),
+               ('SSH · hosts and private key access', 'ssh-settings')]
 
     def __init__(self, name):
         super().__init__()
@@ -365,6 +389,78 @@ class SettingsMenu(ModalScreen[Optional[str]]):
 
     def action_cancel(self):
         self.dismiss(None)
+
+
+class SSHScreen(Screen):
+    BINDINGS = [('escape', 'back', 'Back')]
+
+    def __init__(self, record):
+        super().__init__()
+        self.record = record
+        self.imported = None
+
+    def compose(self):
+        hosts = self.record['config'].get('ssh', {}).get('hosts', [])
+        yield Header()
+        with VerticalScroll(classes='form'):
+            yield Label('SSH · ' + self.record['name'], classes='title')
+            yield Static('Choose the hosts this sandbox can access. The private key stays in a separate container; Pi uses it through an SSH agent.')
+            yield Label('Destinations · alias username hostname-or-IP port')
+            yield TextArea('\n'.join(f'{h["alias"]} {h["user"]} {h["hostname"]} {h["port"]}' for h in hosts), id='ssh-hosts')
+            with Collapsible(title='Import host SSH aliases', collapsed=True):
+                yield Input(placeholder='Aliases from your ~/.ssh/config, separated by spaces', id='ssh-aliases')
+                yield Button('Import destinations', id='ssh-import-aliases')
+            with Collapsible(title='Host identity and private key', collapsed=True):
+                yield Label('Trusted known_hosts file · used when applying manually entered destinations')
+                yield Input(str(Path.home() / '.ssh/known_hosts'), id='ssh-known-hosts')
+                yield Label('Private key file on your computer · never mounted in the development container')
+                yield Input(placeholder='~/.ssh/id_ed25519', id='ssh-key-file')
+                with Horizontal(classes='buttons'):
+                    yield Button('Import key and unlock', id='ssh-import-key', disabled=not hosts)
+                    yield Button('Unlock existing key', id='ssh-unlock', disabled=not hosts)
+            yield Static('Apply destinations first, then import a key. Encrypted keys ask for their passphrase directly in your terminal. Removing all destinations disables access; deleting the sandbox also deletes its private key copy.')
+        with Horizontal(classes='wizard-actions'):
+            yield Button('Apply', id='ssh-apply', variant='primary')
+            yield Button('Back', id='ssh-back')
+        yield Footer()
+
+    @on(Button.Pressed)
+    def pressed(self, event):
+        event.stop()
+        import sandbox_ssh
+        action = event.button.id
+        name = self.record['name']
+        try:
+            if action == 'ssh-back': self.action_back()
+            elif action == 'ssh-import-aliases':
+                settings = sandbox_ssh.import_aliases(self.query_one('#ssh-aliases', Input).value, Path.home() / '.ssh/config')
+                text = '\n'.join(f'{h["alias"]} {h["user"]} {h["hostname"]} {h["port"]}' for h in settings['hosts'])
+                self.query_one('#ssh-hosts', TextArea).load_text(text)
+                self.imported = (text, settings)
+                self.notify('Imported destinations and existing trusted host keys. No private key imported.')
+            elif action in ('ssh-import-key', 'ssh-unlock'):
+                args = ['ssh-unlock', name]
+                if action == 'ssh-import-key':
+                    path = self.query_one('#ssh-key-file', Input).value.strip()
+                    if not path: raise ValueError('Choose a private key file')
+                    args = ['ssh-import-key', name, '--key-file', path]
+                with self.app.suspend():
+                    subprocess.run(self.app.service.command(*args), check=False)
+            elif action == 'ssh-apply':
+                text = self.query_one('#ssh-hosts', TextArea).text
+                old = self.record['config'].get('ssh', {'hosts': []})
+                old_text = '\n'.join(f'{h["alias"]} {h["user"]} {h["hostname"]} {h["port"]}' for h in old['hosts'])
+                settings = (self.imported[1] if self.imported and self.imported[0] == text else
+                            old if text == old_text else sandbox_ssh.parse_hosts(text, self.query_one('#ssh-known-hosts', Input).value))
+                def apply(yes):
+                    if not yes: return
+                    self.app.pop_screen()
+                    self.app.push_screen(Operation('SSH destinations · ' + name, lambda log: self.app.service.ssh_settings(name, settings, log)))
+                self.app.push_screen(Confirm('Apply SSH destinations?\nActive sandbox processes restart. Workspace and private key are preserved.\nThe key will be restricted to these users and trusted host identities.', 'Apply'), apply)
+        except (OSError, ValueError, subprocess.SubprocessError) as error:
+            self.notify(safe_text(error), severity='error')
+
+    def action_back(self): self.app.pop_screen()
 
 
 class AdvisorsScreen(Screen):
@@ -720,6 +816,7 @@ class SettingsForm(Screen):
                     yield Static('Allowed destinations: Settings → Network. Changes there preserve the development container.')
                 with Vertical(id='network-rules-fields'):
                     yield Checkbox('pip · Python packages from PyPI', value=pip_allowed(value.get('allowlist', '')), id='pip-preset')
+                    yield Checkbox('GitHub · repositories, API and release downloads', value=preset_allowed(value.get('allowlist', ''), GITHUB_HOSTS), id='github-preset')
                     yield Static('Allows pypi.org:443 and files.pythonhosted.org:443. Git URLs and other package indexes need separate entries.')
                     yield Label('Edit allowed destinations in Settings → Network.' if self.editing else 'Allowed destinations · one hostname:port per line; comments allowed')
                     yield TextArea(value.get('allowlist', ''), id='allowlist')
@@ -818,6 +915,11 @@ class SettingsForm(Screen):
         except (OSError, ValueError, subprocess.SubprocessError) as error:
             self.notify(safe_text(error), severity='error')
 
+    @on(Checkbox.Changed, '#github-preset')
+    def toggle_github(self, event):
+        field = self.query_one('#allowlist', TextArea)
+        field.load_text(preset_rules(field.text, event.value, GITHUB_HOSTS))
+
     @on(Checkbox.Changed, '#pip-preset')
     def pip_preset_changed(self, event):
         field = self.query_one('#allowlist', TextArea)
@@ -828,6 +930,9 @@ class SettingsForm(Screen):
         checkbox = self.query_one('#pip-preset', Checkbox)
         with checkbox.prevent(TextualCheckbox.Changed):
             checkbox.value = pip_allowed(self.query_one('#allowlist', TextArea).text)
+        github = self.query_one('#github-preset', Checkbox)
+        with github.prevent(TextualCheckbox.Changed):
+            github.value = preset_allowed(self.query_one('#allowlist', TextArea).text, GITHUB_HOSTS)
 
     @on(Select.Changed, '#network')
     def network_changed(self):
@@ -1132,6 +1237,8 @@ class Cockpit(App):
             self.push_screen(MoreActions(record), lambda choice: self.perform(choice) if choice else None)
         elif action == 'settings':
             self.push_screen(SettingsMenu(name), lambda choice: self.perform(choice) if choice else None)
+        elif action == 'ssh-settings':
+            self.push_screen(SSHScreen(record))
         elif action == 'advisors':
             self.push_screen(AdvisorsScreen(record))
         elif action == 'models':
