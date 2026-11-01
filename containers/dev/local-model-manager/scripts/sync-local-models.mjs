@@ -6,6 +6,7 @@ import { dirname, resolve, join } from 'node:path';
 import { homedir } from 'node:os';
 import { pathToFileURL } from 'node:url';
 import { expandTargets, scan } from './discover-local-models.mjs';
+import { DEFAULT_MAX_TOKENS } from './model-limits.mjs';
 import { validateThinkingOverrides, thinkingConfig, hasExplicitThinking, applyThinking } from './thinking.mjs';
 
 const object = value => value && typeof value === 'object' && !Array.isArray(value);
@@ -19,7 +20,7 @@ export function isLocalEndpoint(endpoint) {
 }
 export function providerId(endpoint) { return `local-lab-${hash(endpoint).slice(0, 16)}`; }
 
-export function reconcile(config, manifest, reports, { adoptLocal = false, maxTokens = 4096, thinkingOverrides = [] } = {}) {
+export function reconcile(config, manifest, reports, { adoptLocal = false, maxTokens = DEFAULT_MAX_TOKENS, thinkingOverrides = [] } = {}) {
   if (!object(config) || config.providers !== undefined && !object(config.providers)) throw new Error('Invalid models.json providers');
   if (!object(manifest) || manifest.version !== 1 || !object(manifest.entries)) throw new Error('Invalid ownership manifest');
   if (!Number.isSafeInteger(maxTokens) || maxTokens < 1) throw new Error('maxTokens must be a positive integer');
@@ -209,6 +210,6 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     const target = values.target ?? join(process.env.PI_CODING_AGENT_DIR ?? join(homedir(), '.pi/agent'), 'models.json');
     const thinkingOverrides = values['thinking-overrides'] ? validateThinkingOverrides(JSON.parse(await readFile(values['thinking-overrides'], 'utf8'))) : [];
     const reports = await scan(targets);
-    console.log(JSON.stringify(await syncFile(target, reports, { write: values.write, adoptLocal: values['adopt-local'], maxTokens: values['max-tokens'] ? Number(values['max-tokens']) : 4096, thinkingOverrides }), null, 2));
+    console.log(JSON.stringify(await syncFile(target, reports, { write: values.write, adoptLocal: values['adopt-local'], maxTokens: values['max-tokens'] ? Number(values['max-tokens']) : DEFAULT_MAX_TOKENS, thinkingOverrides }), null, 2));
   } catch (error) { console.error(error.message); process.exitCode = 1; }
 }

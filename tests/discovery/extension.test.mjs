@@ -24,7 +24,7 @@ test('command refresh scans configured ranges, adopts local entries and reloads 
     await s.run('refresh');
     assert.equal(s.scans[0].length, 1);
     assert.equal(s.syncs[0].target, join(s.root, 'models.json'));
-    assert.deepEqual(s.syncs[0].options, { write: true, adoptLocal: true, maxTokens: 4096 });
+    assert.deepEqual(s.syncs[0].options, { write: true, adoptLocal: true, maxTokens: 32768 });
     assert.deepEqual(s.refreshes[0].providers, ['endpoint-id', 'old-label']);
     assert.equal(s.refreshes[0].allowNetwork, false);
     assert.ok(s.refreshes[0].signal);
@@ -87,5 +87,14 @@ test('settings pass exact thinking overrides to refresh and reject invalid overr
     await s.run('refresh');
     assert.equal(s.scans.length, 1);
     assert.ok(s.notifications.some(([message]) => message.includes('Unknown thinking profile')));
+  } finally { await s.close(); }
+});
+
+test('explicit output allowance survives refresh', async () => {
+  const s = await setup();
+  try {
+    await writeFile(join(s.root, 'local-pi-models.json'), JSON.stringify({ maxTokens: 65536 }));
+    await s.run('refresh');
+    assert.equal(s.syncs[0].options.maxTokens, 65536);
   } finally { await s.close(); }
 });

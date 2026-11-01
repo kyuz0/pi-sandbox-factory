@@ -119,3 +119,23 @@ test('interrupted ownership update recovered from journal; later user edits stop
     assert.equal(await readFile(file, 'utf8'), '{"userEdit":true}');
   } finally { await rm(root, { recursive: true, force: true }); }
 });
+
+test('default output allowance is 32K and respects server and context limits', () => {
+  const cases = [
+    [{ contextWindow: 67840 }, {}, 32768],
+    [{ contextWindow: 67840, maxCompletionTokensAdvertised: 8192 }, {}, 8192],
+    [{ contextWindow: 16384 }, {}, 16384],
+    [{ contextWindow: 131072 }, { maxTokens: 65536 }, 65536],
+    [{ contextWindow: 67840 }, { maxTokens: 4096 }, 4096],
+  ];
+  for (const [model, options, expected] of cases) {
+    const r = reconcile({}, empty(), [found(8000, 'output-limit-test', model)], options);
+    assert.equal(r.config.providers[providerId(endpoint(8000))].models[0].maxTokens, expected);
+  }
+});
+test('refresh upgrades a managed former 4K default without replacing user settings', () => {
+  const old = reconcile({}, empty(), [found(8000, 'local', { contextWindow: 67840 })], { maxTokens: 4096 });
+  const next = reconcile(old.config, old.manifest, [found(8000, 'local', { contextWindow: 67840 })]);
+  assert.equal(next.config.providers[providerId(endpoint(8000))].models[0].maxTokens, 32768);
+  assert.equal(next.changes[0].action, 'update');
+});

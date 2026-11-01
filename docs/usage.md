@@ -32,6 +32,8 @@ For later model changes within an open Pi or Pendant session:
 /model
 ```
 
+New model entries use a 32,768-token output allowance, capped by the active context and any advertised server output limit. Thinking uses part of this allowance. A saved `maxTokens` value in the sandbox’s private `local-pi-models.json` overrides the default. After updating the sandbox image, refresh the catalogue; remove an explicit old limit if you want the new default.
+
 The bundled `pi-local-model-manager` extension discovers server metadata and maintains the private model catalogue. It does not start inference servers, download weights or guess missing context/image capabilities. Preview is read-only. The manager's Refresh models writes the same configuration; existing Pi/Pendant sessions should also refresh before selecting the new model.
 
 Other remote destinations may be added explicitly in Settings. Disabling host-local access removes its generated allowlist entries. Model credentials belong in private configuration, not source files or images.

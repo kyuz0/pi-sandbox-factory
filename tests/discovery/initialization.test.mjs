@@ -26,3 +26,9 @@ test('preview does not create models.json and does not require a ready server',a
  await initializeModels(root,{preview:true,scanModels:async()=>[{endpoint,status:'probe-error',models:[]}],log:()=>{}});
  await assert.rejects(readFile(join(root,'models.json')), {code:'ENOENT'});
 }));
+
+test('fresh large-context catalogue gets a 32K output allowance', async () => setup(async root => {
+  await initializeModels(root, { scanModels: async () => [{ ...report, models: [{ id: 'local-large', contextWindow: 67840, imageSupport: false }] }], log: () => {} });
+  const config = JSON.parse(await readFile(join(root, 'models.json'), 'utf8'));
+  assert.equal(Object.values(config.providers)[0].models[0].maxTokens, 32768);
+}));

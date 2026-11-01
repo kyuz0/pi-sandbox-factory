@@ -2,10 +2,11 @@ import { readFile, mkdir, open, rename, unlink, lstat } from 'node:fs/promises';
 import { join, dirname } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { expandTargets, scan } from './discover-local-models.mjs';
+import { DEFAULT_MAX_TOKENS } from './model-limits.mjs';
 import { isLocalEndpoint, syncFile } from './sync-local-models.mjs';
 import { validateThinkingOverrides } from './thinking.mjs';
 
-export const defaults = Object.freeze({ host: 'local-model.internal', ports: '8000', maxTokens: 4096 });
+export const defaults = Object.freeze({ host: 'local-model.internal', ports: '8000', maxTokens: DEFAULT_MAX_TOKENS });
 const help = '/local-models preview — scan and show proposed changes\n/local-models refresh — scan, adopt existing local entries, save models.json and refresh Pi\n/local-models ports 8000-8009,8080-8089 — save scan ranges\n/local-models status — show configuration and target';
 
 function validate(config) {
