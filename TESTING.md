@@ -10,13 +10,13 @@ The suites cover launcher ownership and lifecycle, configuration, network update
 
 SSH checks cover destination validation, trusted host keys, companion ownership, client mounts, GitHub presets and TUI settings. The optional `--ssh-live` mode in `tests/check_pendant_worker.cjs` uses a running model to request an approved read-only SSH command; it requires a configured destination and unlocked companion.
 
-For integration tests, create a disposable running Podman sandbox with host-local port 8000 enabled. Port 8000 must be free on the host:
+For integration tests, create a disposable running Podman sandbox with an unused host-local port enabled, for example 18081:
 
 ```sh
-python tests/integration.py --state-dir /path/to/test-state --name test-name
+python tests/integration.py --state-dir /path/to/test-state --name test-name --port 18081
 ```
 
-This starts a fixture server, checks tools and isolation, exercises Pi/Pendant, and restores the model configuration. Use only disposable workspaces and sandbox state. It does not run an inference model.
+This starts a fixture server, checks tools and isolation, exercises Pi/Pendant (including question choices, free text and cancellation), and restores the model configuration. Use only disposable workspaces and sandbox state. It does not run an inference model.
 
 Extension unit tests run in [pi-local-model-manager](https://github.com/kyuz0/pi-local-model-manager) and [pi-advisor](https://github.com/kyuz0/pi-advisor) with `npm test`.
 

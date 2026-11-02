@@ -39,7 +39,11 @@ class Handler(BaseHTTPRequestHandler):
         expected = Path('/fixture/expected-profile.txt')
         messages = request.get('messages', [])
         content = '\n'.join(strings(messages))
-        reviewing = 'You are a fail-closed permission reviewer.' in content
+        reviewing = any(
+            m.get('role') in ('system', 'developer') and any(
+                text.startswith(('Review one proposed coding-agent action.',
+                                 'You are a fail-closed permission reviewer.'))
+                for text in strings(m.get('content'))) for m in messages)
         if not reviewing and 'RUN_SECURITY_' in content:
             names = {t['function']['name'] for t in request.get('tools', [])}
             if ('subagent' in names) != json.loads(Path('/fixture/expected-subagents.json').read_text()):
@@ -64,6 +68,17 @@ class Handler(BaseHTTPRequestHandler):
             outcome = 'deny' if ('DENY_BY_FIXTURE' in content or 'ALLOW_EXECUTED' in content) else 'defer' if 'DEFER_BY_FIXTURE' in content else 'allow'
             delta['content'] = json.dumps({'outcome': outcome, 'risk_level': 'medium',
                                           'user_authorization': 'high', 'rationale': 'Synthetic integration review: ' + outcome})
+        elif 'RUN_QUESTION_' in content:
+            outputs = [m for m in messages if m.get('role') == 'tool']
+            if outputs:
+                delta['content'] = 'QUESTION_DONE'
+            else:
+                params = {'questions': [{'header': 'Output', 'question': 'Which output format?',
+                    'options': [{'label': 'CSV', 'description': 'A spreadsheet table'},
+                                {'label': 'JSON', 'description': 'Structured records'}]}]}
+                delta = {'role': 'assistant', 'tool_calls': [{'index': 0, 'id': 'question-call',
+                    'type': 'function', 'function': {'name': 'ask_user_question', 'arguments': json.dumps(params)}}]}
+                finish = 'tool_calls'
         elif 'RUN_BROWSER_' in content:
             names = {t['function']['name'] for t in request.get('tools', [])}
             assert 'browser' in names, 'Betterwright tool is not loaded'
@@ -116,7 +131,7 @@ class Handler(BaseHTTPRequestHandler):
             call = None
             if 'RUN_AUTOMATION_GOAL' in content:
                 if not outputs:
-                    call = ('create_goal', {'objective': 'RUN_AUTOMATION_GOAL: verify sandboxed Bash then complete this synthetic goal.', 'tokenBudget': 10000})
+                    call = ('create_goal', {'objective': 'RUN_AUTOMATION_GOAL: verify sandboxed Bash then complete this synthetic goal.', 'token_budget': 10000, 'auto_continue': True, 'skip_auditor': True, 'verification_contract': 'Sandboxed Bash must return AUTOMATION_GOAL_BASH_OK.'})
                 elif 'AUTOMATION_GOAL_FIRST_TURN' not in assistant_content:
                     delta['content'] = 'AUTOMATION_GOAL_FIRST_TURN'
                 elif len(outputs) == 1:
@@ -152,7 +167,7 @@ class Handler(BaseHTTPRequestHandler):
             elif not outputs:
                 schedule_schema = next(t['function']['parameters'] for t in request['tools'] if t['function']['name'] == 'schedule_prompt')
                 assert not {'model', 'extensions', 'skills', 'notify'} & schedule_schema['properties'].keys()
-                assert 'create_goal' in names
+                assert ('create_goal' in names) == ('PENDANT_WORKER_FIXTURE' in user_content)
                 assert ('subagent' in names) == json.loads(Path('/fixture/expected-subagents.json').read_text())
                 call = ('schedule_prompt', {'action': 'add', 'type': 'once', 'schedule': '+2s',
                                             'prompt': 'AUTOMATION_TIMER_FIRE: verify the existing command sandbox and approvals.',

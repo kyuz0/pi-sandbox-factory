@@ -1,6 +1,6 @@
 FROM docker.io/library/node:22-bookworm-slim
-ARG PI_VERSION=1.2.0
-ARG PENDANT_VERSION=0.40.0
+ARG PI_VERSION=1.4.0
+ARG PENDANT_VERSION=0.93.0
 ARG USER_UID=1000
 ARG USER_GID=1000
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -43,6 +43,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends openssh-client 
     && mkdir -p /etc/ssh/ssh_config.d \
     && printf "Include /etc/sandbox-ssh/config\n" > /etc/ssh/ssh_config.d/10-sandbox.conf
 COPY --from=pi-advisor / /opt/pi-advisor/
+COPY --from=rpiv-ask-user-question /packages/rpiv-ask-user-question/ /opt/rpiv-ask-user-question/
+COPY --from=rpiv-ask-user-question /packages/rpiv-config/ /opt/rpiv-ask-user-question/node_modules/@juicesharp/rpiv-config/
+COPY --from=rpiv-ask-user-question /source-commit /opt/rpiv-ask-user-question/source-commit
+RUN rm -rf /opt/pi-security/node_modules/pi-goal
 COPY bootstrap.py /usr/local/lib/sandbox-bootstrap.py
 RUN chmod 755 /usr/local/bin/sandbox-entrypoint \
     && mkdir -p /workspace /pi-config /run/egress \

@@ -1,4 +1,4 @@
-"""Goal continuation and actual timer delivery through standalone Pi RPC."""
+"""Actual timer delivery through standalone Pi RPC."""
 import json
 from pathlib import Path
 import queue
@@ -7,7 +7,7 @@ import threading
 import time
 
 
-for scenario in ('GOAL', 'SCHEDULE', 'BUSY', 'REJECT'):
+for scenario in ('SCHEDULE', 'BUSY', 'REJECT'):
     process = subprocess.Popen(['pi', '--mode', 'rpc', '--provider', 'fixture', '--model', 'fixture-model'],
                                stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     lines, errors = queue.Queue(), []
@@ -46,7 +46,7 @@ for scenario in ('GOAL', 'SCHEDULE', 'BUSY', 'REJECT'):
             return event
         raise AssertionError((scenario, 'RPC did not finish', errors, events[-10:]))
     try:
-        marker = 'AUTOMATION_' + ('GOAL' if scenario == 'GOAL' else 'REJECT' if scenario == 'REJECT' else 'SCHEDULE') + '_DONE'
+        marker = 'AUTOMATION_' + ('REJECT' if scenario == 'REJECT' else 'SCHEDULE') + '_DONE'
         send({'type': 'prompt', 'message': 'RUN_AUTOMATION_' + scenario})
         done = False
         while True:
@@ -57,12 +57,7 @@ for scenario in ('GOAL', 'SCHEDULE', 'BUSY', 'REJECT'):
                 break
         results = [e for e in events if e.get('type') == 'tool_execution_end']
         text = json.dumps(results)
-        if scenario == 'GOAL':
-            assert [e['toolName'] for e in results] == ['create_goal', 'bash', 'update_goal'], results
-            assert results[-1]['result']['details']['goal']['status'] == 'complete', results
-            assert 'AUTOMATION_GOAL_FIRST_TURN' in json.dumps(events)
-            assert 'AUTOMATION_GOAL_BASH_OK' in text
-        elif scenario == 'REJECT':
+        if scenario == 'REJECT':
             assert len(results) == 1 and results[0]['toolName'] == 'schedule_prompt', results
             assert results[0].get('isError') and ('denied' in text.lower() or 'blocked' in text.lower()), results
             store = Path('.pi/schedule-prompts.json')

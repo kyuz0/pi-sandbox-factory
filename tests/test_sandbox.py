@@ -707,10 +707,47 @@ class BootstrapTests(unittest.TestCase):
         for original, relative in (('/home/node', 'home'), ('/pi-config', 'shared'), ('/opt/pendant', 'pendant'),
                                    ('/opt/pi-security', 'security'),
                                    ('/opt/betterwright', 'betterwright'),
+                                   ('/opt/rpiv-ask-user-question', 'ask'),
                                    ('/opt/sandbox', 'sandbox')):
             script = script.replace(original, str(root / relative))
         subprocess.run(['python3', '-c', script], check=True,
                        env=dict(os.environ, SANDBOX_SUBAGENTS='1' if subagents else '0'))
+
+    def test_ask_loads_by_default_and_preserves_existing_configuration(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            for name in ('shared', 'pendant', 'ask'):
+                (root / name).mkdir(parents=True)
+            extension = root / 'ask/index.ts'
+            extension.touch()
+            seed = {'packages': ['npm:@juicesharp/rpiv-ask-user-question@2.15.0', 'npm:other-package'],
+                    'extensions': ['/custom/extension.ts'], 'defaultProvider': 'kept'}
+            (root / 'shared/settings.json').write_text(json.dumps(seed))
+            self.bootstrap(root)
+            self.bootstrap(root)
+            settings = json.loads((root / 'home/.pi/agent/settings.json').read_text())
+            self.assertEqual(settings['extensions'].count(str(extension)), 1)
+            self.assertIn('/custom/extension.ts', settings['extensions'])
+            self.assertEqual(settings['packages'], ['npm:other-package'])
+            self.assertEqual(settings['defaultProvider'], 'kept')
+            self.assertEqual(json.loads((root / 'shared/settings.json').read_text()), seed)
+
+    def test_native_goal_setting_preserves_preferences_and_tracks_launcher_choice(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            for name in ('shared', 'pendant', 'sandbox'):
+                (root / name).mkdir()
+            seed = {'enabled': True, 'maxAutonomousRuns': 12}
+            (root / 'shared/pendant-goals.json').write_text(json.dumps(seed))
+            choice = root / 'sandbox/options.json'
+            for enabled in (False, True):
+                choice.write_text(json.dumps({'goals': enabled}))
+                self.bootstrap(root)
+                target = root / 'home/.pi/agent/pendant-goals.json'
+                self.assertFalse(target.is_symlink())
+                self.assertEqual(json.loads(target.read_text()), {**seed, 'enabled': enabled})
+                self.assertEqual(target.stat().st_mode & 0o077, 0)
+            self.assertEqual(json.loads((root / 'shared/pendant-goals.json').read_text()), seed)
 
     def test_browser_registration_tracks_saved_choice_and_preserves_user_resources(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -771,7 +808,9 @@ class BootstrapTests(unittest.TestCase):
                 (root / name).mkdir()
             seed = {'packages': ['npm:pi-goal@0.1.7', {'source': 'npm:pi-schedule-prompt'},
                                  'npm:pi-sandbox', {'source': 'npm:@gotgenes/pi-permission-system', 'autoload': False},
-                                 'npm:unrelated-package'], 'defaultProvider': 'kept'}
+                                 'npm:unrelated-package'], 'defaultProvider': 'kept',
+                    'extensions': [str(root / 'security/node_modules/pi-goal/.pi/extensions/pi-goal/index.ts')],
+                    'skills': [str(root / 'security/node_modules/pi-goal/skills')]}
             (root / 'shared/settings.json').write_text(json.dumps(seed))
             resources = ['security/node_modules/pi-goal/.pi/extensions/pi-goal/index.ts',
                          'security/packages/pi-session-schedule/index.mjs',
@@ -785,9 +824,9 @@ class BootstrapTests(unittest.TestCase):
             settings = json.loads((root / 'home/.pi/agent/settings.json').read_text())
             self.assertEqual(settings['packages'], ['npm:unrelated-package'])
             self.assertEqual(settings['defaultProvider'], 'kept')
-            for relative in resources[:2]:
-                self.assertEqual(settings['extensions'].count(str(root / relative)), 1)
-            self.assertIn(str(root / 'security/node_modules/pi-goal/skills'), settings['skills'])
+            self.assertNotIn(str(root / resources[0]), settings['extensions'])
+            self.assertEqual(settings['extensions'].count(str(root / resources[1])), 1)
+            self.assertNotIn(str(root / 'security/node_modules/pi-goal/skills'), settings['skills'])
             self.assertEqual(json.loads((root / 'shared/settings.json').read_text()), seed)
 
     def test_fresh_private_configuration_is_empty_and_preserves_edits(self):

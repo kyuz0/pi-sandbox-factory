@@ -30,11 +30,8 @@ intended task. No extra OS sandbox surrounds the entire Pi child process.
 
 # Goals and scheduled prompts
 
-Every profile includes `pi-goal` and the current-chat integration of
-`pi-schedule-prompt`. Start goal mode only when explicitly requested, using
-`/goal [--tokens 50k] <objective>` or `create_goal`. `/goal pause`, `/goal resume`,
-`/goal status` and `/goal clear` manage it. Goals continue the current session;
-they do not require subagents.
+Pendant provides built-in goals. Start a goal only when explicitly requested and
+its tools are available. Every profile includes current-chat scheduled prompts.
 
 Use `schedule_prompt` for a requested future or recurring prompt. For example,
 `action: "add", type: "once", schedule: "+5m", prompt: "Review the latest results"`.

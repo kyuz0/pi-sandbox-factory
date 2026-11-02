@@ -851,7 +851,7 @@ class SettingsForm(Screen):
                 for skill in value.get('extra_skills', []):
                     yield Checkbox(skill['name'] + ' — remote skill', value=True, id='extra-' + skill['name'])
                     yield Static(skill['repo'] + ' · ' + skill['commit'][:12], markup=False)
-                yield Checkbox('Goals', value=selected['goals'], id='goals')
+                yield Checkbox('Pendant goals', value=selected['goals'], id='goals')
                 yield Checkbox('Scheduled prompts in the current chat', value=selected['scheduling'], id='scheduling')
                 yield Static('Installed profile skills can be enabled or disabled. Add a remote skill below.')
                 yield Label('Additional skill Git repository URL')

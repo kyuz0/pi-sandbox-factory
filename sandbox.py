@@ -24,8 +24,8 @@ from sandbox_options import options, memory_limit, permissions, write_json, guid
 
 ROOT = Path(__file__).resolve().parent
 LABEL = 'io.local-ai-sandbox.name'
-PI_VERSION = '1.2.0'
-PENDANT_VERSION = '0.40.0'
+PI_VERSION = '1.4.0'
+PENDANT_VERSION = '0.93.0'
 RUNTIME_ENV = {
     'HTTP_PROXY': 'http://127.0.0.1:3128', 'HTTPS_PROXY': 'http://127.0.0.1:3128',
     'http_proxy': 'http://127.0.0.1:3128', 'https_proxy': 'http://127.0.0.1:3128',

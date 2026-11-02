@@ -49,6 +49,6 @@ Pi's inner command sandbox restricts shell commands further. Requests beyond it 
 - **Settings → SSH:** choose hosts and import a key into a separate companion. [SSH and GitHub setup](docs/ssh.md).
 - **Actions:** start or stop a sandbox, open Pi or a shell, view logs, rebuild or delete it.
 
-The base environment includes document tools, Goal and scheduled prompts. Browser support, subagents and additional skills are optional. Closing the manager or editor leaves containers running. Deleting a sandbox removes its private state but preserves your workspace folder.
+The base environment includes document tools, Pendant's built-in goals and scheduled prompts. Browser support, subagents and additional skills are optional. Closing the manager or editor leaves containers running. Deleting a sandbox removes its private state but preserves your workspace folder.
 
 [Extensions](docs/extensions.md) · [Usage and CLI](docs/usage.md) · [Architecture and permissions](docs/architecture.md) · [Tests](TESTING.md)

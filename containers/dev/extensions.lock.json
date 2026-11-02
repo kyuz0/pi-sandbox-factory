@@ -8,6 +8,10 @@
     "pi-advisor": {
       "repository": "https://github.com/kyuz0/pi-advisor.git",
       "commit": "db09e252307a8000b53f6abcec9e8369f8d2ebf4"
+    },
+    "rpiv-ask-user-question": {
+      "repository": "https://github.com/juicesharp/rpiv-mono.git",
+      "commit": "46dbdfd78ab631bbf3ce41c2618bb173a5ec2725"
     }
   }
 }

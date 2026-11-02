@@ -57,7 +57,12 @@ worker.on('message', message => {
       session.dialogs++;
       const prompt = message.request;
       let result;
-      if (prompt.kind === 'confirm') result = { type: 'confirmed', confirmed: true };
+      if (session.questionScenario) {
+        assert.equal(prompt.kind, 'select');
+        result = session.questionScenario === 'CANCEL' ? { type: 'cancelled' }
+          : { type: 'value', value: session.questionScenario === 'CUSTOM' ? 'Markdown table' : prompt.options[0] };
+      }
+      else if (prompt.kind === 'confirm') result = { type: 'confirmed', confirmed: true };
       else {
         assert.equal(prompt.kind, 'select');
         const value = prompt.options.find(x => x === 'Yes') ?? prompt.options.find(x =>
@@ -106,6 +111,11 @@ async function main() {
   const inventory = await create('inventory');
   const commands = new Set(inventory.commands.map(c => c.name));
   assert(commands.has('local-models'), 'Model discovery extension missing');
+  assert(!inventory.commands.some(c => c.sourceInfo?.path?.includes('/node_modules/pi-goal/')), 'Legacy Goal extension loaded');
+  assert(!commands.has('skill:pi-goal-writer'), 'Legacy Goal skill loaded');
+  assert.deepEqual(inventory.diagnostics.filter(d => d.level === 'error'), [], 'Extension errors');
+  assert(!fs.existsSync('/opt/pi-security/node_modules/pi-goal'), 'Legacy Goal package installed');
+  assert(inventory.tools.some(t => t.name === 'ask_user_question'), 'ask_user_question tool missing');
   if (process.argv.includes('--ssh-live')) {
     const alias = process.env.TEST_SSH_ALIAS;
     assert(/^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,63}$/.test(alias ?? ''), 'Set TEST_SSH_ALIAS to an explicitly assigned host');
@@ -191,7 +201,7 @@ async function main() {
   }
   if (process.argv.includes('--features')) {
     const selected = JSON.parse(fs.readFileSync('/opt/sandbox/options.json'));
-    assert.equal(commands.has('goal'), selected.goals);
+    assert.equal(inventory.activeToolNames.includes('create_goal'), selected.goals);
     assert.equal(commands.has('schedule-prompt'), selected.scheduling);
     const extras = fs.existsSync('/opt/sandbox/extra-resources.json');
     assert.equal(commands.has('skill:fixture-guide'), extras);
@@ -216,9 +226,10 @@ async function main() {
     console.log('PASS Pendant feature modes: ' + selected.approval + ', inner=' + selected.inner_sandbox);
     return;
   }
-  for (const name of ['goal', 'skill:pi-goal-writer',
+  for (const name of ['goal',
     'schedule-prompt', 'auto-review-approve', 'auto-review-break-glass', 'auto-review-policy-audit'])
     assert(commands.has(name), 'Missing embedded-Pi command: ' + name);
+  assert(inventory.activeToolNames.includes('create_goal'), 'Native goals disabled');
   assert.equal(commands.has('subagents-guide'), process.env.SANDBOX_SUBAGENTS === '1');
   if (fs.existsSync('/opt/websec/prompts'))
     for (const file of fs.readdirSync('/opt/websec/prompts'))
@@ -234,6 +245,22 @@ async function main() {
   console.log(`PASS actual Pendant ${version} worker (embedded Pi ${sdkVersion}): shared models, extensions, skills, sandboxed Bash`);
   await request({ type: 'session_dispose', reason: 'replacement' }, 'inventory');
   if (process.argv.includes('--fresh')) return;
+
+  for (const scenario of ['CHOICE', 'CUSTOM', 'CANCEL']) {
+    const key = 'question-' + scenario;
+    await create(key, true);
+    sessions.get(key).questionScenario = scenario;
+    await request({ type: 'session_set_model', provider: 'fixture', modelId: 'fixture-model', persist: false }, key);
+    await request({ type: 'session_prompt', text: 'RUN_QUESTION_' + scenario, images: [], source: 'interactive' }, key);
+    const state = await waitForReply(key, 'QUESTION_DONE');
+    const results = state.messages.filter(m => m.role === 'toolResult' && m.toolName === 'ask_user_question');
+    assert.equal(results.length, 1);
+    assert(!results[0].isError, JSON.stringify(results));
+    assert(JSON.stringify(results).includes({CHOICE: 'CSV', CUSTOM: 'Markdown table', CANCEL: 'declined'}[scenario]), JSON.stringify(results));
+    assert(sessions.get(key).dialogs > 0, 'Question never reached the client');
+    await request({ type: 'session_dispose', reason: 'replacement' }, key);
+    console.log('PASS actual Pendant question: ' + scenario.toLowerCase());
+  }
 
   if (process.argv.includes('--websec')) {
     for (const outcome of ['ALLOW', 'DENY']) {
@@ -302,7 +329,9 @@ async function main() {
       assert(!fs.existsSync('/workspace/denied-fixture.txt'));
     } else if (scenario === 'GOAL') {
       assert.deepEqual(results.map(r => r.toolName), ['create_goal', 'bash', 'update_goal']);
+      assert(!results.some(r => r.isError), text);
       assert(text.includes('AUTOMATION_GOAL_BASH_OK'));
+      assert.equal(results.at(-1).details?.goal?.status, 'complete', text);
       assert(JSON.stringify(state.messages).includes('AUTOMATION_GOAL_FIRST_TURN'));
     } else if (scenario === 'REJECT') {
       assert.equal(results.length, 1);

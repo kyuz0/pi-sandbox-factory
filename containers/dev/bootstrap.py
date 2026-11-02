@@ -14,7 +14,7 @@ for source in sorted(shared.iterdir()):
         continue
     # Sessions, OAuth refreshes, trust decisions, and settings need writable storage.
     if source.name in {'sessions', 'models.json',
-                       'auth.json', 'settings.json', 'trust.json', 'APPEND_SYSTEM.md'}:
+                       'auth.json', 'settings.json', 'trust.json', 'APPEND_SYSTEM.md', 'pendant-goals.json'}:
         target = agent / source.name
         # Migrate writable configuration links created by older versions.
         migrate = (source.name in {'models.json', 'APPEND_SYSTEM.md'} and target.is_symlink()
@@ -50,7 +50,7 @@ settings = json.loads(settings_file.read_text())
 # Replace legacy registrations with the image-managed versions. Pi rejects
 # duplicate Bash tools; a raw scheduler would expose an independent-agent path.
 managed_packages = ('pi-sandbox', '@erichll/pi-sandbox', '@erichll/pi-auto-review',
-                    '@gotgenes/pi-permission-system', 'pi-goal', 'pi-schedule-prompt', 'betterwright')
+                    '@gotgenes/pi-permission-system', 'pi-goal', 'pi-schedule-prompt', 'betterwright', '@juicesharp/rpiv-ask-user-question')
 
 def managed_package(resource):
     source = resource.get('source') if isinstance(resource, dict) else resource
@@ -75,14 +75,14 @@ if not subagents_enabled:
         settings['subagents']['agentScanDirs'] = [p for p in scans if p != '/opt/pi-security/agents']
 image_resources = {
     'extensions': ['/opt/pi-local-model-manager/extensions/local-models.js',
+                   '/opt/rpiv-ask-user-question/index.ts',
                    '/opt/pi-security/packages/pi-auto-review/src/index.ts',
                    '/opt/pi-security/node_modules/@gotgenes/pi-permission-system/src/index.ts',
                    '/opt/pi-security/packages/pi-reviewed-escalation/index.ts',
                    '/opt/pi-security/packages/pi-sandbox/src/index.ts',
-                   '/opt/pi-security/node_modules/pi-goal/.pi/extensions/pi-goal/index.ts',
                    '/opt/pi-security/packages/pi-session-schedule/index.mjs']
                   + (subagent_extensions if subagents_enabled else []),
-    'skills': ['/opt/pi-security/node_modules/pi-goal/skills'],
+    'skills': [],
 }
 # Profiles may register image-local resources without carrying user configuration.
 profile_resources = Path('/opt/sandbox/resources.json')
@@ -100,6 +100,8 @@ for resource_file in (profile_resources, Path('/opt/sandbox/extra-resources.json
 settings['skills'] = [p for p in settings.get('skills', []) if not isinstance(p, str) or not p.startswith('/opt/extra-skills/')]
 # Remove only registrations owned by this launcher, then apply the saved choice.
 managed = {key: set(values) for key, values in image_resources.items()}
+managed['extensions'].add('/opt/pi-security/node_modules/pi-goal/.pi/extensions/pi-goal/index.ts')
+managed['skills'].add('/opt/pi-security/node_modules/pi-goal/skills')
 managed['extensions'].add('/opt/pi-advisor/extensions/advisor.js')
 managed['skills'].add('/opt/pi-advisor/skills/advisor')
 managed['extensions'].update(['/opt/pi-security/approval-mode.ts', '/opt/pi-security/packages/pi-auto-review/src/container-approval-mode.ts'])
@@ -120,9 +122,6 @@ if not inner_sandbox:
     image_resources['extensions'].remove('/opt/pi-security/packages/pi-sandbox/src/index.ts')
 if not inner_sandbox or approval == 'off':
     image_resources['extensions'].remove('/opt/pi-security/packages/pi-reviewed-escalation/index.ts')
-if not goals_enabled:
-    image_resources['extensions'].remove('/opt/pi-security/node_modules/pi-goal/.pi/extensions/pi-goal/index.ts')
-    image_resources['skills'].remove('/opt/pi-security/node_modules/pi-goal/skills')
 if not scheduling_enabled:
     image_resources['extensions'].remove('/opt/pi-security/packages/pi-session-schedule/index.mjs')
 for key, resources in image_resources.items():
@@ -137,6 +136,16 @@ if subagents_enabled and Path(subagent_extensions[-1]).exists():
     if '/opt/pi-security/agents' not in scan_dirs:
         scan_dirs.append('/opt/pi-security/agents')
 settings_file.write_text(json.dumps(settings, indent=2) + '\n')
+
+# The launcher Goals switch controls Pendant's built-in goals.
+goal_file = agent / 'pendant-goals.json'
+goal_settings = json.loads(goal_file.read_text()) if goal_file.exists() else {}
+goal_settings['enabled'] = goals_enabled
+temporary = agent / '.pendant-goals.json.new'
+temporary.unlink(missing_ok=True)
+temporary.write_text(json.dumps(goal_settings, indent=2) + '\n')
+temporary.chmod(0o600)
+temporary.replace(goal_file)
 
 # Pi natively reads this file; preserve user instructions around the managed block.
 profile = Path('/opt/sandbox/profile.md')

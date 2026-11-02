@@ -92,7 +92,7 @@ def guidance(selected, subagents=False):
     lines.append('Standard pi-subagents are enabled with the same selected capabilities and approval rules.' if subagents
                  else 'Subagents are disabled. Work in the current agent; do not start extra Pi processes for delegation.')
     if selected['goals']:
-        lines.append('Goal mode is available through /goal and create_goal. Start a goal only when explicitly requested.')
+        lines.append('Pendant provides built-in goals. Start a goal only when explicitly requested and the goal tools are present.')
     if selected['scheduling']:
         lines.append('Use schedule_prompt for requested future or recurring prompts. Jobs inject into this chat, '
                      'with its model and approval rules. Timers run only while this Pi session is open; '

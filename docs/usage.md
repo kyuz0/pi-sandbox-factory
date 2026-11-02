@@ -10,7 +10,7 @@ python3 -m venv .venv
 .venv/bin/python sandbox.py
 ```
 
-Select **New**, choose a name and workspace, review settings, then create the sandbox. The base profile includes Pi, Pendant, Goal and document tools. Custom profiles can be selected by folder.
+Select **New**, choose a name and workspace, review settings, then create the sandbox. The base profile includes Pi, Pendant with built-in goals, and document tools. Custom profiles can be selected by folder.
 
 Use **Open in VS Code** for the selected sandbox, **Settings** for its configuration and **Actions** for start/stop, Pi, shell, logs, rebuild and deletion. Press **D** on the home screen to configure defaults for new sandboxes.
 
