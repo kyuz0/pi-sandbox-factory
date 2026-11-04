@@ -259,4 +259,17 @@ class TUITests(unittest.TestCase):
                 self.assertTrue(app.query_one('#'+name,Button).disabled)
             self.assertFalse(app.query_one('#new',Button).disabled)
 
+
+    async def test_automatic_approval_default_and_human_fallback_selection(self):
+        from textual.widgets import Select, Static
+        service=FakeService(self.records);app=Cockpit(self.root,service)
+        async with app.run_test(size=(100,36)) as pilot:
+            await self.ready(app,pilot);await self.settings_page(app,pilot)
+            choice=app.screen.query_one('#approval',Select)
+            self.assertEqual(choice.value,'automatic')
+            self.assertIn('no approval dialogs',str(app.screen.query_one('#approval-help',Static).render()))
+            choice.value='assisted';await pilot.pause()
+            self.assertIn('ask you',str(app.screen.query_one('#approval-help',Static).render()))
+            await pilot.press('escape');await pilot.press('q')
+
 if __name__=='__main__':unittest.main()

@@ -849,7 +849,8 @@ class SettingsForm(Screen):
             with Collapsible(title='Agent · ' + selected['approval'].capitalize() + ' approval · Inner sandbox ' + ('on' if selected['inner_sandbox'] else 'off'), collapsed=True, id='agent-section'):
                 yield Checkbox('Use inner command sandbox', value=selected['inner_sandbox'], id='inner-sandbox')
                 yield Label('Approval mode')
-                yield Select([('Automatic — review requests needing approval', 'automatic'),
+                yield Select([('Automatic — never ask for approval', 'automatic'),
+                              ('Automatic with human fallback', 'assisted'),
                               ('Ask me — human approval', 'manual'), ('No approval prompts', 'off')],
                              value=selected['approval'], allow_blank=False, id='approval')
                 yield Static('', id='approval-help', markup=False)
@@ -896,10 +897,10 @@ class SettingsForm(Screen):
         inner = self.query_one('#inner-sandbox', Checkbox).value
         if inner:
             text = 'Ordinary sandboxed commands run directly. '
-            text += {'automatic': 'Boundary requests use automatic review.', 'manual': 'Boundary requests ask you.',
+            text += {'automatic': 'Review failures return to the agent; no approval dialogs.', 'assisted': 'Automatic review can ask you when it cannot decide.', 'manual': 'Boundary requests ask you.',
                      'off': 'Requests beyond the inner sandbox are refused.'}[mode]
         else:
-            text = {'automatic': 'Shell commands require automatic review.', 'manual': 'Shell commands ask you.',
+            text = {'automatic': 'Shell commands use automatic review; failures return to the agent.', 'assisted': 'Shell commands use automatic review with human fallback.', 'manual': 'Shell commands ask you.',
                     'off': 'Commands run directly inside the devcontainer.'}[mode]
         self.query_one('#approval-help', Static).update(text + ' The outer container network policy still applies.')
         self.query_one('#agent-section', Collapsible).title = ('Agent · ' + str(mode).capitalize()

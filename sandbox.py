@@ -702,6 +702,8 @@ def prepare_options(config, state):
     source = Path(config['common']['path']) / 'security/config'
     for path in source.glob('*.json'):
         value = json.loads(path.read_text())
+        if path.name == 'auto-review.json':
+            value['interactionMode'] = 'interactive' if selected['approval'] == 'assisted' else 'automatic'
         if path.name == 'permissions.json':
             value = permissions(value, selected)
         write_json(target / path.name, value)

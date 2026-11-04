@@ -25,8 +25,8 @@ permission. These are model judgments, not guarantees of correct decisions.
 Original user messages are read from Pi's active branch, including originals
 before compaction. A generated summary is not treated as user authorization.
 New messages and actions are appended to the reviewer conversation. The
-controller rejects stale results if the parent conversation changes during
-review. Parallel reviews use separate copies; branch, model and configuration
+controller ignores appended compaction summaries and display metadata. New original
+instructions or edits still invalidate an in-flight decision. Parallel reviews use separate copies; branch, model and configuration
 changes invalidate reuse.
 
 Context is bounded: up to 8 KiB of whole user messages and 2 KiB of nearby
@@ -36,15 +36,24 @@ original instructions; if those cannot be reconstructed intact, automatic
 approval is withheld. Reviewer history is held in memory and resets on Pi
 restart. This does not require changing Pi's compaction process.
 
-A review can produce up to 4,096 output tokens and has a ten-minute maximum
+A review can produce up to 32,768 output tokens and has a ten-minute maximum
 deadline. Normal response time depends on the model and context; the deadline
 is not a delay imposed on each command. Invalid replies, unexpected tool calls,
 timeouts and provider failures do not grant permission. Default failure handling
-denies the request; manual approval is available through the existing controls.
+returns the reason to the agent without opening a dialog. The agent can retry a failed
+review or choose an allowed alternative. No failed review grants access. Thinking
+is set to low, and its tokens share the output allowance.
 
 ## Configuration and updates
 
-The manager's **Settings → Configuration → Agent → Approval mode** setting selects automatic, manual or off. In automatic
+The manager's **Settings → Configuration → Agent → Approval mode** setting offers four modes:
+
+- **Automatic — never ask for approval** (default): returns failed or rejected operations to the agent with a reason.
+- **Automatic with human fallback**: asks you when automatic review cannot decide.
+- **Ask me — human approval**: sends approval requests to you.
+- **No approval prompts**: disables command approval; inner sandbox restrictions still apply.
+
+The first two modes use the automatic reviewer. In automatic
 mode, `/opt/pi-security/config/auto-review.json` selects the current Pi model and
 enables `retainedContext` and `reviewerConversation`. Inspection tools cannot be
 enabled. Project files cannot disable this context handling or choose another

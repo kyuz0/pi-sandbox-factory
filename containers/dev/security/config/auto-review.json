@@ -1,8 +1,10 @@
 {
   "model": "current",
-  "maxTokens": 4096,
+  "maxTokens": 32768,
   "timeoutMs": 600000,
   "retainedContext": true,
   "reviewerConversation": true,
-  "investigationTools": false
+  "investigationTools": false,
+  "reasoning": "low",
+  "interactionMode": "automatic"
 }

@@ -115,7 +115,7 @@ if browser_enabled:
     if not Path('/opt/betterwright/extension.mjs').is_file():
         raise ValueError('Betterwright is enabled but missing from this image; recreate with --browser')
     image_resources['extensions'].append('/opt/betterwright/extension.mjs')
-if approval != 'automatic':
+if approval not in ('automatic', 'assisted'):
     image_resources['extensions'].remove('/opt/pi-security/packages/pi-auto-review/src/index.ts')
     image_resources['extensions'].insert(0, '/opt/pi-security/packages/pi-auto-review/src/container-approval-mode.ts')
 if not inner_sandbox:

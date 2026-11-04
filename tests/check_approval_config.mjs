@@ -10,6 +10,9 @@ const { loadConfig, applyUserConfig, applyProjectConfig } = await import(
 const config = applyUserConfig(loadConfig(), JSON.parse(
   readFileSync(`${root}/config/auto-review.json`, 'utf8')));
 assert.equal(config.model, 'current');
+assert.equal(config.maxTokens, 32768);
+assert.equal(config.reasoning, 'low');
+assert.equal(config.interactionMode, 'automatic');
 assert.equal(config.retainedContext, true);
 assert.equal(config.reviewerConversation, true);
 assert.equal(config.investigationTools, false);

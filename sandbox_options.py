@@ -15,8 +15,8 @@ def options(value=None):
     if not isinstance(value, dict) or set(value) - DEFAULTS.keys():
         raise ValueError('Unknown sandbox options')
     result = {**DEFAULTS, **value}
-    if result['approval'] not in ('automatic', 'manual', 'off'):
-        raise ValueError('Approval must be automatic, manual or off')
+    if result['approval'] not in ('automatic', 'assisted', 'manual', 'off'):
+        raise ValueError('Approval must be automatic, assisted, manual or off')
     for key in ('inner_sandbox', 'goals', 'scheduling', 'browser'):
         if type(result[key]) is not bool:
             raise ValueError(key + ' must be a boolean')
@@ -51,7 +51,7 @@ def memory_limit(value):
 def permissions(template, selected):
     selected = options(selected)
     policy = json.loads(json.dumps(template))
-    policy['authorizerChain'] = ['pi-auto-review'] if selected['approval'] == 'automatic' else []
+    policy['authorizerChain'] = ['pi-auto-review'] if selected['approval'] in ('automatic', 'assisted') else []
     rules = policy['permission']
     rules['bash'] = ('allow' if selected['inner_sandbox'] or selected['approval'] == 'off' else 'ask')
     if selected['approval'] == 'off':
@@ -79,12 +79,14 @@ def guidance(selected, subagents=False):
     if inner:
         lines.append('Ordinary bash runs inside the inner OS sandbox without command-level model review. '
                      'Workspace edits are allowed; private home and security configuration are protected.')
-        lines.append({'automatic': 'Boundary requests use the current-model reviewer. Use bash_escalate with an exact command and justification when access outside the inner sandbox is required.',
+        lines.append({'assisted': 'Boundary requests use automatic review with human fallback. Use bash_escalate for an exact reviewed command.',
+                      'automatic': 'Boundary requests use the current-model reviewer without human approval dialogs. Review failures return a reason; retry the review or choose an allowed alternative without bypassing a rejection. Use bash_escalate with an exact command and justification when access outside the inner sandbox is required.',
                       'manual': 'Boundary requests require human approval. Use bash_escalate with an exact command and justification when access outside the inner sandbox is required.',
                       'off': 'Approval prompts are disabled. Requests beyond the inner sandbox are refused; bash_escalate is unavailable.'}[mode])
     else:
         lines.append('The inner command sandbox is disabled. Bash executes inside the outer devcontainer. '
-                     + {'automatic': 'Shell commands require current-model automatic review.',
+                     + {'automatic': 'Shell commands require automatic review without human approval dialogs. Failures return a reason to the agent.',
+                        'assisted': 'Shell commands use automatic review with human fallback.',
                         'manual': 'Shell commands require human approval.',
                         'off': 'Approval prompts are disabled; commands execute directly.'}[mode])
     lines.append('Explicit permission denials must be respected. Commands cannot execute on the physical host. '
