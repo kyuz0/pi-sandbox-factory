@@ -1,7 +1,7 @@
 {
   "pi-packages": {
-    "commit": "4855ea9fd4a83743dfa8db128f301f8573f42981",
-    "url": "https://codeload.github.com/kyuz0/pi-packages/tar.gz/4855ea9fd4a83743dfa8db128f301f8573f42981",
-    "sha256": "82687b092d175e3925896604245bf6b77440c1c5b3ac6706877cbe19d3f76769"
+    "commit": "50fb75a39d1e7aff561a2323507a4bfa1b8a2841",
+    "url": "https://codeload.github.com/kyuz0/pi-packages/tar.gz/50fb75a39d1e7aff561a2323507a4bfa1b8a2841",
+    "sha256": "29fe789a25a4cee838e9ec2af9968bfd212be243b6cb1eff761e71205cf41e94"
   }
 }
