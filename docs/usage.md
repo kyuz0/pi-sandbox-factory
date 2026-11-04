@@ -52,9 +52,13 @@ CLI `delete` is an explicit destructive command; the TUI adds a confirmation dia
 
 Saved state defaults to `~/.local/state/local-ai-sandbox`. Use `--state-dir PATH` before the command for an independent inventory. TUI defaults live in `~/.config/local-ai-sandbox/cockpit.json` (or under `XDG_CONFIG_HOME`). Workspaces are user-selected folders outside source/state. Container names and ownership labels are specific to this application.
 
-### pip network preset
+### Package download presets
 
 In Settings → Network, check **pip · Python packages from PyPI** and apply the settings. This adds `pypi.org:443` (package index) and `files.pythonhosted.org:443` (downloads) to the restricted allowlist. Unchecking removes those two entries; other destinations remain unchanged. The checkbox also reflects manual edits. New sandboxes do not enable it automatically.
+
+For JavaScript packages, check **npm · JavaScript packages**. This adds `registry.npmjs.org:443`, the [default npm registry](https://docs.npmjs.com/cli/v11/using-npm/registry/). Node.js and npm are already installed in the development image. The preset also covers Yarn or pnpm when configured to use this registry. Packages with install scripts that fetch binaries elsewhere need those destinations added separately.
+
+Common presets are **pip** for Python packages, **npm** for JavaScript packages, and **GitHub** for repositories and release downloads. They can be combined, work in new-sandbox configuration and Settings → Network, and stay synchronized with manual allowlist edits. Enable only the services the project needs; new sandboxes leave these presets unchecked.
 
 This covers packages and build dependencies hosted on PyPI. Git URLs, private indexes and packages that download additional assets from other sites need explicit destinations of their own. See the [PyPI index API](https://docs.pypi.org/api/index-api/) for how the index links to package downloads.
 

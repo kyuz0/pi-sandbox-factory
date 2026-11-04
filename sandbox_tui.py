@@ -36,6 +36,7 @@ GITHUB_HOSTS = {(h, 443) for h in ('github.com', 'api.github.com', 'raw.githubus
 
 
 PIP_HOSTS = {('pypi.org', 443), ('files.pythonhosted.org', 443)}
+NPM_HOSTS = {('registry.npmjs.org', 443)}
 
 
 def line_rules(line):
@@ -236,6 +237,7 @@ class NetworkForm(Screen):
             yield Label('Network · ' + self.sandbox_name)
             yield Static('Update allowed destinations without restarting the development container. The gateway restarts briefly; active requests may need to reconnect. Host model ports stay unchanged.')
             yield Checkbox('pip · Python packages from PyPI', value=pip_allowed(self.rules), id='pip-preset')
+            yield Checkbox('npm · JavaScript packages', value=preset_allowed(self.rules, NPM_HOSTS), id='npm-preset')
             yield Checkbox('GitHub · repositories, API and release downloads', value=preset_allowed(self.rules, GITHUB_HOSTS), id='github-preset')
             yield TextArea(self.rules, id='allowlist')
             with Collapsible(title='Import or export rules', collapsed=True):
@@ -248,6 +250,11 @@ class NetworkForm(Screen):
             yield Button('Cancel', id='cancel-network')
             yield Button('Apply network', id='apply-network', variant='primary')
         yield Footer()
+
+    @on(Checkbox.Changed, '#npm-preset')
+    def toggle_npm(self, event):
+        field = self.query_one('#allowlist', TextArea)
+        field.load_text(preset_rules(field.text, event.value, NPM_HOSTS))
 
     @on(Checkbox.Changed, '#github-preset')
     def toggle_github(self, event):
@@ -264,6 +271,9 @@ class NetworkForm(Screen):
         checkbox = self.query_one('#pip-preset', Checkbox)
         with checkbox.prevent(TextualCheckbox.Changed):
             checkbox.value = pip_allowed(self.query_one('#allowlist', TextArea).text)
+        npm = self.query_one('#npm-preset', Checkbox)
+        with npm.prevent(TextualCheckbox.Changed):
+            npm.value = preset_allowed(self.query_one('#allowlist', TextArea).text, NPM_HOSTS)
         github = self.query_one('#github-preset', Checkbox)
         with github.prevent(TextualCheckbox.Changed):
             github.value = preset_allowed(self.query_one('#allowlist', TextArea).text, GITHUB_HOSTS)
@@ -816,8 +826,9 @@ class SettingsForm(Screen):
                     yield Static('Allowed destinations: Settings → Network. Changes there preserve the development container.')
                 with Vertical(id='network-rules-fields'):
                     yield Checkbox('pip · Python packages from PyPI', value=pip_allowed(value.get('allowlist', '')), id='pip-preset')
+                    yield Checkbox('npm · JavaScript packages', value=preset_allowed(value.get('allowlist', ''), NPM_HOSTS), id='npm-preset')
                     yield Checkbox('GitHub · repositories, API and release downloads', value=preset_allowed(value.get('allowlist', ''), GITHUB_HOSTS), id='github-preset')
-                    yield Static('Allows pypi.org:443 and files.pythonhosted.org:443. Git URLs and other package indexes need separate entries.')
+                    yield Static('Select the package registries you need. Git URLs, private registries and additional download hosts need their own entries.')
                     yield Label('Edit allowed destinations in Settings → Network.' if self.editing else 'Allowed destinations · one hostname:port per line; comments allowed')
                     yield TextArea(value.get('allowlist', ''), id='allowlist')
                     with Horizontal(classes='buttons'):
@@ -915,6 +926,11 @@ class SettingsForm(Screen):
         except (OSError, ValueError, subprocess.SubprocessError) as error:
             self.notify(safe_text(error), severity='error')
 
+    @on(Checkbox.Changed, '#npm-preset')
+    def toggle_npm(self, event):
+        field = self.query_one('#allowlist', TextArea)
+        field.load_text(preset_rules(field.text, event.value, NPM_HOSTS))
+
     @on(Checkbox.Changed, '#github-preset')
     def toggle_github(self, event):
         field = self.query_one('#allowlist', TextArea)
@@ -930,6 +946,9 @@ class SettingsForm(Screen):
         checkbox = self.query_one('#pip-preset', Checkbox)
         with checkbox.prevent(TextualCheckbox.Changed):
             checkbox.value = pip_allowed(self.query_one('#allowlist', TextArea).text)
+        npm = self.query_one('#npm-preset', Checkbox)
+        with npm.prevent(TextualCheckbox.Changed):
+            npm.value = preset_allowed(self.query_one('#allowlist', TextArea).text, NPM_HOSTS)
         github = self.query_one('#github-preset', Checkbox)
         with github.prevent(TextualCheckbox.Changed):
             github.value = preset_allowed(self.query_one('#allowlist', TextArea).text, GITHUB_HOSTS)

@@ -203,6 +203,26 @@ class TUITests(unittest.TestCase):
             self.assertIn('files.pythonhosted.org:443',draft['allowlist'])
             self.assertIn('example.com:443',draft['allowlist'])
 
+    async def test_npm_preset_preserves_other_rules_and_tracks_manual_edits(self):
+        service=FakeService(self.records);app=Cockpit(self.root,service)
+        async with app.run_test(size=(100,42)) as pilot:
+            await self.ready(app,pilot);await self.settings_page(app,pilot)
+            field=app.screen.query_one('#allowlist',TextArea)
+            checkbox=app.screen.query_one('#npm-preset',Checkbox)
+            self.assertFalse(checkbox.value)
+            checkbox.value=True;await pilot.pause()
+            self.assertIn('registry.npmjs.org:443',field.text)
+            self.assertIn('local-model.internal:8000',field.text)
+            field.load_text('registry.npmjs.org:443 # packages\npypi.org:443\nexample.com:443');await pilot.pause()
+            self.assertTrue(checkbox.value)
+            checkbox.value=False;await pilot.pause()
+            self.assertEqual(field.text,'pypi.org:443\nexample.com:443')
+            field.load_text('registry.npmjs.org:443\npypi.org:443');await pilot.pause()
+            self.assertTrue(checkbox.value)
+            with patch('sandbox.choose_engine',return_value='podman'):
+                draft, key=app.screen.collect()
+            self.assertIn('registry.npmjs.org:443',draft['allowlist'])
+
     async def test_network_action_applies_to_selected_sandbox(self):
         service=FakeService(self.records);app=Cockpit(self.root,service)
         async with app.run_test(size=(100,42)) as pilot:
@@ -210,6 +230,13 @@ class TUITests(unittest.TestCase):
             app.query_one(DataTable).move_cursor(row=1)
             await self.settings_page(app,pilot,index=0)
             app.screen.query_one('#pip-preset',Checkbox).value=True
+            app.screen.query_one('#npm-preset',Checkbox).value=True
+            await pilot.pause()
+            field=app.screen.query_one('#allowlist',TextArea)
+            self.assertIn('registry.npmjs.org:443',field.text)
+            field.load_text(field.text.replace('registry.npmjs.org:443',''));await pilot.pause()
+            self.assertFalse(app.screen.query_one('#npm-preset',Checkbox).value)
+            app.screen.query_one('#npm-preset',Checkbox).value=True
             await pilot.pause()
             await pilot.click('#apply-network');await self.ready(app,pilot)
             self.assertEqual(service.calls[0][:2],['network','beta'])
