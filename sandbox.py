@@ -25,7 +25,7 @@ from sandbox_options import options, memory_limit, permissions, write_json, guid
 ROOT = Path(__file__).resolve().parent
 LABEL = 'io.local-ai-sandbox.name'
 PI_VERSION = '1.4.0'
-PENDANT_VERSION = '0.93.0'
+PENDANT_VERSION = '0.94.2'
 RUNTIME_ENV = {
     'HTTP_PROXY': 'http://127.0.0.1:3128', 'HTTPS_PROXY': 'http://127.0.0.1:3128',
     'http_proxy': 'http://127.0.0.1:3128', 'https_proxy': 'http://127.0.0.1:3128',
@@ -672,6 +672,7 @@ def create(args, state):
         config['options'] = options(json.loads(Path(args.options_file).read_text()))
     if getattr(args, 'browser', False):
         config['options'] = options({**config.get('options', {}), 'browser': True})
+    config['advisors'] = sandbox_advisors.validate({'providers': getattr(args, 'advisor', [])})
     state.mkdir(parents=True, mode=0o700)
     try:
         config['profile'] = snapshot_profile(profile, state)
@@ -905,6 +906,8 @@ def main():
     new.add_argument('--memory', default=None, help='Optional memory limit, e.g. 8g; default: no explicit limit')
     new.add_argument('--skill-source', help='Additional skill Git repository URL')
     new.add_argument('--skill-path', default='.', help='Skill folder in the additional repository')
+    new.add_argument('--advisor', action='append', choices=['codex', 'agy'], default=[],
+                     help='Add an advisor companion during creation; repeat for both providers, sign in afterwards')
     new.add_argument('--options-file', help='JSON agent, skill and MCP settings')
     new.add_argument('--start', action='store_true', help='Build images and start after creation')
     new.add_argument('--local-model-ports', help='Host-loopback model ports, e.g. 8000 or 8000-8003; rootless Podman only')

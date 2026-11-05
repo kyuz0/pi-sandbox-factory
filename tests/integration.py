@@ -16,6 +16,7 @@ p.add_argument('--state-dir',required=True,type=Path)
 p.add_argument('--name',required=True)
 p.add_argument('--artifacts',type=Path)
 p.add_argument('--port',type=int,default=8000,help='Unused host port allowed in the disposable sandbox')
+p.add_argument('--pendant-questions-only', action='store_true', help='Check Pendant startup and question choices, free text and cancellation')
 a=p.parse_args()
 RUNTIME=a.artifacts or Path(tempfile.mkdtemp(prefix='local-ai-sandbox-check-'))
 RUNTIME.mkdir(parents=True,exist_ok=True)
@@ -48,10 +49,16 @@ try:
  code="from pathlib import Path;import sys;p=Path('/home/node/.pi/agent/models.json');p.write_text(sys.stdin.read());p.chmod(0o600)"
  subprocess.run(['podman','exec','-i',DEV,'python3','-c',code],input=json.dumps(config),text=True,check=True)
  subprocess.run([sys.executable,str(ROOT/'sandbox.py'),'--state-dir',str(a.state_dir),'check',a.name,'--allowed-url',f'http://local-model.internal:{a.port}/v1/models'],check=True)
- for file,command in [('check_security_rpc.py',['python3','-']),('check_automation_rpc.py',['python3','-']),('check_pendant_worker.cjs',['node','-'])]:
+ checks = [('check_security_rpc.py',['python3','-']),('check_automation_rpc.py',['python3','-']),('check_pendant_worker.cjs',['node','-'])]
+ if a.pendant_questions_only:
+  checks = [('check_pendant_worker.cjs', ['node', '-', '--questions-only'])]
+ for file,command in checks:
   print('RUN',file,flush=True)
   subprocess.run(['podman','exec','-i',DEV,*command],input=(ROOT/'tests'/file).read_text(),text=True,check=True)
- print('PASS real Pi/Pendant security, Goal, scheduling and transport using fixture replies',flush=True)
+ reviews = fixture/'reviews.jsonl'
+ if reviews.exists():
+  assert not any(json.loads(line)['question'] for line in reviews.read_text().splitlines()), 'Question tool unexpectedly invoked the reviewer'
+ print('PASS Pendant startup and questions; no question review calls' if a.pendant_questions_only else 'PASS real Pi/Pendant security, Goal, scheduling and transport using fixture replies',flush=True)
 finally:
  server.terminate();server.wait(timeout=20)
  if saved_models is None:

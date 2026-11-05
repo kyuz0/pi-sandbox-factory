@@ -21,7 +21,7 @@ Pendant uses its built-in goals. The **Pendant goals** setting controls whether 
 
 ## Questions in Pi and Pendant
 
-`rpiv-ask-user-question` loads by default. The agent uses `ask_user_question` to request a choice or clarification. Pendant displays native question cards; Pi displays a terminal questionnaire. Both accept option selections and free-text answers.
+`rpiv-ask-user-question` loads by default. The agent uses `ask_user_question` to request a choice or clarification. Pendant displays native question cards; Pi displays a terminal questionnaire. Both accept option selections and free-text answers. Asking a question does not require an automatic permission review; the user answers the question directly. This exception applies only to `ask_user_question` and grants no command, file or network access.
 
 For an existing sandbox, rebuild with its profile selected:
 

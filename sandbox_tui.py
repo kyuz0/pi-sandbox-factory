@@ -175,12 +175,16 @@ class Service:
                 args += ['--skill-source', draft['skill_repo'], '--skill-path', draft['skill_path']]
             if draft.get('local_model_ports'):
                 args += ['--local-model-ports', draft['local_model_ports']]
+            for provider in draft.get('advisors', {}).get('providers', []):
+                args += ['--advisor', provider]
             if draft['subagents']:
                 args += ['--subagents']
             self.run(args, log)
         self.run(['build', name], log)
         self.run(['up', name], log)
         self.setup(name, draft, key, log)
+        if draft.get('advisors', {}).get('providers'):
+            log('Advisors added. Return to Settings → Advisors to sign in; no login has been performed.')
 
     def setup(self, name, draft, key, log):
         if draft.get('local_model_ports') and not draft['open_editor']:
@@ -489,7 +493,7 @@ class AdvisorsScreen(Screen):
             yield Static('Ask Codex (OpenAI models) or Antigravity (Gemini models) for advice from Pi. Login stays in a separate container.')
             yield Checkbox('Codex', value='codex' in providers, id='advisor-codex')
             yield Checkbox('Antigravity · Gemini', value='agy' in providers, id='advisor-agy')
-            yield Static('Apply builds the companion and reconnects the sandbox. Workspace and login state are preserved. Then sign in below; no host credentials are imported.')
+            yield Static('Sign-in is available only after the advisor has been added to this sandbox. Select Apply, wait for setup to finish, then reopen Settings → Advisors to sign in. Applying settings restarts the sandbox; files and saved logins are preserved.', id='advisor-login-help')
             with Horizontal(classes='buttons'):
                 yield Button('Sign in to Codex', id='advisor-login-codex', disabled='codex' not in providers)
                 yield Button('Open Antigravity', id='advisor-login-agy', disabled='agy' not in providers)
@@ -811,6 +815,12 @@ class SettingsForm(Screen):
             yield Static('Inside the sandbox, local-model.internal reaches host loopback through the restricted gateway.')
             yield Checkbox('Open VS Code after creation' if not self.editing else 'Open VS Code after applying',
                            value=value.get('open_editor', True), id='open-editor')
+            if not self.editing and not self.defaults_mode:
+                with Collapsible(title='Advisors · optional Codex / Antigravity', collapsed=True, id='new-advisors-section'):
+                    providers = value.get('advisors', {}).get('providers', [])
+                    yield Checkbox('Add Codex advisor', value='codex' in providers, id='new-advisor-codex')
+                    yield Checkbox('Add Antigravity advisor · Gemini', value='agy' in providers, id='new-advisor-agy')
+                    yield Static('Creates a separate advisor container. After creation, open Settings → Advisors to sign in. No host credentials are imported.', id='new-advisor-help')
             if self.defaults_mode:
                 yield Label('Default profile')
                 yield Select([(v, k) for k, v in TITLES.items()], value=self.profile_name if self.profile_name in TITLES else 'base',
@@ -979,6 +989,10 @@ class SettingsForm(Screen):
                      env_file=inp('env-file') or None, pi_config=inp('pi-config') or None,
                      open_editor=check('open-editor'),
                      skill_repo=inp('skill-repo'), skill_path=inp('skill-path'))
+        if not self.editing and not self.defaults_mode:
+            import sandbox_advisors
+            draft['advisors'] = sandbox_advisors.validate({'providers': [
+                provider for provider in ('codex', 'agy') if check('new-advisor-' + provider)]})
         draft['allowlist'] = self.query_one('#allowlist', TextArea).text if draft['network'] == 'allowlist' else ''
         # Local model ports are controlled by their labelled field; other rules stay intact.
         rules = [r for r in sandbox.parse_rules(draft['allowlist']) if r[0] != 'local-model.internal']

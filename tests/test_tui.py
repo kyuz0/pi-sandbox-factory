@@ -62,6 +62,11 @@ class TUITests(unittest.TestCase):
             self.assertIsInstance(app.screen,AdvisorsScreen)
             self.assertTrue(app.screen.query_one('#advisor-login-codex',Button).disabled)
             self.assertLess(app.screen.query_one('#advisor-login-codex',Button).region.bottom, 34)
+            self.assertIn('only after the advisor has been added', str(app.screen.query_one('#advisor-login-help').render()))
+            app.screen.query_one('#advisor-codex',Checkbox).value=True
+            await pilot.pause()
+            self.assertTrue(app.screen.query_one('#advisor-login-codex',Button).disabled)
+            app.screen.query_one('#advisor-codex',Checkbox).value=False
             app.screen.query_one('#advisor-agy',Checkbox).value=True
             await pilot.click('#advisor-apply');await pilot.pause()
             self.assertIsInstance(app.screen,Confirm)
@@ -69,6 +74,16 @@ class TUITests(unittest.TestCase):
             self.assertEqual(service.calls[0][0:2],['advisors','alpha'])
             self.assertEqual(service.calls[0][2]['providers'],['agy'])
             self.assertEqual(service.calls[0][2]['agy_model'],'')
+            await pilot.press('q')
+
+    async def test_saved_codex_advisor_enables_login(self):
+        self.records[0]['config']['advisors'] = {'providers': ['codex']}
+        app = Cockpit(self.root, FakeService(self.records))
+        async with app.run_test(size=(100,36)) as pilot:
+            await self.ready(app, pilot)
+            await self.settings_page(app, pilot, index=3)
+            self.assertFalse(app.screen.query_one('#advisor-login-codex', Button).disabled)
+            self.assertTrue(app.screen.query_one('#advisor-login-agy', Button).disabled)
             await pilot.press('q')
 
     async def test_github_preset_in_network_editor(self):
@@ -121,6 +136,8 @@ class TUITests(unittest.TestCase):
             await pilot.click('#continue');await pilot.pause()
             self.assertIsInstance(app.screen,SettingsForm)
             app.screen.query_one('#model-ports',Input).value='8002-8003'
+            app.screen.query_one('#new-advisor-codex',Checkbox).value=True
+            app.screen.query_one('#new-advisor-agy',Checkbox).value=True
             with patch('sandbox.choose_engine',return_value='podman'):
                 await pilot.click('#apply');await self.ready(app,pilot)
             self.assertIsInstance(app.screen,Operation)
@@ -128,6 +145,7 @@ class TUITests(unittest.TestCase):
             self.assertEqual(draft['name'],'my-agent');self.assertEqual(draft['workspace'],str(workspace))
             self.assertEqual(draft['allowlist'],'local-model.internal:8002\nlocal-model.internal:8003')
             self.assertEqual(draft['local_model_ports'],'8002-8003')
+            self.assertEqual(draft['advisors']['providers'], ['codex', 'agy'])
             await pilot.press('q')
 
     async def test_settings_and_models_follow_selection(self):

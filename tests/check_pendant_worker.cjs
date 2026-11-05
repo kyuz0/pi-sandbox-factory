@@ -257,10 +257,12 @@ async function main() {
     assert.equal(results.length, 1);
     assert(!results[0].isError, JSON.stringify(results));
     assert(JSON.stringify(results).includes({CHOICE: 'CSV', CUSTOM: 'Markdown table', CANCEL: 'declined'}[scenario]), JSON.stringify(results));
-    assert(sessions.get(key).dialogs > 0, 'Question never reached the client');
+    assert.equal(sessions.get(key).dialogs, 1, 'Question must reach the client without a permission dialog');
     await request({ type: 'session_dispose', reason: 'replacement' }, key);
     console.log('PASS actual Pendant question: ' + scenario.toLowerCase());
   }
+
+  if (process.argv.includes('--questions-only')) return;
 
   if (process.argv.includes('--websec')) {
     for (const outcome of ['ALLOW', 'DENY']) {

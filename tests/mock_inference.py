@@ -64,6 +64,8 @@ class Handler(BaseHTTPRequestHandler):
         if reviewing and Path('/fixture/feature-mode.json').exists():
             assert json.loads(Path('/fixture/feature-mode.json').read_text())['approval'] == 'automatic', 'Unexpected model review in manual/off mode'
         if reviewing:
+            with Path('/fixture/reviews.jsonl').open('a') as audit:
+                audit.write(json.dumps({'question': 'RUN_QUESTION_' in content}) + '\n')
             # Ordinary Bash must succeed even when a reviewer would deny it.
             outcome = 'deny' if ('DENY_BY_FIXTURE' in content or 'ALLOW_EXECUTED' in content) else 'defer' if 'DEFER_BY_FIXTURE' in content else 'allow'
             delta['content'] = json.dumps({'outcome': outcome, 'risk_level': 'medium',

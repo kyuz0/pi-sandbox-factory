@@ -45,7 +45,7 @@ Pi's inner command sandbox restricts shell commands further. Requests beyond it 
 
 - **Settings → Network:** edit allowed destinations or enable the pip and GitHub presets. Applying rules briefly restarts only the gateway.
 - **Settings → Models:** preview discovery or refresh the saved catalogue.
-- **Settings → Advisors:** enable Codex or Antigravity in a separate container and sign in. [Setup and diagram](docs/advisors.md).
+- **New sandbox → Advisors:** optionally add Codex or Antigravity in a separate container. After creation, sign in through **Settings → Advisors**; existing sandboxes can add providers there too. [Setup and diagram](docs/advisors.md).
 - **Settings → SSH:** choose hosts and import a key into a separate companion. [SSH and GitHub setup](docs/ssh.md).
 - **Actions:** start or stop a sandbox, open Pi or a shell, view logs, rebuild or delete it.
 

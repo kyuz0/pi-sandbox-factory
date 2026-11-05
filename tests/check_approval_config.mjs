@@ -24,3 +24,10 @@ for (const override of [{ retainedContext: false }, { reviewerConversation: fals
 assert.throws(() => applyUserConfig(config, { investigationTools: true }));
 assert.equal(applyProjectConfig(config, { timeoutMs: 1000 }).timeoutMs, 1000);
 console.log('Approval configuration: conversation without tools; workspace restrictions enforced.');
+
+const permissions = JSON.parse(readFileSync(`${root}/config/permissions.json`, 'utf8'));
+assert.equal(permissions.permission.ask_user_question, 'allow');
+assert.equal(permissions.permission['*'], 'ask');
+assert.equal(permissions.permission.advisor_ask, 'ask');
+assert.equal(permissions.permission.external_directory, 'ask');
+console.log('Question tool is allowed directly; other permission boundaries remain reviewed.');

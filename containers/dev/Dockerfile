@@ -1,6 +1,6 @@
 FROM docker.io/library/node:22-bookworm-slim
 ARG PI_VERSION=1.4.0
-ARG PENDANT_VERSION=0.93.0
+ARG PENDANT_VERSION=0.94.2
 ARG USER_UID=1000
 ARG USER_GID=1000
 RUN apt-get update && apt-get install -y --no-install-recommends \

@@ -4,14 +4,14 @@ Pi can ask Codex (OpenAI models) or Antigravity (Gemini models) for a second opi
 
 ## Setup
 
-1. Open **Settings → Advisors**, enable Codex and/or Antigravity, then **Apply**. This builds the companion and restarts the development container; your workspace and private home are preserved.
-2. Return to **Advisors** and sign in. Codex uses device login: follow the URL in your browser. Antigravity opens its terminal interface in remote-login mode; complete the displayed browser/code flow yourself. The manager temporarily gives the terminal to the CLI, so credentials are not collected by the form or operation log.
+1. During **New sandbox → Review sandbox**, expand **Advisors** and select Codex and/or Antigravity. For an existing sandbox, use **Settings → Advisors**, select the providers, then **Apply**. This builds the companion and restarts the development container; your workspace and private home are preserved.
+2. After creation or setup finishes, select **Back to sandboxes**, then reopen **Settings → Advisors**. Sign-in buttons become available only after the advisor has been added; ticking its checkbox alone does not enable login. Codex uses device login: follow the URL in your browser. Antigravity opens its terminal interface in remote-login mode; complete the displayed browser/code flow yourself. The manager temporarily gives the terminal to the CLI, so credentials are not collected by the form or operation log.
 3. Use **Check providers** to check Codex login or display Antigravity's model catalogue and quota. For Antigravity, enter an exact Gemini model ID, its quota group and matching effort, then **Apply** again. You can leave these blank for the initial login; advice requires a configured model.
 4. Reopen Pi/Pendant to load the extension. Use `/advisor status`, then ask Pi to consult the advisor. `/advisor usage` shows separate usage; `/advisor cancel` stops an active request. `start` and `resume` retain a conversation reference for follow-up.
 
 Set an optional per-session call limit under **Usage and network**.
 
-The CLI equivalents are:
+The CLI can add providers during creation with `--advisor codex` and/or `--advisor agy`. Sign in afterwards:
 
 ```sh
 python sandbox.py advisor-login NAME codex
