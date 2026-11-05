@@ -8,6 +8,17 @@ Run from this repository root with the TUI requirements installed:
 
 These cover lifecycle/ownership, configuration, rollback, TUI navigation, advisor creation, extension installation and model initialization. They use fixtures, not account credentials or inference models.
 
+## Advisor UI checks
+
+Use a disposable sandbox and workspace; sign-in itself is a separate account test.
+
+1. **New sandbox → Review sandbox → Advisors:** confirm both providers start unchecked. Select Codex, Antigravity or both. Create the sandbox and confirm setup finishes before the sign-in instruction appears.
+2. Reopen **Settings → Advisors**. Only the providers saved during creation should have enabled login buttons. Confirm no login started automatically and no host credentials were imported.
+3. On a sandbox created without advisors, tick Codex. Its login button remains disabled and the visible message explains **Apply → wait → reopen Advisors**. Apply; after setup, reopen the page and confirm Codex login is enabled. Cancelling Apply must leave the saved configuration unchanged.
+4. Check the form at an 80×24 terminal size: scroll to the optional controls and verify Apply/Back remain accessible. Open a workspace in VS Code and check Pendant's question card accepts a choice, free text and cancellation. The worker suite below checks those responses programmatically; actual keyboard/visual behaviour needs this desktop check.
+
+Record the tested commit, Pendant/embedded Pi versions, terminal size, commands/results, and any untested account or desktop steps. Never label fixture-backed checks as live provider tests.
+
 ## Pendant updates and questions
 
 Check the official [Open VSX metadata](https://open-vsx.org/api/cdervis/vscode-pi/latest) and the release's linked changelog. Update `PENDANT_VERSION` in both `sandbox.py` and `containers/dev/Dockerfile`. Pendant embeds its own Pi version; verify it with the worker test, separately from the standalone CLI pin.
