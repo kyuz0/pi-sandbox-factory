@@ -16,7 +16,7 @@ Implementation and shipped assets live in `vscode_pi_sandbox/`:
 - `containers/`: images, bootstrap and extension pins; `profiles/base/`: generic profile.
 
 The root `sandbox.py` is a checkout convenience wrapper. The installed command
-is `pi-sandbox`; `python -m vscode_pi_sandbox` is equivalent.
+is `vscode-pi-sandbox`; `python -m vscode_pi_sandbox` is equivalent.
 
 ## Design
 

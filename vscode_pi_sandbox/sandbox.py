@@ -884,7 +884,7 @@ def open_editor(config, state):
 
 
 def main():
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(prog="vscode-pi-sandbox", description=__doc__)
     parser.add_argument('--state-dir', default=str(Path.home() / '.local/state/vscode-pi-sandbox'))
     sub = parser.add_subparsers(dest='command')
     parser.set_defaults(command='tui')

@@ -26,7 +26,7 @@ Pendant uses its built-in goals. The **Pendant goals** setting controls whether 
 For an existing sandbox, rebuild with its profile selected:
 
 ```sh
-pi-sandbox recreate NAME --profile base
+vscode-pi-sandbox recreate NAME --profile base
 ```
 
-Use the sandbox's current profile instead of `base` if it has a custom profile. This installs the current pinned Pi, Pendant and extensions while retaining the workspace and private home. Close its VS Code window before rebuilding, then reopen it with `pi-sandbox open NAME`.
+Use the sandbox's current profile instead of `base` if it has a custom profile. This installs the current pinned Pi, Pendant and extensions while retaining the workspace and private home. Close its VS Code window before rebuilding, then reopen it with `vscode-pi-sandbox open NAME`.

@@ -18,8 +18,8 @@ Keys are loaded for eight hours. Use **Unlock existing key** after expiry or aft
 CLI key management after configuring destinations:
 
 ```sh
-pi-sandbox ssh-import-key NAME --key-file ~/.ssh/id_ed25519
-pi-sandbox ssh-unlock NAME
+vscode-pi-sandbox ssh-import-key NAME --key-file ~/.ssh/id_ed25519
+vscode-pi-sandbox ssh-unlock NAME
 ```
 
 For GitHub, configure an alias such as `github-project`, username `git`, hostname `github.com`, port `22`, and its trusted host keys. Import a key with the repository access you need. A read-only deploy key limits access to one repository.

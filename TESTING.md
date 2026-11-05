@@ -16,7 +16,7 @@ These tests use fixtures and no account credentials.
 
 ## Package installation
 
-Build a wheel, install it in a separate environment, then run `pi-sandbox --help`,
+Build a wheel, install it in a separate environment, then run `vscode-pi-sandbox --help`,
 `profile list` and `provider list` from outside the checkout. Create a sandbox from
 that installation to check that container files, profiles and provider modules are
 included. Parse shipped Python files with Python 3.10 grammar when changing syntax.
@@ -25,7 +25,7 @@ included. Parse shipped Python files with Python 3.10 grammar when changing synt
 .venv/bin/pip wheel --no-deps . -w dist
 python3 -m venv /tmp/pi-sandbox-package-check
 /tmp/pi-sandbox-package-check/bin/pip install dist/vscode_pi_sandbox-*.whl
-(cd /tmp && /tmp/pi-sandbox-package-check/bin/pi-sandbox profile list)
+(cd /tmp && /tmp/pi-sandbox-package-check/bin/vscode-pi-sandbox profile list)
 ```
 
 ## Container and Pendant integration
@@ -36,12 +36,12 @@ replies; it does not evaluate a real inference model.
 ```sh
 test_root=$(mktemp -d /tmp/pi-sandbox-check.XXXXXX)
 mkdir "$test_root/workspace"
-.venv/bin/pi-sandbox --state-dir "$test_root/state" create pendant-check \
+.venv/bin/vscode-pi-sandbox --state-dir "$test_root/state" create pendant-check \
   --workspace "$test_root/workspace" --local-model-ports 18081 \
   --allow-domain local-model.internal:18081 --start
 .venv/bin/python tests/integration.py --state-dir "$test_root/state" \
   --name pendant-check --port 18081 --pendant-questions-only
-.venv/bin/pi-sandbox --state-dir "$test_root/state" delete pendant-check
+.venv/bin/vscode-pi-sandbox --state-dir "$test_root/state" delete pendant-check
 ```
 
 This checks container boundaries, installed document tools, actual Pendant worker
