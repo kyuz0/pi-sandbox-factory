@@ -906,7 +906,7 @@ def main():
     new.add_argument('--memory', default=None, help='Optional memory limit, e.g. 8g; default: no explicit limit')
     new.add_argument('--skill-source', help='Additional skill Git repository URL')
     new.add_argument('--skill-path', default='.', help='Skill folder in the additional repository')
-    new.add_argument('--advisor', action='append', choices=['codex', 'agy'], default=[],
+    new.add_argument('--advisor', action='append', choices=['codex', 'agy', 'claude'], default=[],
                      help='Add an advisor companion during creation; repeat for both providers, sign in afterwards')
     new.add_argument('--options-file', help='JSON agent, skill and MCP settings')
     new.add_argument('--start', action='store_true', help='Build images and start after creation')
@@ -924,7 +924,7 @@ def main():
         if command == 'ssh-import-key':
             cmd.add_argument('--key-file', required=True)
         if command == 'advisor-login':
-            cmd.add_argument('provider', choices=['codex', 'agy'])
+            cmd.add_argument('provider', choices=['codex', 'agy', 'claude'])
         if command == 'network':
             cmd.add_argument('--allowlist', required=True)
         if command == 'configure':

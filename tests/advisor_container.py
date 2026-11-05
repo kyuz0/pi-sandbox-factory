@@ -7,7 +7,7 @@ parser.add_argument('--dev-image', required=True, help='A built Local AI Sandbox
 args=parser.parse_args()
 import sandbox as core, sandbox_advisors as a
 root=Path(tempfile.mkdtemp(prefix='advisor-check-'))
-config={'name':root.name,'engine':'podman','uid':os.getuid(),'gid':os.getgid(),'workspace':str(root),'advisors':{'providers':['codex','agy']}}
+config={'name':root.name,'engine':'podman','uid':os.getuid(),'gid':os.getgid(),'workspace':str(root),'advisors':{'providers':['codex','agy','claude']}}
 worker,proxy,socket,home,egress=a.names(config)
 try:
  if core.run(['podman','image','inspect',core.image_names(config)[1]],capture=True,check=False,stderr=subprocess.DEVNULL).returncode:
@@ -18,8 +18,8 @@ try:
  assert data['HostConfig']['NetworkMode']=='none'
  assert not any(m['Destination']=='/workspace' for m in data['Mounts'])
  result=core.run(['podman','exec',worker,'node','--input-type=module','-e',"import {RemoteAdvisorService} from '/opt/advisor/lib/advisor/remote.mjs'; const c=new RemoteAdvisorService('/run/advisor/advisor.sock');console.log(JSON.stringify(await c.status({sessionId:'test',runIds:[]},{refreshQuota:false})));"],capture=True)
- value=json.loads(result.stdout);assert value['implementedProviders']==['codex','agy']
- assert len(value['providers'])==2
+ value=json.loads(result.stdout);assert value['implementedProviders']==['codex','agy','claude']
+ assert len(value['providers'])==3
  core.run(['podman','exec',worker,'dbus-send','--session','--print-reply','--dest=org.freedesktop.secrets','/org/freedesktop/secrets','org.freedesktop.DBus.Peer.Ping'],capture=True)
  # This is synthetic state, never a real login.
  core.run(['podman','exec',worker,'sh','-c','printf fixture > /home/node/credential-sentinel'])
@@ -45,6 +45,7 @@ try:
  core.run(args)
  core.run(['podman','exec',worker,'node','--input-type=module','-e',"import{sandboxInvocation}from'/opt/advisor/lib/advisor/agy.mjs';import{runProcess}from'/opt/advisor/lib/advisor/process.mjs';const i=await sandboxInvocation({executable:'/usr/local/bin/agy',containerRuntime:true},'/tmp/agy-check',['--version']);try{const r=await runProcess(i.command,i.args,{env:i.env,timeoutMs:30000});if(r.code!==0)throw Error(r.stderr);console.log('isolated Antigravity '+r.stdout)}finally{await i.close()}"],capture=True)
  core.run(['podman','exec',worker,'node','--input-type=module','-e',"import{inspect}from'/opt/advisor/lib/advisor/codex.mjs';console.log(await inspect({executable:'/usr/local/bin/advisor-codex',containerRuntime:true,sharedHome:true,codexHome:'/home/node/.codex'},'/tmp/codex-check'));"],capture=True)
+ core.run(['podman','exec',worker,'node','--input-type=module','-e',"import{inspect}from'/opt/advisor/lib/advisor/claude.mjs';console.log(await inspect({executable:'/usr/local/bin/advisor-claude',containerRuntime:true,sharedHome:true,claudeHome:'/home/node/.claude'},'/tmp/claude-check'));"],capture=True)
  # A blocked destination must fail at the companion's gateway.
  denied=core.run(['podman','exec',worker,'curl','--silent','--show-error','--max-time','15','https://unlisted.invalid/'],capture=True,check=False,stderr=subprocess.PIPE)
  assert denied.returncode != 0 and '403' in denied.stderr
@@ -54,7 +55,7 @@ try:
  a.down(config);a.up(config,root)
  assert core.run(['podman','exec',worker,'cat','/home/node/credential-sentinel'],capture=True).stdout=='fixture'
  assert core.run(['podman','exec',worker,'secret-tool','lookup','advisor-test','fixture'],capture=True).stdout.strip()=='synthetic-secret'
- print('PASS: companion and proxy; both isolated CLIs; Pendant tools and remote usage; owner-only socket; credential volume separation; keyring and private state survive restart')
+ print('PASS: companion and proxy; all three isolated CLIs; Pendant tools and remote usage; owner-only socket; credential volume separation; keyring and private state survive restart')
 finally:
  for name in (worker,proxy):
   if core.inspect(config,name):

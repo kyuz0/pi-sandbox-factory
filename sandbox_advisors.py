@@ -9,6 +9,7 @@ import sys
 import time
 
 HOSTS = {
+    'claude': ['api.anthropic.com:443', 'claude.ai:443', 'platform.claude.com:443', 'console.anthropic.com:443'],
     'codex': ['auth.openai.com:443', 'chatgpt.com:443', 'api.openai.com:443'],
     'agy': ['accounts.google.com:443', 'oauth2.googleapis.com:443',
             'cloudcode-pa.googleapis.com:443', 'daily-cloudcode-pa.googleapis.com:443',
@@ -18,12 +19,18 @@ HOSTS = {
 
 
 def validate(value):
-    if not isinstance(value, dict) or set(value) - {'providers', 'agy_model', 'agy_quota_group', 'agy_effort', 'extra_hosts', 'max_calls'}:
+    if not isinstance(value, dict) or set(value) - {'providers', 'agy_model', 'agy_quota_group', 'agy_effort', 'extra_hosts', 'max_calls', 'claude_model', 'claude_effort'}:
         raise ValueError('Invalid advisor settings')
     providers = value.get('providers', [])
     if not isinstance(providers, list) or any(not isinstance(p, str) or p not in HOSTS for p in providers) or len(set(providers)) != len(providers):
-        raise ValueError('Choose Codex and/or Antigravity')
+        raise ValueError('Choose Codex, Antigravity and/or Claude')
     result = dict(value, providers=providers)
+    if 'claude' in providers:
+        model = value.get('claude_model', 'sonnet')
+        if not isinstance(model, str) or not re.fullmatch(r'(sonnet|opus|haiku|claude-[a-zA-Z0-9._-]+)', model):
+            raise ValueError('Enter sonnet, opus, haiku or an exact Claude model ID')
+        if value.get('claude_effort', 'medium') not in ('low', 'medium', 'high', 'xhigh', 'max'):
+            raise ValueError('Invalid Claude thinking effort')
     if 'agy' in providers:
         model = value.get('agy_model', '')
         if not isinstance(model, str):
@@ -80,6 +87,11 @@ def provider_config(settings):
     for provider in settings['providers']:
         if provider == 'codex':
             providers[provider] = {'executable': '/usr/local/bin/advisor-codex', 'codexHome': '/home/node/.codex', 'sharedHome': True}
+        elif provider == 'claude':
+            providers[provider] = {'executable': '/usr/local/bin/advisor-claude', 'claudeHome': '/home/node/.claude', 'sharedHome': True,
+                'models': {'default': {'id': settings.get('claude_model', 'sonnet'), 'effort': settings.get('claude_effort', 'medium')},
+                           'maximum': {'id': 'opus', 'effort': 'high', 'requiresReason': True},
+                           'economy': {'id': 'haiku', 'effort': 'medium'}}}
         else:
             providers[provider] = {'executable': '/usr/local/bin/agy', 'models': {'default': {
                 'id': settings.get('agy_model', ''), 'quotaGroup': settings.get('agy_quota_group', ''), 'effort': settings.get('agy_effort', 'medium')}}}
@@ -191,9 +203,9 @@ def check(config, state):
     up(config, state)
     worker = names(config)[0]
     for provider in config['advisors']['providers']:
-        print('\n' + ('Codex' if provider == 'codex' else 'Antigravity'), flush=True)
+        print('\n' + {'codex':'Codex','agy':'Antigravity','claude':'Claude'}[provider], flush=True)
         commands = ([['advisor-codex', '-c', 'cli_auth_credentials_store="file"', 'login', 'status']]
-                    if provider == 'codex' else [['agy', 'models'], ['agy', '-p', '/usage', '--output-format', 'json']])
+                    if provider == 'codex' else [['advisor-claude', 'auth', 'status']] if provider == 'claude' else [['agy', 'models'], ['agy', '-p', '/usage', '--output-format', 'json']])
         for command in commands:
             result = core.run([config['engine'], 'exec', worker] + command, check=False)
             if result.returncode:

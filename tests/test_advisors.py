@@ -32,6 +32,17 @@ class AdvisorTests(unittest.TestCase):
         for providers in [['other'],['codex','codex'],['codex',{}]]:
             with self.assertRaises(ValueError):advisors.validate({'providers':providers})
 
+    def test_claude_settings_and_private_subscription_home(self):
+        settings=advisors.validate({'providers':['claude']})
+        provider=advisors.provider_config(settings)['providers']['claude']
+        self.assertTrue(provider['sharedHome'])
+        self.assertEqual(provider['claudeHome'], '/home/node/.claude')
+        self.assertEqual(provider['models']['default'], {'id':'sonnet','effort':'medium'})
+        self.assertIn(('api.anthropic.com',443), advisors.rules(settings))
+        self.assertNotIn(('api.openai.com',443), advisors.rules(settings))
+        for model in ['--bad','other','sonnet; command','']:
+            with self.assertRaises(ValueError): advisors.validate({'providers':['claude'],'claude_model':model})
+
     def test_rpc_mount_contains_no_credentials_or_container_engine(self):
         config={'name':'test','advisors':{'providers':['codex']}}
         args=advisors.mounts(config)
@@ -62,7 +73,7 @@ class AdvisorTests(unittest.TestCase):
 
 class AdvisorCreationTests(unittest.TestCase):
     def test_cli_saves_advisors_before_any_build_and_leaves_login_separate(self):
-        for providers in [[], ['codex'], ['agy'], ['codex', 'agy']]:
+        for providers in [[], ['codex'], ['agy'], ['claude'], ['codex', 'agy', 'claude']]:
             with self.subTest(providers=providers), tempfile.TemporaryDirectory() as tmp:
                 root = Path(tmp)
                 workspace = root/'workspace'; workspace.mkdir()

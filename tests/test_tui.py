@@ -84,6 +84,27 @@ class TUITests(unittest.TestCase):
             await self.settings_page(app, pilot, index=3)
             self.assertFalse(app.screen.query_one('#advisor-login-codex', Button).disabled)
             self.assertTrue(app.screen.query_one('#advisor-login-agy', Button).disabled)
+            self.assertTrue(app.screen.query_one('#advisor-login-claude', Button).disabled)
+            await pilot.press('q')
+
+    async def test_claude_login_and_settings_at_small_terminal(self):
+        from textual.widgets import Select
+        self.records[0]['config']['advisors'] = {'providers':['claude']}
+        service=FakeService(self.records)
+        service.advisors=lambda name,settings,log:service.calls.append(['advisors',name,settings])
+        app=Cockpit(self.root,service)
+        async with app.run_test(size=(80,24)) as pilot:
+            await self.ready(app,pilot)
+            await self.settings_page(app,pilot,index=3)
+            self.assertFalse(app.screen.query_one('#advisor-login-claude',Button).disabled)
+            self.assertTrue(app.screen.query_one('#advisor-login-codex',Button).disabled)
+            app.screen.query_one('#advisor-claude-model',Input).value='claude-sonnet-test'
+            app.screen.query_one('#advisor-claude-effort',Select).value='high'
+            await pilot.click('#advisor-apply');await pilot.pause()
+            await pilot.click('#yes');await self.ready(app,pilot)
+            self.assertEqual(service.calls[0][2]['providers'],['claude'])
+            self.assertEqual(service.calls[0][2]['claude_model'],'claude-sonnet-test')
+            self.assertEqual(service.calls[0][2]['claude_effort'],'high')
             await pilot.press('q')
 
     async def test_github_preset_in_network_editor(self):
@@ -138,6 +159,7 @@ class TUITests(unittest.TestCase):
             app.screen.query_one('#model-ports',Input).value='8002-8003'
             app.screen.query_one('#new-advisor-codex',Checkbox).value=True
             app.screen.query_one('#new-advisor-agy',Checkbox).value=True
+            app.screen.query_one('#new-advisor-claude',Checkbox).value=True
             with patch('sandbox.choose_engine',return_value='podman'):
                 await pilot.click('#apply');await self.ready(app,pilot)
             self.assertIsInstance(app.screen,Operation)
@@ -145,7 +167,7 @@ class TUITests(unittest.TestCase):
             self.assertEqual(draft['name'],'my-agent');self.assertEqual(draft['workspace'],str(workspace))
             self.assertEqual(draft['allowlist'],'local-model.internal:8002\nlocal-model.internal:8003')
             self.assertEqual(draft['local_model_ports'],'8002-8003')
-            self.assertEqual(draft['advisors']['providers'], ['codex', 'agy'])
+            self.assertEqual(draft['advisors']['providers'], ['codex', 'agy', 'claude'])
             await pilot.press('q')
 
     async def test_settings_and_models_follow_selection(self):

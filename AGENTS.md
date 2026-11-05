@@ -14,7 +14,7 @@ Local AI Sandboxes manages independent Pi/Pendant development containers through
 
 ## Design constraints
 
-The workspace is a host bind mount; private home/session state lives in separate volumes. The inner command sandbox, outer container, network gateway and credential companions are separate boundaries. An approval never grants host access. Automatic approval returns failures to Pi without a human dialog; assisted mode explicitly enables that fallback. `ask_user_question` asks the user directly and requires no reviewer call. Advisors can be selected at creation (`--advisor codex` / `--advisor agy`) or added later through Settings. Login becomes available only after creation or Apply has added that provider to the sandbox.
+The workspace is a host bind mount; private home/session state lives in separate volumes. The inner command sandbox, outer container, network gateway and credential companions are separate boundaries. An approval never grants host access. Automatic approval returns failures to Pi without a human dialog; assisted mode explicitly enables that fallback. `ask_user_question` asks the user directly and requires no reviewer call. Advisors can be selected at creation (`--advisor codex` / `--advisor agy` / `--advisor claude`) or added later through Settings. Login becomes available only after creation or Apply has added that provider to the sandbox.
 
 ## Test and update
 

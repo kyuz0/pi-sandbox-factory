@@ -12,7 +12,7 @@ These cover lifecycle/ownership, configuration, rollback, TUI navigation, adviso
 
 Use a disposable sandbox and workspace; sign-in itself is a separate account test.
 
-1. **New sandbox → Review sandbox → Advisors:** confirm both providers start unchecked. Select Codex, Antigravity or both. Create the sandbox and confirm setup finishes before the sign-in instruction appears.
+1. **New sandbox → Review sandbox → Advisors:** confirm all three providers start unchecked. Select Codex, Antigravity and/or Claude. Create the sandbox and confirm setup finishes before the sign-in instruction appears.
 2. Reopen **Settings → Advisors**. Only the providers saved during creation should have enabled login buttons. Confirm no login started automatically and no host credentials were imported.
 3. On a sandbox created without advisors, tick Codex. Its login button remains disabled and the visible message explains **Apply → wait → reopen Advisors**. Apply; after setup, reopen the page and confirm Codex login is enabled. Cancelling Apply must leave the saved configuration unchanged.
 4. Check the form at an 80×24 terminal size: scroll to the optional controls and verify Apply/Back remain accessible. Open a workspace in VS Code and check Pendant's question card accepts a choice, free text and cancellation. The worker suite below checks those responses programmatically; actual keyboard/visual behaviour needs this desktop check.
@@ -46,7 +46,7 @@ For the full legacy security/scheduling integration scenarios, create a separate
 
 - Source fixes and unit tests belong in the extension repository: [model manager](https://github.com/kyuz0/pi-local-model-manager), [advisor](https://github.com/kyuz0/pi-advisor) (`npm test`), or [security packages](https://github.com/kyuz0/pi-packages) (`npm run check && npm test`).
 - Publish the runtime change, update `containers/dev/extensions.lock.json` or the security commit/archive checksum in `containers/dev/security/sources.json`, then rebuild a disposable sandbox. Documentation-only extension changes do not need a consumer pin update.
-- Run `python3 tests/advisor_container.py --dev-image YOUR_BUILT_DEVELOPMENT_IMAGE` for companion changes. It checks the Pendant worker, CLI launchers, socket, credential-volume separation, Secret Service persistence and cleanup without real login.
+- Run `python3 tests/advisor_container.py --dev-image YOUR_BUILT_DEVELOPMENT_IMAGE` for companion changes. It checks the Pendant worker, all three isolated CLI launchers, socket, credential-volume separation, Secret Service persistence and cleanup without real login.
 - SSH unit tests cover destinations, host keys, ownership and key mounts. `tests/check_pendant_worker.cjs --ssh-live` additionally needs an explicitly assigned host, unlocked companion and authorized live model.
 
 Use disposable state and workspaces for integration tests. Never restart a user's active sandbox for testing or copy their credentials. Existing installations receive new image pins through **Actions → Update sources and recreate…**, followed by reopening the editor; workspace and private home persist.

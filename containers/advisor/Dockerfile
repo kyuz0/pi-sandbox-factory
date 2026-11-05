@@ -1,4 +1,5 @@
 FROM docker.io/library/node:22-bookworm-slim
+ARG CLAUDE_VERSION=2.1.318
 ARG USER_UID=1000
 ARG USER_GID=1000
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -11,13 +12,17 @@ RUN npm install -g @openai/codex \
     && test -x /usr/local/bin/advisor-codex
 RUN curl -fSL --retry 3 https://antigravity.google/cli/install.sh -o /tmp/install-agy.sh \
     && bash /tmp/install-agy.sh --dir /usr/local/bin && rm /tmp/install-agy.sh
+RUN curl -fsSL --retry 3 https://claude.ai/install.sh -o /tmp/install-claude.sh \
+    && bash /tmp/install-claude.sh "$CLAUDE_VERSION" \
+    && cp -L /root/.local/bin/claude /usr/local/bin/advisor-claude \
+    && rm -rf /root/.local/share/claude /root/.local/bin/claude /tmp/install-claude.sh
 COPY --from=pi-advisor / /opt/advisor/
 COPY advisor/login.sh advisor/entrypoint.sh /opt/advisor/
 RUN mkdir -p /work /run/advisor /run/egress /run/advisor-bus \
     && chown -R node:node /home/node /work /run/advisor /run/advisor-bus \
     && chmod 700 /run/advisor /run/advisor-bus \
     && chmod 755 /opt/advisor/*.sh
-ENV HOME=/home/node CODEX_HOME=/home/node/.codex \
+ENV HOME=/home/node CODEX_HOME=/home/node/.codex CLAUDE_CONFIG_DIR=/home/node/.claude DISABLE_AUTOUPDATER=1 DISABLE_TELEMETRY=1 DISABLE_ERROR_REPORTING=1 \
     DBUS_SESSION_BUS_ADDRESS=unix:path=/run/advisor-bus/bus \
     XDG_RUNTIME_DIR=/run/advisor-bus AGY_CLI_DISABLE_AUTO_UPDATE=true
 USER node
