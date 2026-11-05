@@ -1,52 +1,84 @@
-# Tests and runtime updates
+# Development and tests
 
-Run from this repository root with the TUI requirements installed:
+From the checkout, install the package into a virtual environment:
 
 ```sh
+python3 -m venv .venv
+.venv/bin/pip install -e .
 .venv/bin/python -m unittest discover -s tests -p 'test_*.py'
+node --test tests/test_provider_runtime.mjs
 ```
 
-These cover lifecycle/ownership, configuration, rollback, TUI navigation, advisor creation, extension installation and model initialization. They use fixtures, not account credentials or inference models.
+The Python suite covers lifecycle, ownership, rollback, package revisions,
+provider selection and terminal interactions, including 80×24 layouts. Node tests
+cover the adapter contract, preview, credential handling and refresh locking.
+These tests use fixtures and no account credentials.
 
-## Advisor UI checks
+## Package installation
 
-Use a disposable sandbox and workspace; sign-in itself is a separate account test.
-
-1. **New sandbox → Review sandbox → Advisors:** confirm all three providers start unchecked. Select Codex, Antigravity and/or Claude. Create the sandbox and confirm setup finishes before the sign-in instruction appears.
-2. Reopen **Settings → Advisors**. Only the providers saved during creation should have enabled login buttons. Confirm no login started automatically and no host credentials were imported.
-3. On a sandbox created without advisors, tick Codex. Its login button remains disabled and the visible message explains **Apply → wait → reopen Advisors**. Apply; after setup, reopen the page and confirm Codex login is enabled. Cancelling Apply must leave the saved configuration unchanged.
-4. Check the form at an 80×24 terminal size: scroll to the optional controls and verify Apply/Back remain accessible. Open a workspace in VS Code and check Pendant's question card accepts a choice, free text and cancellation. The worker suite below checks those responses programmatically; actual keyboard/visual behaviour needs this desktop check.
-
-Record the tested commit, Pendant/embedded Pi versions, terminal size, commands/results, and any untested account or desktop steps. Never label fixture-backed checks as live provider tests.
-
-## Pendant updates and questions
-
-Check the official [Open VSX metadata](https://open-vsx.org/api/cdervis/vscode-pi/latest) and the release's linked changelog. Update `PENDANT_VERSION` in both `sandbox.py` and `containers/dev/Dockerfile`. Pendant embeds its own Pi version; verify it with the worker test, separately from the standalone CLI pin.
-
-Build an isolated sandbox on an unused host port:
+Build a wheel, install it in a separate environment, then run `pi-sandbox --help`,
+`profile list` and `provider list` from outside the checkout. Create a sandbox from
+that installation to check that container files, profiles and provider modules are
+included. Parse shipped Python files with Python 3.10 grammar when changing syntax.
 
 ```sh
-test_root=$(mktemp -d /tmp/sandbox-check.XXXXXX)
-mkdir "$test_root/workspace"
-python3 sandbox.py --state-dir "$test_root/state" create pendant-check \
-  --workspace "$test_root/workspace" --profile base --engine podman \
-  --local-model-ports 18081 --allow-domain local-model.internal:18081 --start
-python3 tests/integration.py --state-dir "$test_root/state" \
-  --name pendant-check --port 18081 --pendant-questions-only
-podman exec -i local-ai-sandbox-pendant-check node --experimental-transform-types - \
-  < tests/check_approval_config.mjs
-python3 sandbox.py --state-dir "$test_root/state" delete pendant-check
+.venv/bin/pip wheel --no-deps . -w dist
+python3 -m venv /tmp/pi-sandbox-package-check
+/tmp/pi-sandbox-package-check/bin/pip install dist/vscode_pi_sandbox-*.whl
+(cd /tmp && /tmp/pi-sandbox-package-check/bin/pi-sandbox profile list)
 ```
 
-The fixture server exercises the shipped Pendant worker's startup, shared configuration, extension loading, question choices, free text and cancellation. It asserts one question dialog and no reviewer call for each question. The container check also covers installed tools and isolation. This verifies worker behavior; VS Code's visual layout and keyboard shortcuts need a desktop smoke check.
+## Container and Pendant integration
 
-For the full legacy security/scheduling integration scenarios, create a separate disposable sandbox with `--options-file` pointing to `{"approval":"assisted"}` and omit `--pendant-questions-only`. Those scenarios intentionally exercise human fallback. The default automatic mode's no-dialog behavior is tested in the security extension suite and `tests/test_approval_modes.py`.
+Use a disposable workspace and an unused port. This fixture serves synthetic
+replies; it does not evaluate a real inference model.
 
-## Extension and companion changes
+```sh
+test_root=$(mktemp -d /tmp/pi-sandbox-check.XXXXXX)
+mkdir "$test_root/workspace"
+.venv/bin/pi-sandbox --state-dir "$test_root/state" create pendant-check \
+  --workspace "$test_root/workspace" --local-model-ports 18081 \
+  --allow-domain local-model.internal:18081 --start
+.venv/bin/python tests/integration.py --state-dir "$test_root/state" \
+  --name pendant-check --port 18081 --pendant-questions-only
+.venv/bin/pi-sandbox --state-dir "$test_root/state" delete pendant-check
+```
 
-- Source fixes and unit tests belong in the extension repository: [model manager](https://github.com/kyuz0/pi-local-model-manager), [advisor](https://github.com/kyuz0/pi-advisor) (`npm test`), or [security packages](https://github.com/kyuz0/pi-packages) (`npm run check && npm test`).
-- Publish the runtime change, update `containers/dev/extensions.lock.json` or the security commit/archive checksum in `containers/dev/security/sources.json`, then rebuild a disposable sandbox. Documentation-only extension changes do not need a consumer pin update.
-- Run `python3 tests/advisor_container.py --dev-image YOUR_BUILT_DEVELOPMENT_IMAGE` for companion changes. It checks the Pendant worker, all three isolated CLI launchers, socket, credential-volume separation, Secret Service persistence and cleanup without real login.
-- SSH unit tests cover destinations, host keys, ownership and key mounts. `tests/check_pendant_worker.cjs --ssh-live` additionally needs an explicitly assigned host, unlocked companion and authorized live model.
+This checks container boundaries, installed document tools, actual Pendant worker
+startup, shared configuration, shell tools, and question choices, free text and
+cancellation. Questions must not invoke the reviewer. A desktop smoke check is
+still needed for VS Code keyboard behavior and visual layout.
 
-Use disposable state and workspaces for integration tests. Never restart a user's active sandbox for testing or copy their credentials. Existing installations receive new image pins through **Actions → Update sources and recreate…**, followed by reopening the editor; workspace and private home persist.
+For the wider security and scheduling scenarios, create a separate sandbox with
+`--options-file` containing `{"approval":"assisted"}` and omit
+`--pendant-questions-only`. Those scenarios intentionally exercise human fallback.
+The automatic mode is covered by `tests/test_approval_modes.py` and the security
+extension's own suite.
+
+For provider changes, install `examples/profile` as `reporting` and
+`examples/provider` as `company`. Create a disposable reporting sandbox with local
+discovery on 18082, company endpoint `http://local-model.internal:18084/v1`, model
+`fixture-model`, and both destinations allowed. Run:
+
+```sh
+.venv/bin/python tests/provider_container.py --name YOUR_TEST_SANDBOX
+```
+
+This replaces the disposable catalogue with fixtures. It checks authentication,
+preview without writes, two provider catalogues, and the registered profile skill.
+
+## Runtime updates
+
+Pi and Pendant have independent version pins in `vscode_pi_sandbox/sandbox.py` and
+`vscode_pi_sandbox/containers/dev/Dockerfile`. Check the release's official metadata
+before updating; then rebuild and run the worker suite. Extension fixes and unit
+tests belong in their own repositories; update the lock file here afterward.
+
+Advisor or SSH changes need their unit suites and companion tests.
+Run
+`.venv/bin/python tests/advisor_container.py --dev-image IMAGE` after installing the
+package. It checks isolated launchers and credential volumes without real login.
+Actual account login and authorized SSH access are separate checks.
+
+Use disposable state throughout. Never restart a user's sandbox or copy credentials
+for testing. Record commands and results; distinguish fixtures from live services.

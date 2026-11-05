@@ -96,24 +96,24 @@ def enabled(config): return bool(config.get('ssh',{}).get('hosts'))
 
 
 def names(config):
-    prefix = 'local-ai-sandbox-' + config['name'] + '-ssh'
+    prefix = 'vscode-pi-sandbox-' + config['name'] + '-ssh'
     return prefix, prefix+'-socket', prefix+'-keys'
 
 
 def image(config):
-    import sandbox as core
-    return f'localhost/local-ai-sandbox-ssh:{config["uid"]}-{config["gid"]}-{core.tree_digest(core.ROOT / "containers/ssh-access")}'
+    from . import sandbox as core
+    return f'localhost/vscode-pi-sandbox-ssh:{config["uid"]}-{config["gid"]}-{core.tree_digest(core.ROOT / "containers/ssh-access")}'
 
 
 def build(config):
     if not enabled(config): return
-    import sandbox as core
+    from . import sandbox as core
     core.run([config['engine'],'build','-t',image(config),'--build-arg',f'USER_UID={config["uid"]}',
               '--build-arg',f'USER_GID={config["gid"]}',core.ROOT/'containers/ssh-access'])
 
 
 def check_ownership(config):
-    import sandbox as core
+    from . import sandbox as core
     worker,*volumes=names(config)
     core.inspect(config,worker)
     for volume in volumes:
@@ -136,7 +136,7 @@ def client_config(hosts):
 
 def up(config,state):
     if not enabled(config): return
-    import sandbox as core
+    from . import sandbox as core
     hosts=validate(config['ssh'])['hosts'];check_ownership(config)
     worker,socket,keys=names(config);engine=config['engine'];target=state/'ssh';target.mkdir(exist_ok=True,mode=0o700)
     (target/'targets.json').write_text(json.dumps(hosts));(target/'targets.json').chmod(0o644)
@@ -169,13 +169,13 @@ def mounts(config,state):
 
 
 def down(config,remove=False):
-    import sandbox as core
+    from . import sandbox as core
     check_ownership(config);worker=names(config)[0]
     if core.inspect(config,worker):core.run([config['engine'],'rm','-f',worker] if remove else [config['engine'],'stop',worker])
 
 
 def delete_volumes(config):
-    import sandbox as core
+    from . import sandbox as core
     check_ownership(config)
     for volume in names(config)[1:]:
         if core.run([config['engine'],'volume','inspect',volume],capture=True,check=False,stderr=subprocess.DEVNULL).returncode==0:
@@ -184,7 +184,7 @@ def delete_volumes(config):
 
 def unlock(config,state):
     if not enabled(config):raise ValueError('Configure SSH destinations first')
-    import sandbox as core
+    from . import sandbox as core
     up(config,state)
     tty=['-it'] if sys.stdin.isatty() else ['-i']
     core.run([config['engine'],'exec']+tty+[names(config)[0],'python3','/opt/ssh-access/unlock.py'])
@@ -199,7 +199,7 @@ def import_key(config,state,path):
             exposed = Path(config[field]).resolve()
             if source == exposed or exposed in source.parents:
                 raise ValueError('Choose a key outside the workspace and shared Pi configuration; those paths are visible to the agent')
-    import sandbox as core
+    from . import sandbox as core
     up(config,state)
     # No key bytes in argv, environment, logs, project state, or the development container.
     script="import os,sys;from pathlib import Path;os.umask(0o077);p=Path('/private/id_key.new');p.unlink(missing_ok=True);f=p.open('xb');f.write(sys.stdin.buffer.read(65537));f.close();p.replace('/private/id_key')"

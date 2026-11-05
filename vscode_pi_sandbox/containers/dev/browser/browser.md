@@ -18,6 +18,3 @@ Headed display, host browser attachment and the credential vault are not enabled
 Downloads ask for approval; noninteractive approval fails closed. The standalone
 Betterwright CLI uses its own launch settings; use the native Pi tools here so
 network configuration and lifecycle are managed correctly.
-
-For the websec profile, its Burp-only assessment methodology still applies:
-having a browser installed does not authorize direct browsing of assessment targets.

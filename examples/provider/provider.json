@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "name": "company",
+  "description": "One company-hosted OpenAI-compatible model",
+  "entry": "adapter.mjs",
+  "settings": {
+    "endpoint": {"type": "text", "label": "API base URL", "network": true},
+    "model": {"type": "text", "label": "Model ID"},
+    "key": {"type": "secret", "label": "API key"}
+  }
+}

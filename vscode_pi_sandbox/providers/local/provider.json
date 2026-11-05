@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "name": "local",
+  "description": "Local inference servers",
+  "entry": "adapter.mjs",
+  "extensions": [
+    "/opt/pi-local-model-manager/extensions/local-models.js"
+  ],
+  "settings": {},
+  "network": []
+}

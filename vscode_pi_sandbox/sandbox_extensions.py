@@ -31,7 +31,7 @@ def read_lock(common_path):
 
 
 def cache_root():
-    return Path(os.environ.get('XDG_CACHE_HOME', Path.home() / '.cache')) / 'local-ai-sandboxes/extensions'
+    return Path(os.environ.get('XDG_CACHE_HOME', Path.home() / '.cache')) / 'vscode-pi-sandbox/extensions'
 
 
 def archive(source, cache=None):
@@ -86,7 +86,7 @@ def unpack(blob, destination):
 def build_contexts(common_path, *, names=None, cache=None, fetch=archive):
     sources = read_lock(common_path)
     selected = list(sources) if names is None else list(names)
-    with tempfile.TemporaryDirectory(prefix='local-ai-extensions-') as temp:
+    with tempfile.TemporaryDirectory(prefix='pi-sandbox-extensions-') as temp:
         args = []
         for name in selected:
             if name not in sources:

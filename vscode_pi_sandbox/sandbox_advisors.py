@@ -1,7 +1,7 @@
 """Optional advisor companion: private login state, bounded socket API, separate egress."""
 import json
 import hashlib
-import sandbox_extensions
+from . import sandbox_extensions
 from pathlib import Path
 import re
 import subprocess
@@ -44,7 +44,7 @@ def validate(value):
     calls = value.get('max_calls')
     if calls is not None and (type(calls) is not int or calls < 1):
         raise ValueError('Advisor calls per session must be a positive integer or null')
-    import sandbox as core
+    from . import sandbox as core
     if not isinstance(value.get('extra_hosts', ''), str):
         raise ValueError('Additional advisor hosts must be text')
     core.parse_rules(value.get('extra_hosts', ''))
@@ -56,27 +56,27 @@ def enabled(config):
 
 
 def names(config):
-    prefix = 'local-ai-sandbox-' + config['name'] + '-advisor'
+    prefix = 'vscode-pi-sandbox-' + config['name'] + '-advisor'
     return prefix, prefix + '-proxy', prefix + '-socket', prefix + '-home', prefix + '-egress'
 
 
 def source_path(config):
-    import sandbox as core
+    from . import sandbox as core
     saved = Path(config.get('common', {}).get('path', core.ROOT / 'containers/dev'))
     return saved if (saved / 'extensions.lock.json').exists() else core.ROOT / 'containers/dev'
 
 
 def image(config):
-    import sandbox as core
+    from . import sandbox as core
     lock = sandbox_extensions.read_lock(source_path(config))['pi-advisor']
     digest = core.tree_digest(core.ROOT / 'containers/advisor') + hashlib.sha256(json.dumps(lock, sort_keys=True).encode()).hexdigest()[:12]
-    return f'localhost/local-ai-sandbox-advisor:{config["uid"]}-{config["gid"]}-{digest}'
+    return f'localhost/vscode-pi-sandbox-advisor:{config["uid"]}-{config["gid"]}-{digest}'
 
 
 def build(config):
     if not enabled(config):
         return
-    import sandbox as core
+    from . import sandbox as core
     with sandbox_extensions.build_contexts(source_path(config), names=['pi-advisor']) as contexts:
         core.run([config['engine'], 'build', '-t', image(config), *contexts, '-f', core.ROOT / 'containers/advisor/Dockerfile',
                   '--build-arg', f'USER_UID={config["uid"]}', '--build-arg', f'USER_GID={config["gid"]}', core.ROOT / 'containers'])
@@ -102,13 +102,13 @@ def provider_config(settings):
 
 
 def rules(settings):
-    import sandbox as core
+    from . import sandbox as core
     text = '\n'.join(host for provider in settings['providers'] for host in HOSTS[provider]) + '\n' + settings.get('extra_hosts', '')
     return list(dict.fromkeys(core.parse_rules(text)))
 
 
 def check_ownership(config):
-    import sandbox as core
+    from . import sandbox as core
     for name in names(config)[:2]:
         core.inspect(config, name)
     for volume in names(config)[2:]:
@@ -120,7 +120,7 @@ def check_ownership(config):
 def up(config, state):
     if not enabled(config):
         return
-    import sandbox as core
+    from . import sandbox as core
     settings = validate(config['advisors'])
     check_ownership(config)
     worker, proxy, socket, home, egress = names(config)
@@ -171,7 +171,7 @@ def mounts(config):
 
 
 def down(config, remove=False):
-    import sandbox as core
+    from . import sandbox as core
     check_ownership(config)
     for name in names(config)[:2]:
         if core.inspect(config, name):
@@ -179,7 +179,7 @@ def down(config, remove=False):
 
 
 def delete_volumes(config):
-    import sandbox as core
+    from . import sandbox as core
     check_ownership(config)
     for volume in names(config)[2:]:
         if core.run([config['engine'], 'volume', 'inspect', volume], capture=True, check=False, stderr=subprocess.DEVNULL).returncode == 0:
@@ -191,7 +191,7 @@ def login(config, state, provider):
         raise ValueError('Enable this provider in Settings → Advisors first')
     if not sys.stdin.isatty():
         raise ValueError('Advisor login requires an interactive terminal')
-    import sandbox as core
+    from . import sandbox as core
     up(config, state)
     core.run([config['engine'], 'exec', '-it', names(config)[0], '/opt/advisor/login.sh', provider])
 
@@ -199,7 +199,7 @@ def login(config, state, provider):
 def check(config, state):
     if not enabled(config):
         raise ValueError('Enable a provider in Settings → Advisors first')
-    import sandbox as core
+    from . import sandbox as core
     up(config, state)
     worker = names(config)[0]
     for provider in config['advisors']['providers']:

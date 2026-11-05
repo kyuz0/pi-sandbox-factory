@@ -74,7 +74,7 @@ if not subagents_enabled:
         scans = settings['subagents'].get('agentScanDirs', [])
         settings['subagents']['agentScanDirs'] = [p for p in scans if p != '/opt/pi-security/agents']
 image_resources = {
-    'extensions': ['/opt/pi-local-model-manager/extensions/local-models.js',
+    'extensions': [
                    '/opt/rpiv-ask-user-question/index.ts',
                    '/opt/pi-security/packages/pi-auto-review/src/index.ts',
                    '/opt/pi-security/node_modules/@gotgenes/pi-permission-system/src/index.ts',
@@ -86,7 +86,7 @@ image_resources = {
 }
 # Profiles may register image-local resources without carrying user configuration.
 profile_resources = Path('/opt/sandbox/resources.json')
-for resource_file in (profile_resources, Path('/opt/sandbox/extra-resources.json')):
+for resource_file in (profile_resources, Path('/opt/sandbox/extra-resources.json'), Path('/opt/sandbox/provider-resources.json')):
     if not resource_file.exists():
         continue
     for key, resources in json.loads(resource_file.read_text()).items():
@@ -99,7 +99,15 @@ for resource_file in (profile_resources, Path('/opt/sandbox/extra-resources.json
         image_resources.setdefault(key, []).extend(resources)
 settings['skills'] = [p for p in settings.get('skills', []) if not isinstance(p, str) or not p.startswith('/opt/extra-skills/')]
 # Remove only registrations owned by this launcher, then apply the saved choice.
-managed = {key: set(values) for key, values in image_resources.items()}
+# Remember registrations across profile/provider changes, removing only our previous entries.
+resource_state=agent/'sandbox-resources.json'
+previous=json.loads(resource_state.read_text()) if resource_state.exists() else {}
+managed = {key: set(values) | set(previous.get(key, [])) for key, values in image_resources.items()}
+managed['extensions'].add('/opt/pi-local-model-manager/extensions/local-models.js')
+if not Path('/opt/sandbox/provider-resources.json').exists():
+    image_resources['extensions'].append('/opt/pi-local-model-manager/extensions/local-models.js')
+resource_state.write_text(json.dumps(image_resources))
+resource_state.chmod(0o600)
 managed['extensions'].add('/opt/pi-security/node_modules/pi-goal/.pi/extensions/pi-goal/index.ts')
 managed['skills'].add('/opt/pi-security/node_modules/pi-goal/skills')
 managed['extensions'].add('/opt/pi-advisor/extensions/advisor.js')

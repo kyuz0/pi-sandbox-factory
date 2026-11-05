@@ -10,9 +10,16 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-spec = importlib.util.spec_from_file_location('sandbox', Path(__file__).resolve().parents[1] / 'sandbox.py')
-sandbox = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(sandbox)
+from vscode_pi_sandbox import sandbox
+
+
+class LifecycleTestCase(unittest.TestCase):
+    """Core lifecycle fixtures exclude companions, tested in their own suites."""
+    def setUp(self):
+        for module in (sandbox.sandbox_advisors, sandbox.sandbox_ssh):
+            for name in ('check_ownership', 'down', 'delete_volumes'):
+                patcher=patch.object(module,name)
+                patcher.start();self.addCleanup(patcher.stop)
 
 
 class PolicyTests(unittest.TestCase):
@@ -221,7 +228,7 @@ class ProfileTests(unittest.TestCase):
         self.assertEqual(sandbox.image_names(common), sandbox.image_names(base))
 
 
-class CreationInterruptTests(unittest.TestCase):
+class CreationInterruptTests(LifecycleTestCase):
     def test_interrupt_during_either_source_fetch_cleans_state_and_allows_retry(self):
         profile = sandbox.load_profile('base')
         for interrupt_at in (1, 2):
@@ -255,7 +262,7 @@ class CreationInterruptTests(unittest.TestCase):
             state = Path(tmp) / 'interrupted-demo'
             (state / 'profiles/source-snapshot').mkdir(parents=True)
             (state / '.profile-interrupted').mkdir()
-            subprocess.run(['python3', str(sandbox.ROOT / 'sandbox.py'), '--state-dir', tmp,
+            subprocess.run(['python3', str(sandbox.ROOT.parent / 'sandbox.py'), '--state-dir', tmp,
                             'delete', state.name], check=True, capture_output=True)
             self.assertFalse(state.exists())
             state.mkdir()
@@ -291,7 +298,7 @@ class LocalModelSetupTests(unittest.TestCase):
         self.assertEqual(run.call_args.args[0][-1],'/opt/pi-local-model-manager/scripts/initialize-models.mjs')
         self.assertNotIn('-it',run.call_args.args[0])
         self.assertNotIn('pi',run.call_args.args[0])
-        self.assertIn('local-ai-sandbox-example',run.call_args.args[0])
+        self.assertIn('vscode-pi-sandbox-example',run.call_args.args[0])
 
     def test_create_and_start_initializes_without_opening_an_editor(self):
         with tempfile.TemporaryDirectory() as temp:
@@ -331,7 +338,7 @@ class LocalModelSetupTests(unittest.TestCase):
 
 
 
-class DeleteTests(unittest.TestCase):
+class DeleteTests(LifecycleTestCase):
     def test_delete_removes_only_sandbox_resources_and_preserves_workspace(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -400,10 +407,10 @@ class ListTests(unittest.TestCase):
             self.save(root, 'active', profile='custom-documents')
             self.save(root, 'created')
             output = io.StringIO()
-            engine_output = ('local-ai-sandbox-active\trunning\tactive\n'
-                             'local-ai-sandbox-active-proxy\texited\tactive\n'
-                             'local-ai-sandbox-stopped\texited\tstopped\n'
-                             'local-ai-sandbox-stopped-proxy\texited\tstopped\n')
+            engine_output = ('vscode-pi-sandbox-active\trunning\tactive\n'
+                             'vscode-pi-sandbox-active-proxy\texited\tactive\n'
+                             'vscode-pi-sandbox-stopped\texited\tstopped\n'
+                             'vscode-pi-sandbox-stopped-proxy\texited\tstopped\n')
             with redirect_stdout(output), patch.object(sandbox, 'run', return_value=
                     subprocess.CompletedProcess([], 0, engine_output)) as run:
                 sandbox.list_sandboxes(root)
@@ -439,7 +446,7 @@ class ListTests(unittest.TestCase):
 
             def run(argv, **kwargs):
                 if argv[0] == 'docker':
-                    return subprocess.CompletedProcess(argv, 0, 'local-ai-sandbox-docker-demo\trunning\tother\n')
+                    return subprocess.CompletedProcess(argv, 0, 'vscode-pi-sandbox-docker-demo\trunning\tother\n')
                 return subprocess.CompletedProcess(argv, 0, '')
 
             with redirect_stdout(output), patch.object(sandbox, 'run', side_effect=run) as commands:
@@ -475,7 +482,7 @@ class ListTests(unittest.TestCase):
             self.assertNotIn('fixture-sensitive-value', output.getvalue() + errors.getvalue())
 
     def test_cli_accepts_no_name_and_uses_default_or_custom_state_root(self):
-        for args, root in ((['sandbox.py', 'list'], Path.home() / '.local/state/local-ai-sandbox'),
+        for args, root in ((['sandbox.py', 'list'], Path.home() / '.local/state/vscode-pi-sandbox'),
                            (['sandbox.py', '--state-dir', '/tmp/custom-sandbox-state', 'list'],
                             Path('/tmp/custom-sandbox-state'))):
             with self.subTest(args=args), patch('sys.argv', args), patch.object(sandbox, 'list_sandboxes') as listing:
@@ -483,8 +490,9 @@ class ListTests(unittest.TestCase):
                 listing.assert_called_once_with(root.resolve())
 
 
-class RecoveryTests(unittest.TestCase):
+class RecoveryTests(LifecycleTestCase):
     def setUp(self):
+        super().setUp()
         self.config = {'name': 'demo', 'engine': 'podman'}
         self.dev, self.proxy, _, _ = sandbox.names(self.config)
 
@@ -661,7 +669,7 @@ class EditorTests(unittest.TestCase):
             uri = command[command.index('--folder-uri') + 1]
             encoded = uri.split('attached-container+', 1)[1].split('/', 1)[0]
             # A slash-prefixed name fails Podman's lookup and triggers the picker.
-            self.assertEqual(json.loads(bytes.fromhex(encoded)), {'containerName': 'local-ai-sandbox-editor-demo'})
+            self.assertEqual(json.loads(bytes.fromhex(encoded)), {'containerName': 'vscode-pi-sandbox-editor-demo'})
             self.assertTrue(uri.endswith('/workspace'))
             settings = json.loads(settings_file.read_text())
             self.assertEqual(settings['dev.containers.dockerPath'], 'podman')

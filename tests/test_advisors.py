@@ -2,11 +2,11 @@ import json
 import unittest
 import tempfile
 from pathlib import Path
-from sandbox_tui import Service, preset, DEFAULT_SETTINGS
+from vscode_pi_sandbox.sandbox_tui import Service, preset, DEFAULT_SETTINGS
 from unittest.mock import patch
 from types import SimpleNamespace
-import sandbox
-import sandbox_advisors as advisors
+from vscode_pi_sandbox import sandbox
+from vscode_pi_sandbox import sandbox_advisors as advisors
 
 class AdvisorTests(unittest.TestCase):
     def test_disabled_has_no_mount_or_provider_requirement(self):
@@ -46,7 +46,7 @@ class AdvisorTests(unittest.TestCase):
     def test_rpc_mount_contains_no_credentials_or_container_engine(self):
         config={'name':'test','advisors':{'providers':['codex']}}
         args=advisors.mounts(config)
-        self.assertIn('local-ai-sandbox-test-advisor-socket:/run/advisor:ro',args)
+        self.assertIn('vscode-pi-sandbox-test-advisor-socket:/run/advisor:ro',args)
         self.assertFalse(any(x in ' '.join(args) for x in ['-home:', 'docker.sock', 'podman.sock']))
 
     def test_separate_network_rules_do_not_include_model_or_package_hosts(self):

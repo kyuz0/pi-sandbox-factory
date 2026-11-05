@@ -14,10 +14,10 @@ Set an optional per-session call limit under **Usage and network**.
 The CLI can add providers during creation with `--advisor codex`, `--advisor agy` and/or `--advisor claude`. Sign in afterwards:
 
 ```sh
-python sandbox.py advisor-login NAME codex
-python sandbox.py advisor-login NAME agy
-python sandbox.py advisor-login NAME claude
-python sandbox.py advisor-check NAME
+pi-sandbox advisor-login NAME codex
+pi-sandbox advisor-login NAME agy
+pi-sandbox advisor-login NAME claude
+pi-sandbox advisor-check NAME
 ```
 
 Codex's [device login](https://developers.openai.com/codex/auth/) must be enabled for your account. Antigravity uses its documented [remote login flow and Linux Secret Service](https://antigravity.google/docs/install?tab=cli). The companion has its own keyring; it never mounts your desktop session bus.

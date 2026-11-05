@@ -7,7 +7,7 @@ from urllib.parse import urlsplit
 SKILLS = {}
 PROFILE_SKILLS = {'base': []}
 DEFAULTS = {'approval': 'automatic', 'inner_sandbox': True, 'goals': True,
-            'scheduling': True, 'browser': False, 'disabled_skills': [], 'burp_url': '', 'burp_transport': 'sse'}
+            'scheduling': True, 'browser': False, 'disabled_skills': []}
 
 
 def options(value=None):
@@ -23,12 +23,6 @@ def options(value=None):
     disabled = result['disabled_skills']
     if not isinstance(disabled, list) or any(x not in SKILLS for x in disabled):
         raise ValueError('Unknown disabled skill')
-    if result['burp_transport'] not in ('sse', 'http'):
-        raise ValueError('Burp transport must be sse or http')
-    if not isinstance(result['burp_url'], str):
-        raise ValueError('Burp URL must be a string')
-    if result['burp_url']:
-        endpoint_rule(result['burp_url'])
     return result
 
 

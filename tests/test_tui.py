@@ -6,8 +6,8 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-import sandbox
-from sandbox_tui import Cockpit, Confirm, NewSandbox, SettingsForm, Operation, DEFAULT_SETTINGS, Service
+from vscode_pi_sandbox import sandbox
+from vscode_pi_sandbox.sandbox_tui import Cockpit, Confirm, NewSandbox, SettingsForm, Operation, DEFAULT_SETTINGS, Service
 from textual.widgets import Input, Button, DataTable, Checkbox, TextArea, OptionList
 
 class FakeService:
@@ -19,6 +19,7 @@ class FakeService:
         if args[0]=='delete':self.records=[r for r in self.records if r['name']!=args[1]]
     def create(self,draft,key,log):self.calls.append(['create',draft]);log('created')
     def update(self,name,draft,key,log):self.calls.append(['update',name,draft]);log('updated')
+    def provider(self,name,provider,mode,key,log):self.calls.append(['provider',name,provider,mode,key]);log('Provider ready')
     def models(self,name,mode,log):self.calls.append(['models',name,mode]);log('Model catalogue')
 
 class TUITests(unittest.TestCase):
@@ -29,7 +30,7 @@ class TUITests(unittest.TestCase):
     def _callTestMethod(self,method):self.runner.run(method())
     def setUp(self):
         self.tmp=tempfile.TemporaryDirectory();self.root=Path(self.tmp.name)
-        self.defaults=patch('sandbox_tui.load_defaults',side_effect=lambda:copy.deepcopy(DEFAULT_SETTINGS));self.defaults.start()
+        self.defaults=patch('vscode_pi_sandbox.sandbox_tui.load_defaults',side_effect=lambda:copy.deepcopy(DEFAULT_SETTINGS));self.defaults.start()
         self.records=[]
         for name in ['alpha','beta']:
             state=self.root/name;state.mkdir();(state/'allowlist.txt').write_text('local-model.internal:8000\n')
@@ -52,7 +53,7 @@ class TUITests(unittest.TestCase):
         await pilot.press('enter');await pilot.pause()
 
     async def test_advisors_live_in_settings_and_allow_initial_setup(self):
-        from sandbox_tui import AdvisorsScreen
+        from vscode_pi_sandbox.sandbox_tui import AdvisorsScreen
         service=FakeService(self.records)
         service.advisors=lambda name,settings,log:service.calls.append(['advisors',name,settings])
         app=Cockpit(self.root,service)
@@ -108,7 +109,7 @@ class TUITests(unittest.TestCase):
             await pilot.press('q')
 
     async def test_github_preset_in_network_editor(self):
-        from sandbox_tui import GITHUB_HOSTS, preset_allowed
+        from vscode_pi_sandbox.sandbox_tui import GITHUB_HOSTS, preset_allowed
         app=Cockpit(self.root,FakeService(self.records))
         async with app.run_test(size=(100,36)) as pilot:
             await self.ready(app,pilot);await self.settings_page(app,pilot,index=0)
@@ -119,7 +120,7 @@ class TUITests(unittest.TestCase):
             await pilot.press('q')
 
     async def test_ssh_settings_keep_key_import_separate(self):
-        from sandbox_tui import SSHScreen
+        from vscode_pi_sandbox.sandbox_tui import SSHScreen
         service=FakeService(self.records);app=Cockpit(self.root,service)
         async with app.run_test(size=(100,36)) as pilot:
             await self.ready(app,pilot);await self.settings_page(app,pilot,index=4)
@@ -160,7 +161,7 @@ class TUITests(unittest.TestCase):
             app.screen.query_one('#new-advisor-codex',Checkbox).value=True
             app.screen.query_one('#new-advisor-agy',Checkbox).value=True
             app.screen.query_one('#new-advisor-claude',Checkbox).value=True
-            with patch('sandbox.choose_engine',return_value='podman'):
+            with patch('vscode_pi_sandbox.sandbox.choose_engine',return_value='podman'):
                 await pilot.click('#apply');await self.ready(app,pilot)
             self.assertIsInstance(app.screen,Operation)
             draft=service.calls[0][1]
@@ -177,7 +178,7 @@ class TUITests(unittest.TestCase):
             await self.settings_page(app,pilot)
             form=app.screen;self.assertIsInstance(form,SettingsForm)
             form.query_one('#model-ports',Input).value='8080'
-            with patch('sandbox.choose_engine',return_value='podman'):
+            with patch('vscode_pi_sandbox.sandbox.choose_engine',return_value='podman'):
                 await pilot.click('#apply');await pilot.pause()
             self.assertIsInstance(app.screen,Confirm);await pilot.click('#yes');await self.ready(app,pilot)
             self.assertEqual(service.calls[0][0:2],['update','beta'])
@@ -185,18 +186,18 @@ class TUITests(unittest.TestCase):
             await pilot.click('#operation-back');await self.ready(app,pilot)
             app.query_one(DataTable).move_cursor(row=1);await pilot.pause()
             await self.settings_page(app,pilot,index=1)
-            await pilot.click('#preview-models');await self.ready(app,pilot)
-            self.assertEqual(service.calls[-1],['models','beta','preview'])
+            await pilot.click('#provider-preview');await self.ready(app,pilot)
+            self.assertEqual(service.calls[-1],['provider','beta','local','preview',None])
             await pilot.press('q')
 
     async def test_home_controls_fit_and_theme_is_gold(self):
         app=Cockpit(self.root,FakeService(self.records))
         async with app.run_test(size=(80,24)) as pilot:
             await self.ready(app,pilot);self.assertEqual(app.theme,'cockpit-gold')
-            for name in ['open','settings','new','more']:
+            for name in ['open','settings','new','more','packages']:
                 b=app.query_one('#'+name,Button)
                 self.assertLessEqual(b.region.right,80,name);self.assertLessEqual(b.region.bottom,23,name)
-            self.assertEqual(len(app.query(Button)),4)
+            self.assertEqual(len(app.query(Button)),5)
             app.save_screenshot(filename='sandbox-home-declutter.svg',path='/tmp')
             await self.settings_page(app,pilot,index=0)
             self.assertLessEqual(app.screen.query_one('#apply-network',Button).region.bottom,23)
@@ -238,7 +239,7 @@ class TUITests(unittest.TestCase):
             self.assertFalse(checkbox.value)
             checkbox.value=True;await pilot.pause()
             self.assertEqual(field.text.count('pypi.org:443'),1)
-            with patch('sandbox.choose_engine',return_value='podman'):
+            with patch('vscode_pi_sandbox.sandbox.choose_engine',return_value='podman'):
                 draft, key=app.screen.collect()
             self.assertIn('files.pythonhosted.org:443',draft['allowlist'])
             self.assertIn('example.com:443',draft['allowlist'])
@@ -259,7 +260,7 @@ class TUITests(unittest.TestCase):
             self.assertEqual(field.text,'pypi.org:443\nexample.com:443')
             field.load_text('registry.npmjs.org:443\npypi.org:443');await pilot.pause()
             self.assertTrue(checkbox.value)
-            with patch('sandbox.choose_engine',return_value='podman'):
+            with patch('vscode_pi_sandbox.sandbox.choose_engine',return_value='podman'):
                 draft, key=app.screen.collect()
             self.assertIn('registry.npmjs.org:443',draft['allowlist'])
 
@@ -311,5 +312,36 @@ class TUITests(unittest.TestCase):
             choice.value='assisted';await pilot.pause()
             self.assertIn('ask you',str(app.screen.query_one('#approval-help',Static).render()))
             await pilot.press('escape');await pilot.press('q')
+
+
+    async def test_package_install_at_small_terminal(self):
+        service=FakeService(self.records);app=Cockpit(self.root,service)
+        async with app.run_test(size=(80,24)) as pilot:
+            await self.ready(app,pilot);await pilot.click('#packages');await pilot.pause()
+            app.screen.query_one('#package-name',Input).value='reporting'
+            app.screen.query_one('#package-source',Input).value='/tmp/profile-example'
+            button=app.screen.query_one('#package-add',Button)
+            button.scroll_visible();await pilot.pause();await pilot.click('#package-add')
+            await self.ready(app,pilot)
+            self.assertEqual(service.calls[-1],['profile','add','reporting','/tmp/profile-example'])
+            self.assertIsInstance(app.screen,Operation)
+
+    async def test_saved_unregistered_provider_remains_in_configuration(self):
+        from vscode_pi_sandbox import registry
+        provider={'name':'company','settings':{'endpoint':'https://models.example.com/v1'},
+                  'manifest':{'description':'Company models','settings':{'endpoint':{'type':'text','network':True},'key':{'type':'secret'}}}}
+        self.records[0]['config']['model_providers']=[provider]
+        service=FakeService(self.records);app=Cockpit(self.root,service)
+        with patch.object(registry,'choices',side_effect=lambda kind:{'base':'Generic tools'} if kind=='profile' else {'local':'Local models'}):
+            async with app.run_test(size=(80,24)) as pilot:
+                await self.ready(app,pilot);await self.settings_page(app,pilot)
+                form=app.screen
+                self.assertTrue(form.query_one('#source-company',Checkbox).value)
+                self.assertEqual(form.query_one('#source-company-endpoint',Input).value,'https://models.example.com/v1')
+                self.assertEqual(len(form.query('#source-company-key')),0)
+                with patch('vscode_pi_sandbox.sandbox.choose_engine',return_value='podman'):
+                    draft,_=form.collect()
+                self.assertEqual(draft['model_providers']['company'],provider['settings'])
+                self.assertIn('models.example.com:443',draft['allowlist'])
 
 if __name__=='__main__':unittest.main()

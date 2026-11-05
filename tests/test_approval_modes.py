@@ -2,8 +2,8 @@ import json
 from pathlib import Path
 import tempfile
 import unittest
-import sandbox
-from sandbox_options import options, permissions, guidance
+from vscode_pi_sandbox import sandbox
+from vscode_pi_sandbox.sandbox_options import options, permissions, guidance
 
 class ApprovalModeTests(unittest.TestCase):
     def test_default_is_automatic_and_assisted_is_explicit(self):
@@ -15,7 +15,7 @@ class ApprovalModeTests(unittest.TestCase):
             self.assertTrue(guidance({'approval':mode}))
 
     def test_generated_settings_match_selected_mode(self):
-        source=Path(__file__).resolve().parents[1]/'containers/dev'
+        source=Path(__file__).resolve().parents[1]/'vscode_pi_sandbox/containers/dev'
         with tempfile.TemporaryDirectory() as tmp:
             state=Path(tmp)
             for mode in ('automatic','assisted','manual','off'):

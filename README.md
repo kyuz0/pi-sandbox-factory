@@ -1,54 +1,50 @@
-# Local AI Sandboxes
+# VS Code Pi Sandbox
 
-Run Pi and Pendant in a container, with a dedicated VS Code window and a terminal interface for managing your sandboxes. Each sandbox keeps its own agent configuration, sessions and editor state while working on a folder you choose.
+Run Pi and Pendant in independent development containers, managed from a terminal.
+Each sandbox works on a folder you choose and keeps its own models, sessions and
+editor state. Profiles add tools and skills; model providers configure the models
+Pi can use. Local model discovery is included by default.
 
-![Local AI Sandboxes manager showing example workspaces](docs/sandboxes.png)
+## Install
 
-## Get started
+You need Linux, Python 3.10+, Git, rootless Podman and desktop VS Code with `code`
+on your PATH. The launcher installs the Dev Containers extension if needed.
+Docker also works, but forwarding a host-loopback model requires rootless Podman.
 
-You need Linux, Python 3.9+, Git, rootless Podman and desktop VS Code with `code` on your PATH. Docker is also supported, but connecting to a model on host loopback requires rootless Podman. The first build downloads Pi, Pendant, extensions and document tools.
+From this checkout:
 
 ```sh
-git clone https://github.com/kyuz0/local-ai-sandboxes.git
-cd local-ai-sandboxes
 python3 -m venv .venv
-.venv/bin/pip install -r requirements-tui.txt
-.venv/bin/python sandbox.py
+.venv/bin/pip install .
+.venv/bin/pi-sandbox
 ```
 
-Choose **New sandbox**, select a workspace folder and create it. Start your model server separately, for example with AI Toolbox Cockpit on port `8000`. Enable that host port in the sandbox configuration, then **Open in VS Code**. Model discovery runs before the editor opens; if the server starts later, use **Settings → Models → Refresh catalogue**.
+A built wheel can be installed with `pipx install ./vscode_pi_sandbox-*.whl`.
+The first sandbox build downloads Pi, Pendant and their dependencies.
 
-## How it fits together
+Choose **New sandbox**, select your project folder and enable the port used by
+your model server, usually `8000`. Create it, then choose **Open in VS Code**.
+Start the model server separately. If it starts later, use **Settings → Models →
+Refresh**. [CLI and everyday use](docs/usage.md).
 
-```mermaid
-flowchart TB
-    UI[Terminal manager] -->|creates and manages| DEV
-    CODE[VS Code on your host] -->|Dev Containers attachment| PI
-    FILES[Your workspace folder] <-->|mounted at /workspace| DEV
-    subgraph DEV[Development container · rootless Podman]
-        PI[Pi + Pendant] --> TOOLS[File and shell tools]
-        PI --> SKILLS[Skills and extensions]
-        TOOLS --> INNER[Inner command sandbox]
-        INNER -. approval for a specific command .-> OUTER[Execution inside the development container]
-        HOME[Private home · configuration and sessions]
-    end
-    DEV -->|HTTP proxy over Unix socket| PROXY[Separate gateway container · destination allowlist]
-    PROXY --> MODEL[Model server on the host]
-    PROXY --> WEB[Explicitly allowed websites and package hosts]
+## Add your own environment
+
+Use **Packages** or install a profile from a Git URL:
+
+```sh
+pi-sandbox profile add reporting git@git.example.com:team/reporting.git
+pi-sandbox provider add company git@git.example.com:team/company-models.git
 ```
 
-In restricted mode, the development container has no direct network access. Its proxy settings send requests through the gateway. The model runs outside the sandbox; `local-model.internal` reaches the host ports you explicitly allow.
+Select the profile during creation. Choose providers in **Configuration** and
+enter credentials through **Settings → Models**. Git authentication uses your
+host account; it is not copied into the sandbox.
 
-Pi's inner command sandbox restricts shell commands further. Requests beyond it use the configured approval mode: automatic review or a human decision. An approved command still runs inside the development container; elevation does not grant host access or bypass the gateway. Skills add instructions and tools, not network permissions.
+A profile or provider contains executable code. Install packages you trust.
+Profiles do not grant network access: allowed destinations remain explicit.
+Existing sandboxes retain their saved package versions until you update them.
 
-## Everyday use
-
-- **Settings → Network:** edit allowed destinations or enable the pip and GitHub presets. Applying rules briefly restarts only the gateway.
-- **Settings → Models:** preview discovery or refresh the saved catalogue.
-- **New sandbox → Advisors:** optionally add Codex, Antigravity or Claude in a separate container. After creation, sign in through **Settings → Advisors**; existing sandboxes can add providers there too. [Setup and diagram](docs/advisors.md).
-- **Settings → SSH:** choose hosts and import a key into a separate companion. [SSH and GitHub setup](docs/ssh.md).
-- **Actions:** start or stop a sandbox, open Pi or a shell, view logs, rebuild or delete it.
-
-The base environment includes document tools, Pendant's built-in goals and scheduled prompts. Browser support, subagents and additional skills are optional. Closing the manager or editor leaves containers running. Deleting a sandbox removes its private state but preserves your workspace folder.
-
-[Extensions](docs/extensions.md) · [Usage and CLI](docs/usage.md) · [Architecture and permissions](docs/architecture.md) · [Tests](TESTING.md)
+- [Create a profile](docs/profiles.md), with a runnable reporting example.
+- [Create a model provider](docs/providers.md), including the adapter contract.
+- [Isolation and architecture](docs/architecture.md), [approvals](docs/approvals.md), [SSH](docs/ssh.md), [advisors](docs/advisors.md).
+- [Development and tests](TESTING.md), [agent guide](AGENTS.md).

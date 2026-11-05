@@ -1,0 +1,5 @@
+recursive-include vscode_pi_sandbox/containers *
+recursive-include vscode_pi_sandbox/profiles *
+recursive-include vscode_pi_sandbox/providers *
+recursive-include vscode_pi_sandbox/checks *
+global-exclude __pycache__ *.py[cod]

@@ -1,6 +1,6 @@
 # Extensions
 
-Local AI Sandboxes installs extensions from their repositories:
+VS Code Pi Sandbox installs extensions from their repositories:
 
 | Extension | Repository |
 | --- | --- |
@@ -9,9 +9,9 @@ Local AI Sandboxes installs extensions from their repositories:
 | Codex and Antigravity advisors | [pi-advisor](https://github.com/kyuz0/pi-advisor) |
 | Automatic approval, inner sandbox and escalation | [pi-packages](https://github.com/kyuz0/pi-packages) |
 
-[extensions.lock.json](../containers/dev/extensions.lock.json) pins discovery, advisor and question-extension revisions. The manager downloads them over HTTPS and passes exported source files to the image builder. Downloaded revisions are cached under `~/.cache/local-ai-sandboxes/extensions`.
+[extensions.lock.json](../vscode_pi_sandbox/containers/dev/extensions.lock.json) pins discovery, advisor and question-extension revisions. The manager downloads them over HTTPS and passes exported source files to the image builder. Downloaded revisions are cached under `~/.cache/vscode-pi-sandbox/extensions`.
 
-The security packages use the commit and archive checksum in [sources.json](../containers/dev/security/sources.json). Updating a pin and rebuilding installs that revision. Existing containers keep their installed version until recreated.
+The security packages use the commit and archive checksum in [sources.json](../vscode_pi_sandbox/containers/dev/security/sources.json). Updating a pin and rebuilding installs that revision. Existing containers keep their installed version until recreated.
 
 Fixes and unit tests belong in the extension repositories. This repository manages container lifecycle, network rules, credentials and integration tests.
 
@@ -26,7 +26,7 @@ Pendant uses its built-in goals. The **Pendant goals** setting controls whether 
 For an existing sandbox, rebuild with its profile selected:
 
 ```sh
-python3 sandbox.py recreate NAME --profile base
+pi-sandbox recreate NAME --profile base
 ```
 
-Use the sandbox's current profile instead of `base` if it has a custom profile. This installs the current pinned Pi, Pendant and extensions while retaining the workspace and private home. Close its VS Code window before rebuilding, then reopen it with `python3 sandbox.py open NAME`.
+Use the sandbox's current profile instead of `base` if it has a custom profile. This installs the current pinned Pi, Pendant and extensions while retaining the workspace and private home. Close its VS Code window before rebuilding, then reopen it with `pi-sandbox open NAME`.

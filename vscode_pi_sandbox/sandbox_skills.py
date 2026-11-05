@@ -35,7 +35,7 @@ def snapshot(repo, folder, state, launcher):
                           (selected / 'SKILL.md').read_text(), re.M)
         if not match:
             raise ValueError('SKILL.md needs a lowercase name in its frontmatter')
-        from sandbox_options import SKILLS
+        from .sandbox_options import SKILLS
         if match[1] in SKILLS or match[1] == 'goal':
             raise ValueError('That skill is managed by a built-in profile; use its profile settings')
         revision = launcher.run(['git', '-C', str(checkout), 'rev-parse', 'HEAD'], capture=True).stdout.strip()
@@ -52,7 +52,7 @@ def build(config, image, launcher, base_image=None):
     skills = config.get('extra_skills', [])
     if not skills:
         return
-    with tempfile.TemporaryDirectory(prefix='local-ai-sandbox-skills-') as temp:
+    with tempfile.TemporaryDirectory(prefix='vscode-pi-sandbox-skills-') as temp:
         context = Path(temp)
         resources = []
         for skill in skills:

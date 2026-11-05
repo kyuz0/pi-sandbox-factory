@@ -8,9 +8,10 @@ import sys
 import tempfile
 from typing import Optional
 
-import sandbox
-import sandbox_skills
-from sandbox_options import DEFAULTS, SKILLS, PROFILE_SKILLS, options, endpoint_rule, memory_limit, write_json
+from . import sandbox
+from . import sandbox_skills
+from . import registry, model_providers
+from .sandbox_options import DEFAULTS, SKILLS, PROFILE_SKILLS, options, endpoint_rule, memory_limit, write_json
 
 try:
     from textual import on, work
@@ -23,10 +24,11 @@ try:
     from textual.widgets import (Button, Checkbox as TextualCheckbox, Collapsible, DataTable, Footer, Header,
                                  Input, Label, RichLog, Select, Static, TextArea, OptionList)
 except ImportError as error:
-    raise SystemExit('Sandbox Cockpit needs Textual. Install requirements-tui.txt in a Python virtual environment.') from error
+    raise SystemExit('Sandbox Cockpit needs Textual. Install vscode-pi-sandbox in a Python virtual environment.') from error
 
-TITLES = {'base': 'Pi + Pendant · development and documents'}
-DEFAULT_SETTINGS = {'profile': 'base', 'workspace_parent': '', 'network': 'allowlist',
+def profile_titles():
+    return registry.choices('profile')
+DEFAULT_SETTINGS = {'profile': 'base', 'model_providers': {'local':{}}, 'workspace_parent': '', 'network': 'allowlist',
                     'engine': 'podman', 'memory': '8g', 'subagents': False, 'env_file': '',
                     'pi_config': '', 'skill_repo': '', 'skill_path': '', 'open_editor': True,
                     'local_model_ports': '8000', 'options': DEFAULTS}
@@ -77,7 +79,7 @@ def safe_text(value):
 
 
 def defaults_path():
-    return Path(os.environ.get('XDG_CONFIG_HOME', str(Path.home() / '.config'))) / 'local-ai-sandbox/cockpit.json'
+    return Path(os.environ.get('XDG_CONFIG_HOME', str(Path.home() / '.config'))) / 'vscode-pi-sandbox/cockpit.json'
 
 
 def load_defaults():
@@ -95,22 +97,11 @@ def load_defaults():
     return result
 
 
-def burp_default(engine):
-    actual = sandbox.choose_engine(engine, quiet=True)
-    return 'http://' + ('host.containers.internal' if actual == 'podman' else 'host.docker.internal') + ':9877'
-
-
 def preset(profile, defaults):
     value = {**defaults, 'profile': profile, 'options': options(defaults.get('options'))}
     value['options'] = dict(value['options'])
     value['options']['disabled_skills'] = list(value['options']['disabled_skills'])
-    if profile == 'websec' and not value['options']['burp_url']:
-        value['options']['burp_url'] = burp_default(value['engine'])
-    if profile != 'websec':
-        value['options']['burp_url'] = ''
     rules = [f'local-model.internal:{p}' for p in sandbox.local_model_ports(value['local_model_ports'])] if value.get('local_model_ports') else []
-    if value['options']['burp_url']:
-        rules.append(endpoint_rule(value['options']['burp_url']) + ' # Host Burp relay')
     value['allowlist'] = '\n'.join(rules)
     return value
 
@@ -121,7 +112,7 @@ class Service:
         self.state = Path(state)
 
     def command(self, *args):
-        return [sys.executable, str(sandbox.ROOT / 'sandbox.py'), '--state-dir', str(self.state), *args]
+        return [sys.executable, '-m', 'vscode_pi_sandbox', '--state-dir', str(self.state), *args]
 
     def inventory(self):
         result = subprocess.run(self.command('list', '--json'), capture_output=True, text=True, check=True)
@@ -175,6 +166,9 @@ class Service:
                 args += ['--skill-source', draft['skill_repo'], '--skill-path', draft['skill_path']]
             if draft.get('local_model_ports'):
                 args += ['--local-model-ports', draft['local_model_ports']]
+            providers=Path(temp)/'providers.json'
+            write_json(providers,draft.get('model_providers',{'local':{}}))
+            args += ['--providers-file',str(providers)]
             for provider in draft.get('advisors', {}).get('providers', []):
                 args += ['--advisor', provider]
             if draft['subagents']:
@@ -187,17 +181,22 @@ class Service:
             log('Advisors added. Return to Settings → Advisors to sign in; no login has been performed.')
 
     def setup(self, name, draft, key, log):
-        if draft.get('local_model_ports') and not draft['open_editor']:
+        if (draft.get('local_model_ports') or draft.get('model_providers')) and not draft['open_editor']:
             self.run(['configure', name], log)
-        if draft['options']['burp_url']:
-            self.run(['exec', name, '--', 'websec-mcp', draft['options']['burp_url'],
-                      '--transport', draft['options']['burp_transport']], log)
-        if draft['open_editor']:
-            self.run(['open', name], log)
+    def provider(self, name, provider, action, key, log):
+        args=['configure', name, '--provider', provider]
+        if action in ('status','preview'):args+=['--'+action]
+        if key is not None:args+=['--key-stdin']
+        result=subprocess.run(self.command(*args),input=key or '',capture_output=True,text=True)
+        if result.returncode:raise ValueError('Provider operation failed. Check its settings and network access.')
+        log(safe_text(result.stdout))
+        if action not in ('status','preview'):
+            log('Reload an open Pi/Pendant session before selecting newly discovered models.')
 
     def update(self, name, draft, key, log):
         changes = {k: draft[k] for k in ('network', 'memory', 'subagents', 'env_file', 'options')}
         changes['local_model_ports'] = draft.get('local_model_ports')
+        changes['model_providers'] = draft.get('model_providers', {'local':{}})
         changes.update(skill_source=draft.get('skill_repo', ''), skill_path=draft.get('skill_path', ''),
                        remove_skills=draft.get('remove_skills', []))
         changes['allowlist'] = draft['allowlist'] if draft['network'] == 'allowlist' else ''
@@ -205,7 +204,7 @@ class Service:
             path = Path(temp) / 'settings.json'
             write_json(path, changes)
             self.run(['update', name, '--settings-file', str(path)], log)
-        self.setup(name, {**draft, 'options': {**draft['options'], 'burp_url': ''}}, key, log)
+        self.setup(name, draft, key, log)
 
     def ssh_settings(self, name, settings, log):
         with tempfile.TemporaryDirectory(prefix='sandbox-ssh-') as temp:
@@ -441,7 +440,7 @@ class SSHScreen(Screen):
     @on(Button.Pressed)
     def pressed(self, event):
         event.stop()
-        import sandbox_ssh
+        from . import sandbox_ssh
         action = event.button.id
         name = self.record['name']
         try:
@@ -540,7 +539,7 @@ class AdvisorsScreen(Screen):
             with self.app.suspend():
                 subprocess.run(self.app.service.command('advisor-login', name, provider), check=False)
         elif action == 'advisor-apply':
-            import sandbox_advisors
+            from . import sandbox_advisors
             try:
                 calls = self.query_one('#advisor-calls', Input).value.strip()
                 settings = sandbox_advisors.validate({
@@ -568,38 +567,87 @@ class AdvisorsScreen(Screen):
 
 
 class ModelsScreen(Screen):
-    BINDINGS = [('escape', 'back', 'Back')]
-
-    def __init__(self, record):
-        super().__init__()
-        self.record = record
-
+    BINDINGS=[('escape','back','Back')]
+    def __init__(self,record):
+        super().__init__();self.record=record
     def compose(self):
-        config = self.record['config']
+        rows=self.record['config'].get('model_providers',[{'name':'local','manifest':{}}])
         yield Header()
         with VerticalScroll(classes='form'):
-            yield Label('Models · ' + self.record['name'], classes='title')
-            yield Static('Host ports: ' + str(config.get('local_model_ports') or 'Not configured'))
-            yield Static('Connection not checked. Preview discovers models without saving; Refresh updates the saved model catalogue.')
-            yield Static('Endpoint and host-port changes are in Configuration and require recreating containers.')
+            yield Label('Models · '+self.record['name'],classes='title')
+            yield Static('Choose a model source to check or refresh. Add sources and edit their settings in Configuration.')
+            yield Select([(r['manifest'].get('description',r['name']),r['name']) for r in rows],id='model-provider',allow_blank=not rows,value=rows[0]['name'] if rows else Select.BLANK)
+            yield Input(password=True,placeholder='Credential, when required; never saved in launcher settings',id='provider-key')
             with Horizontal(classes='buttons'):
-                yield Button('Preview', id='preview-models', disabled=not config.get('local_model_ports'))
-                yield Button('Refresh catalogue', id='refresh-models', disabled=not config.get('local_model_ports'))
-                yield Button('Configuration…', id='configuration')
+                yield Button('Status',id='provider-status')
+                yield Button('Preview',id='provider-preview')
+                yield Button('Refresh',id='provider-refresh')
+            with Horizontal(classes='buttons'):
+                yield Button('Configure credentials',id='provider-auth')
+                yield Button('Configuration…',id='configuration')
         with Horizontal(classes='wizard-actions'):
-            yield Button('Back', id='models-back')
+            yield Button('Back',id='models-back')
         yield Footer()
-
     @on(Button.Pressed)
-    def pressed(self, event):
-        event.stop()
-        action = event.button.id
-        self.app.pop_screen()
-        if action != 'models-back':
-            self.app.perform(action)
+    def pressed(self,event):
+        event.stop();action=event.button.id
+        if action in ('configuration','models-back'):
+            self.app.pop_screen()
+            if action=='configuration':self.app.perform(action)
+            return
+        selected=self.query_one('#model-provider',Select).value
+        if selected is Select.BLANK:return
+        key=self.query_one('#provider-key',Input).value if action=='provider-auth' else None
+        if action=='provider-auth' and not key.strip():self.notify('Enter the provider credential first.',severity='error');return
+        self.query_one('#provider-key',Input).value=''
+        service=self.app.service
+        def task(log):
+            service.provider(self.record['name'], selected, action.removeprefix('provider-'), key, log)
+        self.app.pop_screen();self.app.push_screen(Operation('Model provider · '+selected,task))
+    def action_back(self):self.app.pop_screen()
 
-    def action_back(self):
-        self.app.pop_screen()
+
+class PackagesScreen(Screen):
+    BINDINGS=[('escape','back','Back')]
+    def compose(self):
+        yield Header()
+        with VerticalScroll(classes='form'):
+            yield Label('Profiles and model providers',classes='title')
+            yield Static('Install trusted packages from Git or a local folder. Profiles contain build code; provider adapters run inside the sandbox.')
+            yield Select([('Tool profile','profile'),('Model provider','provider')],value='profile',allow_blank=False,id='package-kind')
+            yield Static('',id='package-list',markup=False)
+            yield Input(placeholder='Local name, e.g. reporting',id='package-name')
+            yield Input(placeholder='Git HTTPS/SSH URL or local folder',id='package-source')
+            yield Input(placeholder='Optional tag, branch or commit',id='package-ref')
+            with Horizontal(classes='buttons'):
+                yield Button('Install',id='package-add')
+                yield Button('Update',id='package-update')
+                yield Button('Remove',id='package-remove')
+            yield Static('Updates apply to new sandboxes. Existing sandboxes keep their saved version until explicitly recreated.')
+        with Horizontal(classes='wizard-actions'):yield Button('Back',id='packages-back')
+        yield Footer()
+    def on_mount(self):self.show_packages()
+    @on(Select.Changed,'#package-kind')
+    def changed(self):self.show_packages()
+    def show_packages(self):
+        kind=self.query_one('#package-kind',Select).value
+        if kind is Select.BLANK:return
+        self.query_one('#package-list',Static).update('\n'.join(f'{name}: {description}' for name,description in registry.choices(kind).items()))
+    @on(Button.Pressed)
+    def pressed(self,event):
+        event.stop()
+        if event.button.id=='packages-back':self.action_back();return
+        action=event.button.id.removeprefix('package-')
+        kind=self.query_one('#package-kind',Select).value
+        name=self.query_one('#package-name',Input).value.strip()
+        args=[kind,action,name]
+        if action=='add':
+            args.append(self.query_one('#package-source',Input).value.strip())
+            ref=self.query_one('#package-ref',Input).value.strip()
+            if ref:args+=['--ref',ref]
+        service=self.app.service
+        self.app.pop_screen();self.app.push_screen(Operation('Managing '+kind+' · '+name,lambda log:service.run(args,log)))
+    def action_back(self):self.app.pop_screen()
 
 
 class Operation(Screen):
@@ -729,8 +777,8 @@ class NewSandbox(Screen):
         with VerticalScroll(classes='form'):
             yield Label('New sandbox · 1 of 2', classes='title')
             yield Label('Profile')
-            yield Select([(v, k) for k, v in TITLES.items()] + [('Custom profile…', 'custom')],
-                         value=self.app.defaults['profile'] if self.app.defaults['profile'] in TITLES else 'custom',
+            yield Select([(v, k) for k, v in profile_titles().items()] + [('Custom profile…', 'custom')],
+                         value=self.app.defaults['profile'] if self.app.defaults['profile'] in profile_titles() else 'custom',
                          allow_blank=False, id='profile')
             with Vertical(id='custom-profile-fields'):
                 yield Label('Custom profile folder')
@@ -817,13 +865,31 @@ class SettingsForm(Screen):
         with VerticalScroll(classes='form'):
             yield Label('Defaults for new sandboxes' if self.defaults_mode else
                         ('Sandbox settings' if self.editing else 'Review sandbox · 2 of 2'), classes='title')
-            yield Static(('Profile: ' + TITLES.get(self.profile_name, self.profile_name)) +
+            yield Static(('Profile: ' + profile_titles().get(self.profile_name, self.profile_name)) +
                          ('' if self.defaults_mode else '\nWorkspace: ' + value['workspace']), markup=False)
             yield Checkbox('Connect to models on this host (rootless Podman)',
                            value=bool(value.get('local_model_ports')), id='local-models')
             yield Label('Host model ports · comma-separated ports or ranges')
             yield Input(value.get('local_model_ports') or '8000', id='model-ports')
             yield Static('Inside the sandbox, local-model.internal reaches host loopback through the restricted gateway.')
+            configured=value.get('model_providers',{'local':{}})
+            if isinstance(configured,list):configured={r['name']:r.get('settings',{}) for r in configured}
+            saved_rows={r['name']:r for r in value.get('model_providers',[]) if isinstance(r,dict)}
+            available=registry.choices('provider')
+            available.update({name:row['manifest'].get('description',name) for name,row in saved_rows.items() if name not in available})
+            self.provider_forms={}
+            with Collapsible(title='Additional model providers',collapsed=True):
+                for name,label in available.items():
+                    if name=='local':continue
+                    info=saved_rows[name]['manifest'] if name in saved_rows else registry.manifest('provider',registry.resolve('provider',name))
+                    self.provider_forms[name]=info
+                    yield Checkbox(label,value=name in configured,id='source-'+name)
+                    for key,spec in info.get('settings',{}).items():
+                        if spec['type']=='secret':continue
+                        yield Label(spec.get('label',key))
+                        yield Input(configured.get(name,{}).get(key,spec.get('default','')),id='source-'+name+'-'+key)
+                    if info.get('network'):yield Static('Required network access: '+', '.join(info['network']))
+                yield Static('Install additional sources from the home screen’s Packages button. Enter credentials after creation in Settings → Models.')
             yield Checkbox('Open VS Code after creation' if not self.editing else 'Open VS Code after applying',
                            value=value.get('open_editor', True), id='open-editor')
             if not self.editing and not self.defaults_mode:
@@ -835,7 +901,7 @@ class SettingsForm(Screen):
                     yield Static('Creates a separate advisor container. After creation, open Settings → Advisors to sign in. No host credentials are imported.', id='new-advisor-help')
             if self.defaults_mode:
                 yield Label('Default profile')
-                yield Select([(v, k) for k, v in TITLES.items()], value=self.profile_name if self.profile_name in TITLES else 'base',
+                yield Select([(v, k) for k, v in profile_titles().items()], value=self.profile_name if self.profile_name in profile_titles() else 'base',
                              allow_blank=False, id='default-profile')
                 yield Label('Workspace parent folder')
                 yield Input(value.get('workspace_parent', ''), id='workspace-parent')
@@ -859,15 +925,6 @@ class SettingsForm(Screen):
                         yield Button('Profile defaults', id='reset-rules')
                     yield Label('Allowlist file path (for import/export)')
                     yield Input(id='rules-path')
-            if self.profile_name == 'websec':
-                with Collapsible(title='Burp MCP · host relay connection', collapsed=True):
-                    yield Label('Endpoint')
-                    yield Input(selected['burp_url'], id='burp-url')
-                    yield Label('Transport')
-                    yield Select([('SSE', 'sse'), ('Streamable HTTP', 'http')], value=selected['burp_transport'],
-                                 allow_blank=False, id='burp-transport')
-                    yield Static('Burp and its relay run on the host. Relay: 9877 → Burp: 9876.\n'
-                                 'Saving configures the MCP client; it does not start Burp.')
             with Collapsible(title='Agent · ' + selected['approval'].capitalize() + ' approval · Inner sandbox ' + ('on' if selected['inner_sandbox'] else 'off'), collapsed=True, id='agent-section'):
                 yield Checkbox('Use inner command sandbox', value=selected['inner_sandbox'], id='inner-sandbox')
                 yield Label('Approval mode')
@@ -933,22 +990,6 @@ class SettingsForm(Screen):
     def approval_changed(self):
         self.approval_description()
 
-    @on(Select.Changed, '#engine')
-    def engine_changed(self, event):
-        if self.profile_name != 'websec' or self.editing or event.value == self.draft.get('engine', 'auto'):
-            return
-        try:
-            old = burp_default(self.draft.get('engine', 'auto'))
-            new = burp_default(event.value)
-            field = self.query_one('#burp-url', Input)
-            if field.value == old:
-                field.value = new
-                rules = self.query_one('#allowlist', TextArea)
-                rules.load_text(rules.text.replace(endpoint_rule(old), endpoint_rule(new)))
-            self.draft['engine'] = event.value
-        except (OSError, ValueError, subprocess.SubprocessError) as error:
-            self.notify(safe_text(error), severity='error')
-
     @on(Checkbox.Changed, '#npm-preset')
     def toggle_npm(self, event):
         field = self.query_one('#allowlist', TextArea)
@@ -986,6 +1027,13 @@ class SettingsForm(Screen):
         def inp(id): return self.query_one('#' + id, Input).value.strip()
         def check(id): return self.query_one('#' + id, Checkbox).value
         draft['local_model_ports'] = inp('model-ports') if check('local-models') else None
+        draft['model_providers'] = {'local':{}} if check('local-models') else {}
+        provider_rules=[]
+        for name,info in self.provider_forms.items():
+            if check('source-'+name):
+                settings={key:inp('source-'+name+'-'+key) for key,spec in info.get('settings',{}).items() if spec['type']!='secret'}
+                draft['model_providers'][name]=settings
+                provider_rules+=model_providers.required_rules([{'manifest':info,'settings':settings}])
         if draft['local_model_ports']:
             sandbox.local_model_ports(draft['local_model_ports'])
         selected = options(draft.get('options'))
@@ -994,15 +1042,13 @@ class SettingsForm(Screen):
         selected['disabled_skills'] = [s for s in SKILLS if
             (s in PROFILE_SKILLS.get(self.profile_name, []) and not check('skill-' + s))
             or (s not in PROFILE_SKILLS.get(self.profile_name, []) and s in selected['disabled_skills'])]
-        if self.profile_name == 'websec':
-            selected.update(burp_url=inp('burp-url'), burp_transport=self.query_one('#burp-transport', Select).value)
         draft.update(network=self.query_one('#network', Select).value, memory=memory_limit(inp('memory')),
                      subagents=check('subagents'), options=options(selected), engine=self.query_one('#engine', Select).value,
                      env_file=inp('env-file') or None, pi_config=inp('pi-config') or None,
                      open_editor=check('open-editor'),
                      skill_repo=inp('skill-repo'), skill_path=inp('skill-path'))
         if not self.editing and not self.defaults_mode:
-            import sandbox_advisors
+            from . import sandbox_advisors
             draft['advisors'] = sandbox_advisors.validate({'providers': [
                 provider for provider in ('codex', 'agy', 'claude') if check('new-advisor-' + provider)]})
         draft['allowlist'] = self.query_one('#allowlist', TextArea).text if draft['network'] == 'allowlist' else ''
@@ -1012,6 +1058,8 @@ class SettingsForm(Screen):
             rules += [('local-model.internal', p) for p in sandbox.local_model_ports(draft['local_model_ports'])]
             actual = sandbox.choose_engine(draft['engine'], quiet=True)
             sandbox.configure_local_gateway({'engine':actual, 'network':draft['network']}, draft['local_model_ports'], rules)
+        if draft['network'] == 'allowlist':
+            rules += [r for r in sandbox.parse_rules('\n'.join(provider_rules)) if r not in rules]
         if draft['network'] == 'allowlist' and not rules:
             raise ValueError('Add an allowed destination or enable host-local models.')
         draft['allowlist'] = '\n'.join(f'{host}:{port}' for host,port in rules)
@@ -1084,7 +1132,7 @@ class SettingsForm(Screen):
 
 
 class Cockpit(App):
-    TITLE = 'Local AI Sandboxes'
+    TITLE = 'VS Code Pi Sandbox'
     BINDINGS = [Binding('n', 'new', 'New'), Binding('r', 'refresh_inventory', 'Refresh'),
                 Binding('slash', 'search', 'Search'), Binding('d', 'defaults', 'Defaults'), Binding('q', 'quit', 'Quit')]
     CSS = '''
@@ -1153,6 +1201,7 @@ class Cockpit(App):
             with Horizontal(classes='buttons'):
                 yield Label('Sandboxes', classes='title')
                 yield Button('New sandbox', id='new')
+                yield Button('Packages', id='packages')
             yield Label('Search sandboxes')
             yield Input(id='search')
             yield DataTable(id='sandboxes', cursor_type='row', zebra_stripes=True)
@@ -1268,6 +1317,9 @@ class Cockpit(App):
             self.notify(safe_text(error), severity='error')
 
     def perform_action(self, action):
+        if action == 'packages':
+            self.push_screen(PackagesScreen())
+            return
         if action == 'new':
             self.action_new()
             return
@@ -1298,10 +1350,10 @@ class Cockpit(App):
             if not record.get('engine'):
                 self.notify('Repair the saved configuration before editing it.', severity='error')
                 return
-            value = {**DEFAULT_SETTINGS, **config, 'profile': config.get('profile', {}).get('name', 'base'),
+            value = {**DEFAULT_SETTINGS, **config, 'profile': config.get('profile', {}).get('registry_name', config.get('profile', {}).get('name', 'base')),
                      'options': options(config.get('options')), 'local_model_ports': config.get('local_model_ports')}
             # Custom profile names resolve to their recorded external snapshot.
-            if value['profile'] not in TITLES:
+            if value['profile'] not in profile_titles():
                 value['profile'] = config['profile']['path']
             value['allowlist'] = (self.state_root / name / 'allowlist.txt').read_text()
             self.push_screen(SettingsForm(value, editing=True))
@@ -1329,7 +1381,7 @@ class Cockpit(App):
             self.push_screen(Confirm('Fetch current profile sources, build and recreate ' + name + '?\n'
                                      'Active processes are interrupted after the build. Saved files and home persist.', 'Update and recreate'),
                 lambda yes: self.operation('Updating ' + name, ['recreate', name, '--profile',
-                    config.get('profile', {}).get('name', 'base') if config.get('profile', {}).get('name') in TITLES
+                    config.get('profile', {}).get('registry_name', config.get('profile', {}).get('name', 'base')) if config.get('profile', {}).get('registry_name',config.get('profile', {}).get('name')) in profile_titles()
                     else config['profile']['path']]) if yes else None)
         elif action == 'start':
             self.push_screen(Operation('Starting ' + name, lambda log: self.service.start(name, log)))

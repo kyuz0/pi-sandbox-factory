@@ -32,3 +32,15 @@ The default is an inner command sandbox with automatic approval review using the
 An approved escalation runs one command in the development container under its existing user, mounts and network rules. The inner restrictions apply to shell commands; Pi and its extensions run in the development container.
 
 Skills supply task instructions. Extensions add capabilities such as model discovery, questions and scheduled prompts. Pendant provides built-in goals. Additional skills are configured explicitly; browser support and subagents are optional. Installing a skill does not automatically allow the websites it might use. Scheduled prompts run only while their originating Pi session is open.
+
+## Packages
+
+The host registry stores exported Git revisions. Each sandbox copies its selected
+profile and providers into its own immutable build inputs. Installing or updating
+a registry entry does not change a running sandbox. Rebuilding applies updates
+only after the new image builds successfully.
+
+A profile adds tools and Pi resources. A provider adds a small adapter run inside
+the development container, plus optional Pi extensions and skills. Both Pi and
+Pendant use the private home catalogue. A shared lock serializes model updates;
+credentials enter through stdin and are never included in image layers.

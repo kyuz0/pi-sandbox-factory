@@ -18,12 +18,13 @@ p.add_argument('--artifacts',type=Path)
 p.add_argument('--port',type=int,default=8000,help='Unused host port allowed in the disposable sandbox')
 p.add_argument('--pendant-questions-only', action='store_true', help='Check Pendant startup and question choices, free text and cancellation')
 a=p.parse_args()
-RUNTIME=a.artifacts or Path(tempfile.mkdtemp(prefix='local-ai-sandbox-check-'))
+RUNTIME=a.artifacts or Path(tempfile.mkdtemp(prefix='vscode-pi-sandbox-check-'))
 RUNTIME.mkdir(parents=True,exist_ok=True)
-DEV='local-ai-sandbox-'+a.name
+DEV='vscode-pi-sandbox-'+a.name
 fixture=RUNTIME/'fixture';fixture.mkdir(exist_ok=True)
 (fixture/'expected-subagents.json').write_text('false')
-(fixture/'expected-profile.txt').write_text((ROOT/'profiles/base/profile.md').read_text())
+saved_config=json.loads((a.state_dir/a.name/'config.json').read_text())
+(fixture/'expected-profile.txt').write_text((Path(saved_config['profile']['path'])/'profile.md').read_text())
 source=(ROOT/'tests/mock_inference.py').read_text()
 # Each run creates its own completed jobs; preserve existing workspace history.
 source=source.replace("'automation-' +", repr('automation-'+uuid.uuid4().hex[:12]+'-')+' +')
