@@ -75,6 +75,26 @@ class Handler(BaseHTTPRequestHandler):
             outcome = 'deny' if ('DENY_BY_FIXTURE' in content or 'ALLOW_EXECUTED' in content) else 'defer' if 'DEFER_BY_FIXTURE' in content else 'allow'
             delta['content'] = json.dumps({'outcome': outcome, 'risk_level': 'medium',
                                           'user_authorization': 'high', 'rationale': 'Synthetic integration review: ' + outcome})
+        elif 'RUN_COMMUNICATIONS' in content:
+            assert 'xoxb-sandbox-fixture-only' not in content, 'Credential leaked into model context'
+            names = {t['function']['name'] for t in request.get('tools', [])}
+            assert {'slack_list_channels', 'slack_search', 'slack_post_message'} <= names
+            actions = [
+                ('slack_list_channels', {'limit': 1}),
+                ('slack_search', {'query': 'synthetic fixture'}),
+                ('slack_post_message', {'channel': 'C_FIXTURE', 'text': 'DENY_BY_FIXTURE'}),
+                ('read', {'path': '/home/node/.pi/agent/communications/slack.json'}),
+                ('bash', {'command': 'cat /home/node/.pi/agent/communications/slack.json'}),
+                ('bash', {'command': "python3 -c \"import os; assert not os.getenv('SLACK_BOT_TOKEN'); assert not os.getenv('SLACK_USER_TOKEN'); print('CREDENTIAL_ENV_EMPTY')\""}),
+            ]
+            outputs = [m for m in messages if m.get('role') == 'tool']
+            if len(outputs) < len(actions):
+                name, arguments = actions[len(outputs)]
+                delta = {'role': 'assistant', 'tool_calls': [{'index': 0, 'id': 'communication-' + str(len(outputs)),
+                    'type': 'function', 'function': {'name': name, 'arguments': json.dumps(arguments)}}]}
+                finish = 'tool_calls'
+            else:
+                delta['content'] = 'COMMUNICATIONS_DONE'
         elif 'RUN_RECALL' in content:
             mode = Path('/fixture/recall-mode.txt').read_text()
             names = {t['function']['name'] for t in request.get('tools', [])}

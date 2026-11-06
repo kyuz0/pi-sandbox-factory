@@ -54,6 +54,7 @@ COPY --from=rpiv-ask-user-question /packages/rpiv-config/ /opt/rpiv-ask-user-que
 COPY --from=rpiv-ask-user-question /source-commit /opt/rpiv-ask-user-question/source-commit
 RUN rm -rf /opt/pi-security/node_modules/pi-goal
 COPY bootstrap.py /usr/local/lib/sandbox-bootstrap.py
+COPY communications-config.py /usr/local/lib/sandbox-communications.py
 COPY web-access-config.py /usr/local/lib/sandbox-web-access.py
 RUN chmod 755 /usr/local/bin/sandbox-entrypoint \
     && mkdir -p /workspace /pi-config /run/egress \

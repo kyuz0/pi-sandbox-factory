@@ -1,0 +1,8 @@
+{
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@dreki-gg/pi-slack": "https://github.com/kyuz0/pi-slack/archive/5134955ef394fc9746ef2c5c7a853770c504595a.tar.gz",
+    "typebox": "1.3.6"
+  }
+}

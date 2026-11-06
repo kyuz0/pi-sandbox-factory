@@ -14,9 +14,10 @@ from typing import Optional
 
 from . import sandbox
 from .folders_ui import FolderFields
+from .communications_ui import CommunicationsForm
 from .tui_widgets import Checkbox
 from . import sandbox_skills
-from . import registry, model_providers, updates, web_access, network_groups
+from . import registry, model_providers, updates, web_access, network_groups, communications
 from .sandbox_options import DEFAULTS, SKILLS, PROFILE_SKILLS, options, endpoint_rule, memory_limit, write_json
 
 try:
@@ -149,6 +150,10 @@ class Service:
     def config(self, name):
         return json.loads((self.state / name / 'config.json').read_text())
 
+    def communication_status(self, name):
+        result = subprocess.run(self.command('communication-key', name, '--status'), text=True, capture_output=True)
+        return json.loads(result.stdout) if result.returncode == 0 else None
+
     def search_status(self, name):
         result = subprocess.run(self.command('web-key', name, '--status'), text=True, capture_output=True)
         return json.loads(result.stdout) if result.returncode == 0 else None
@@ -203,7 +208,16 @@ class Service:
         if draft.get('advisors', {}).get('providers'):
             log('Advisors added. Return to Settings → Advisors to sign in; no login has been performed.')
 
+    def save_communication_keys(self, name, changes, log):
+        if changes:
+            result = subprocess.run(self.command('communication-key', name, '--keys-stdin'),
+                                    input=json.dumps(changes), text=True, capture_output=True)
+            if result.returncode:
+                raise ValueError('Could not save Slack tokens. Open Settings → Communications to try again.')
+            log('Slack credentials saved in the sandbox.')
+
     def setup(self, name, draft, key, log):
+        self.save_communication_keys(name, draft.get('_communication_keys'), log)
         if key:
             result = subprocess.run(self.command('web-key', name, '--keys-stdin'), input=json.dumps(key), text=True, capture_output=True)
             if result.returncode:
@@ -644,6 +658,9 @@ class NetworkForm(Screen):
             search = web_access.destinations(options(self.config.get('options'))['web_access'])
             if search:
                 yield Static('Search service also allows: ' + ', '.join(f'{host}:{port}' for host, port in search), markup=False)
+            channels = communications.destinations(options(self.config.get('options'))['communications'])
+            if channels:
+                yield Static('Slack also allows: ' + ', '.join(f'{host}:{port}' for host, port in channels), markup=False)
             yield Label('Additional allowed destinations · hostname:port')
             yield TextArea(self.rules, id='allowlist')
             with Collapsible(title='Import or export rules', collapsed=True):
@@ -763,7 +780,8 @@ class SettingsMenu(ModalScreen[Optional[str]]):
                ('Advisors · Codex, Antigravity and Claude', 'advisors'),
                ('SSH · hosts and private key access', 'ssh-settings'),
                ('Folders · starting folder and host mounts', 'folders'),
-               ('Web access · search providers and API keys', 'web-access')]
+               ('Web access · search providers and API keys', 'web-access'),
+               ('Communications · Slack', 'communications')]
 
     def __init__(self, name):
         super().__init__()
@@ -1552,6 +1570,7 @@ class SettingsForm(Screen):
                             yield Button('Export file', id='export-rules')
                             yield Button('Profile defaults', id='reset-rules')
             yield WebAccessForm(selected['web_access'], self.defaults_mode)
+            yield CommunicationsForm(selected['communications'], self.defaults_mode, value.get('_communication_keys'))
             with Collapsible(title='Agent · ' + selected['approval'].capitalize() + ' approval · Inner sandbox ' + ('on' if selected['inner_sandbox'] else 'off'), collapsed=True, id='agent-section'):
                 yield Checkbox('Use inner command sandbox', value=selected['inner_sandbox'], id='inner-sandbox')
                 yield Label('Approval mode')
@@ -1664,6 +1683,7 @@ class SettingsForm(Screen):
             draft.update(self.query_one(FolderFields).collect(private_paths=[inp('pi-config')]))
         selected = options(draft.get('options'))
         selected['web_access'], key = self.query_one(WebAccessForm).collect()
+        selected['communications'], draft['_communication_keys'] = self.query_one(CommunicationsForm).collect()
         selected['website_groups'] = self.query_one(WebsiteGroups).selected()
         selected.update(approval=self.query_one('#approval', Select).value, inner_sandbox=check('inner-sandbox'),
                         goals=check('goals'), scheduling=check('scheduling'), browser=check('browser'),
@@ -1689,7 +1709,7 @@ class SettingsForm(Screen):
             sandbox.configure_local_gateway({'engine':actual, 'network':draft['network']}, draft['local_model_ports'], rules)
         if draft['network'] == 'allowlist':
             rules += [r for r in sandbox.parse_rules('\n'.join(provider_rules)) if r not in rules]
-        if draft['network'] == 'allowlist' and not rules and not selected['website_groups'] and not selected['web_access']['enabled']:
+        if draft['network'] == 'allowlist' and not rules and not selected['website_groups'] and not selected['web_access']['enabled'] and not any(selected['communications'].values()):
             raise ValueError('Add an allowed destination or enable host-local models.')
         draft['allowlist'] = '\n'.join(f'{host}:{port}' for host,port in rules)
         sandbox.validate_env(draft['env_file'])
@@ -1699,6 +1719,20 @@ class SettingsForm(Screen):
         if bool(draft['skill_repo']) != bool(draft['skill_path']):
             raise ValueError('Specify both the skill repository and its folder.')
         return draft, key
+
+    def configuration_unchanged(self, draft):
+        original = self.draft
+        for field in ('network', 'memory', 'subagents', 'local_model_ports', 'env_file'):
+            if (draft.get(field) or None) != (original.get(field) or None):
+                return False
+        if options(draft.get('options')) != options(original.get('options')):
+            return False
+        providers = original.get('model_providers', {'local': {}})
+        if isinstance(providers, list):
+            providers = {row['name']: row.get('settings', {}) for row in providers}
+        return (draft.get('model_providers') == providers and not draft.get('skill_repo')
+                and not draft.get('remove_skills') and
+                set(sandbox.parse_rules(draft['allowlist'])) == set(sandbox.parse_rules(original.get('allowlist', ''))))
 
     @on(Button.Pressed)
     async def pressed(self, event):
@@ -1730,6 +1764,10 @@ class SettingsForm(Screen):
                     self.app.defaults = save_defaults_with_search(saved, search, keys)
                     self.app.pop_screen()
                     self.notify('Defaults saved for future sandboxes.')
+                elif self.editing and draft.get('_communication_keys') and not key and self.configuration_unchanged(draft):
+                    self.app.pop_screen()
+                    self.app.push_screen(Operation('Saving Slack credentials', lambda log:
+                        self.app.service.save_communication_keys(draft['name'], draft['_communication_keys'], log)))
                 elif self.editing:
                     self.app.push_screen(Confirm('Apply settings to ' + draft['name'] + '?\n'
                         'This recreates its containers and interrupts active processes.\n'
@@ -2094,7 +2132,7 @@ class Cockpit(App):
                 self.notify('Choose Restricted in Settings → Configuration → Network first.')
                 return
             self.push_screen(NetworkForm(name, (self.state_root / name / 'allowlist.txt').read_text(), config))
-        elif action in ('configuration', 'web-access'):
+        elif action in ('configuration', 'web-access', 'communications'):
             if not record.get('engine'):
                 self.notify('Repair the saved configuration before editing it.', severity='error')
                 return
@@ -2104,7 +2142,7 @@ class Cockpit(App):
             if value['profile'] not in profile_titles():
                 value['profile'] = config['profile']['path']
             value['allowlist'] = (self.state_root / name / 'allowlist.txt').read_text()
-            self.push_screen(SettingsForm(value, editing=True, section='web-section' if action == 'web-access' else None))
+            self.push_screen(SettingsForm(value, editing=True, section={'web-access': 'web-section', 'communications': 'communications-section'}.get(action)))
         elif action in ('preview-models', 'refresh-models'):
             mode = 'preview' if action == 'preview-models' else 'refresh'
             self.push_screen(Operation('Local models · ' + name, lambda log: self.service.models(name, mode, log)))

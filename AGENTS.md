@@ -11,6 +11,7 @@ Implementation and shipped assets live in `pi_sandbox_factory/`:
 - `sandbox.py`: lifecycle, ownership, immutable snapshots and image identities.
 - `folders.py` and `folders_ui.py`: validated host mounts, starting directory and shared folder controls.
 - `sandbox_tui.py`: terminal forms; `sandbox_options.py`: shared validation.
+- `communications.py` and `communications_ui.py`: optional channel tools and private credential configuration.
 - `web_access.py`: search modes, provider settings and reusable private keys; `network_groups.py`: trusted category updates and gateway rules.
 - `updates.py`: GitHub tags, installed version and pipx upgrade detection.
 - `browser_viewer.py`: authenticated loopback viewer and container-bound lifetime.

@@ -10,7 +10,7 @@ from contextlib import closing
 import hashlib
 import ipaddress
 import json
-from . import web_access, network_groups
+from . import web_access, network_groups, communications
 import os
 from pathlib import Path
 import re
@@ -199,7 +199,7 @@ def squid_config(rules, groups=None):
 
 def network_policy(config, rules):
     selected = options(config.get('options'))
-    combined = list(dict.fromkeys(rules + web_access.destinations(selected['web_access'])))
+    combined = list(dict.fromkeys(rules + web_access.destinations(selected['web_access']) + communications.destinations(selected['communications'])))
     return squid_config(combined, config.get('website_groups', {}))
 
 
@@ -232,6 +232,8 @@ def validate_env(path):
         key, sep, _ = line.partition('=')
         if not sep or not re.fullmatch(r'[A-Z][A-Z0-9_]*', key):
             raise ValueError('Env file must contain literal UPPERCASE_NAME=value entries')
+        if key in {'SLACK_BOT_TOKEN', 'SLACK_USER_TOKEN', 'SLACK_CREDENTIALS_FILE'}:
+            raise ValueError('Configure Slack tokens through Settings → Communications, not an environment file')
         if (key in {'HOME', 'PATH', 'ENV', 'BASH_ENV', 'LD_PRELOAD', 'LD_LIBRARY_PATH',
                     'NODE_OPTIONS', 'NODE_USE_ENV_PROXY', 'SSL_CERT_FILE', 'SSL_CERT_DIR',
                     'SSH_AUTH_SOCK', 'PI_ADVISOR_SOCKET', 'SANDBOX_NETWORK_MODE', 'SANDBOX_SUBAGENTS', 'SANDBOX_APPROVAL_MODE', 'COMPACTION_RECALL_MODE', 'PI_SANDBOX_CONTAINER', 'PI_AUTO_REVIEW_ALLOW_UNTRUSTED_DEV'}
@@ -266,6 +268,8 @@ def image_names(config):
         suffix += '-browser'
     if options(config.get('options'))['web_access']['enabled']:
         suffix += '-web'
+    if options(config.get('options'))['communications']['slack']:
+        suffix += '-slack'
     if 'model_providers' in config:
         suffix += '-models-' + model_providers.digest(config)
     return (f'localhost/pi-sandbox-factory-dev:{profile["name"]}-{base_tag(config)}-{profile["digest"]}{suffix}',
@@ -303,17 +307,23 @@ def build(config):
     browser = options(config.get('options'))['browser']
     has_providers = 'model_providers' in config
     web = options(config.get('options'))['web_access']['enabled']
-    tools = dev + '-tools' if config.get('extra_skills') or browser or web or has_providers else dev
+    channels = options(config.get('options'))['communications']['slack']
+    tools = dev + '-tools' if config.get('extra_skills') or browser or web or channels or has_providers else dev
     run([engine, 'build', '-t', tools, '--build-arg', f'BASE_IMAGE={base}', profile['path']])
     if browser:
-        target = dev + '-browser' if config.get('extra_skills') or web or has_providers else dev
+        target = dev + '-browser' if config.get('extra_skills') or web or channels or has_providers else dev
         run([engine, 'build', '-t', target, '--build-arg', f'BASE_IMAGE={tools}',
              Path(common['path']) / 'browser'])
         tools = target
     if web:
-        target = dev + '-web' if config.get('extra_skills') or has_providers else dev
+        target = dev + '-web' if config.get('extra_skills') or channels or has_providers else dev
         run([engine, 'build', '-t', target, '--build-arg', f'BASE_IMAGE={tools}',
              Path(common['path']) / 'web-access'])
+        tools = target
+    if channels:
+        target = dev + '-communications' if config.get('extra_skills') or has_providers else dev
+        run([engine, 'build', '-t', target, '--build-arg', f'BASE_IMAGE={tools}',
+             Path(common['path']) / 'communications'])
         tools = target
     if has_providers:
         target = dev + '-models' if config.get('extra_skills') else dev
@@ -681,7 +691,7 @@ def create(args, state):
     if mode == 'unrestricted' and (args.allowlist or args.allow_domain):
         raise ValueError('--network unrestricted cannot be combined with an allowlist')
     selected_options = options(json.loads(Path(args.options_file).read_text()) if getattr(args, 'options_file', None) else None)
-    if mode == 'allowlist' and not (args.allowlist or args.allow_domain or selected_options['website_groups'] or selected_options['web_access']['enabled']):
+    if mode == 'allowlist' and not (args.allowlist or args.allow_domain or selected_options['website_groups'] or selected_options['web_access']['enabled'] or any(selected_options['communications'].values())):
         raise ValueError('Allowlist networking requires an allowed destination, website category or search service')
     workspace = directory(args.workspace)
     shared = directory(args.pi_config) if args.pi_config else None
@@ -1028,13 +1038,16 @@ def main():
         'delete': 'Remove both containers, private volumes, and saved state; keep the host workspace',
         'configure': 'Check or refresh enabled providers',
     }
-    for command in ('update', 'build', 'up', 'down', 'delete', 'recreate', 'open', 'configure', 'shell', 'pi', 'exec', 'check', 'policy', 'network', 'web-key', 'advisor-login', 'advisor-check', 'ssh-import-key', 'ssh-unlock'):
+    for command in ('update', 'build', 'up', 'down', 'delete', 'recreate', 'open', 'configure', 'shell', 'pi', 'exec', 'check', 'policy', 'network', 'web-key', 'communication-key', 'advisor-login', 'advisor-check', 'ssh-import-key', 'ssh-unlock'):
         cmd = sub.add_parser(command, **({'help': descriptions[command]} if command in descriptions else {}))
         cmd.add_argument('name')
         if command == 'ssh-import-key':
             cmd.add_argument('--key-file', required=True)
         if command == 'advisor-login':
             cmd.add_argument('provider', choices=['codex', 'agy', 'claude'])
+        if command == 'communication-key':
+            cmd.add_argument('--keys-stdin', action='store_true', help=argparse.SUPPRESS)
+            cmd.add_argument('--status', action='store_true', help='Show Slack token status')
         if command == 'web-key':
             cmd.add_argument('--provider', choices=list(web_access.SERVICES))
             cmd.add_argument('--keys-stdin', action='store_true', help=argparse.SUPPRESS)
@@ -1165,6 +1178,31 @@ def main():
                 if len(secret)>65536:parser.error('Credential input too large')
             up(config,state)
             model_providers.configure(config,'status' if args.status else 'preview' if args.preview else 'refresh',args.provider,secret)
+    elif args.command == 'communication-key':
+        current = inspect(config, names(config)[0])
+        if not current or not current['State']['Running']:
+            raise ValueError('Start this sandbox before configuring Slack credentials')
+        command = [config['engine'], 'exec', '-i', names(config)[0], 'python3',
+                   '/usr/local/lib/sandbox-communications.py']
+        if args.status:
+            payload = None
+        elif args.keys_stdin:
+            payload = sys.stdin.read(32769)
+            if len(payload) > 32768:
+                raise ValueError('Communication credentials too large')
+        else:
+            import getpass
+            changes = {}
+            for field, label in [('botToken', 'Slack bot token'), ('userToken', 'Slack user token for search')]:
+                value = getpass.getpass(label + ' (empty keeps saved, - removes): ').strip()
+                if value:
+                    changes[field] = '' if value == '-' else value
+            payload = json.dumps(changes)
+        result = subprocess.run(command + (['--status'] if args.status else []),
+                                input=payload, text=True, capture_output=True)
+        if result.returncode:
+            raise ValueError('Could not save Slack credentials; check the token format and private storage')
+        print(result.stdout.strip() if args.status else 'Slack credentials saved.')
     elif args.command == 'web-key':
         current = inspect(config, names(config)[0])
         if not current or not current['State']['Running']:

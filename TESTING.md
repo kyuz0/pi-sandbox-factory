@@ -212,3 +212,26 @@ Run these with the other TUI tests.
 Review new and edited forms at 80×24 and 120×40, including expanded sections,
 validation errors and long paths. Inspect the rendered view as well as geometry;
 use Textual's `App.export_screenshot()` for SVG captures with fixture data.
+
+## Communications
+
+`test_communications.py` checks token storage, copies and network rules;
+`test_communications_ui.py` checks the accordion and masked credential dialog at
+80×24 and 120×40, including errors and Escape cancellation.
+
+Create a disposable sandbox with `{"communications":{"slack":true}}` in its
+options file and the fixture port allowed. Run `tests/integration.py` with
+`--communications`. This installs an invalid synthetic bot token in that
+sandbox and checks both the actual Pi CLI and Pendant worker: eight Slack tools,
+API access through the proxy, missing search credentials, a rejected send, blocked
+credential-file reads and absent token environment variables. It uses an
+invalid token for the Slack API check and sends no messages. Delete the disposable
+sandbox afterward. Reading a real workspace and sending messages require a
+separate authorized account check.
+
+The Slack extension's unit tests live in its pinned repository.
+
+Run `tests/communications_lifecycle.py --state-dir PATH --name NAME` against the
+same disposable sandbox to check token-only updates without recreation, removal
+of a duplicate npm registration, disabled tools in Pendant, network-rule removal,
+and credentials surviving disable/re-enable.

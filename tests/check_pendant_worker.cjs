@@ -119,6 +119,27 @@ async function main() {
   assert.deepEqual(inventory.diagnostics.filter(d => d.level === 'error'), [], 'Extension errors');
   assert(!fs.existsSync('/opt/pi-security/node_modules/pi-goal'), 'Legacy Goal package installed');
   assert(inventory.tools.some(t => t.name === 'ask_user_question'), 'ask_user_question tool missing');
+  if (process.argv.includes('--communications-disabled')) {
+    assert(!inventory.tools.some(t => t.name.startsWith('slack_')), 'Disabled Slack tools still loaded');
+    console.log('PASS actual Pendant: disabling Slack removes its tools');
+    return;
+  }
+  if (process.argv.includes('--communications')) {
+    assert.equal(inventory.tools.filter(t => t.name.startsWith('slack_')).length, 8);
+    await request({type:'session_set_model',provider:'fixture',modelId:'fixture-model',persist:false}, 'inventory');
+    await request({type:'session_prompt',text:'RUN_COMMUNICATIONS',images:[],source:'interactive'}, 'inventory');
+    const state = await waitForReply('inventory', 'COMMUNICATIONS_DONE');
+    const results = state.messages.filter(m => m.role === 'toolResult');
+    assert.equal(results.length, 6, JSON.stringify(results));
+    assert(JSON.stringify(results[0]).includes('invalid_auth'), JSON.stringify(results[0]));
+    assert(JSON.stringify(results[1]).includes('SLACK_USER_TOKEN'), JSON.stringify(results[1]));
+    assert(JSON.stringify(results[2]).includes('Synthetic integration review: deny'), JSON.stringify(results[2]));
+    assert(results.slice(0,5).every(r => r.isError), JSON.stringify(results));
+    assert(JSON.stringify(results[5]).includes('CREDENTIAL_ENV_EMPTY') && !results[5].isError);
+    assert(!JSON.stringify(state).includes('xoxb-sandbox-fixture-only'));
+    console.log('PASS actual Pendant: eight Slack tools, proxy, denied send and private credentials');
+    return;
+  }
   if (process.argv.includes('--recall')) {
     const mode = JSON.parse(fs.readFileSync('/opt/sandbox/options.json')).compaction_recall;
     await request({type:'session_set_model',provider:'fixture',modelId:'fixture-model',persist:false}, 'inventory');

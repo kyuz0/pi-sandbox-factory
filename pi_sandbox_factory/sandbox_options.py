@@ -3,12 +3,12 @@ import json
 import re
 from pathlib import Path
 from urllib.parse import urlsplit
-from . import web_access, network_groups
+from . import web_access, network_groups, communications
 
 SKILLS = {}
 PROFILE_SKILLS = {'base': []}
 DEFAULTS = {'approval': 'automatic', 'inner_sandbox': True, 'goals': True,
-            'scheduling': True, 'browser': False, 'compaction_recall': 'lite', 'disabled_skills': [], 'web_access': None, 'website_groups': []}
+            'scheduling': True, 'browser': False, 'compaction_recall': 'lite', 'disabled_skills': [], 'web_access': None, 'website_groups': [], 'communications': None}
 
 
 def options(value=None):
@@ -27,6 +27,7 @@ def options(value=None):
     if not isinstance(disabled, list) or any(x not in SKILLS for x in disabled):
         raise ValueError('Unknown disabled skill')
     result['web_access'] = web_access.settings(result['web_access'])
+    result['communications'] = communications.settings(result['communications'])
     result['website_groups'] = network_groups.selected(result['website_groups'])
     return result
 
