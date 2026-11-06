@@ -3,9 +3,9 @@ from pathlib import Path
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 import argparse
 parser=argparse.ArgumentParser(description='Disposable advisor check; no accounts or inference')
-parser.add_argument('--dev-image', required=True, help='A built VS Code Pi Sandbox development image with Pi/Pendant')
+parser.add_argument('--dev-image', required=True, help='A built Pi Sandbox Factory development image with Pi/Pendant')
 args=parser.parse_args()
-from vscode_pi_sandbox import sandbox as core, sandbox_advisors as a
+from pi_sandbox_factory import sandbox as core, sandbox_advisors as a
 root=Path(tempfile.mkdtemp(prefix='advisor-check-'))
 config={'name':root.name,'engine':'podman','uid':os.getuid(),'gid':os.getgid(),'workspace':str(root),'advisors':{'providers':['codex','agy','claude']}}
 worker,proxy,socket,home,egress=a.names(config)
@@ -36,7 +36,7 @@ try:
  try:
   import time
   for _ in range(80):
-   if core.run(['podman','exec',dev,'test','-f','/tmp/vscode-pi-sandbox-ready'],capture=True,check=False).returncode==0:break
+   if core.run(['podman','exec',dev,'test','-f','/tmp/pi-sandbox-factory-ready'],capture=True,check=False).returncode==0:break
    time.sleep(.25)
   core.run(['podman','exec',dev,'node','/tmp/pendant-advisor-test.cjs','--advisor'])
  finally:core.run(['podman','rm','-f',dev])

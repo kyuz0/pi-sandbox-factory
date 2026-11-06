@@ -3,22 +3,27 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "vscode-pi-sandbox"
-version = "0.2.0a1"
+name = "pi-sandbox-factory"
+version = "2026.11.6.101330"
 description = "Manage isolated Pi and Pendant workspaces with installable profiles and model providers"
 readme = "README.md"
 requires-python = ">=3.10"
-dependencies = ["textual==8.1.1"]
+dependencies = ["textual==8.1.1", "pyfiglet>=1.0.2,<2", "packaging>=24"]
+
+[project.urls]
+Homepage = "https://github.com/kyuz0/pi-sandbox-factory"
+Repository = "https://github.com/kyuz0/pi-sandbox-factory"
+Issues = "https://github.com/kyuz0/pi-sandbox-factory/issues"
 
 [project.scripts]
-vscode-pi-sandbox = "vscode_pi_sandbox.sandbox:main"
+pi-sandbox-factory = "pi_sandbox_factory.sandbox:main"
 
 [tool.setuptools]
-packages = ["vscode_pi_sandbox"]
+packages = ["pi_sandbox_factory"]
 include-package-data = true
 
 [tool.setuptools.package-data]
-vscode_pi_sandbox = ["containers/**/*", "profiles/**/*", "providers/**/*", "checks/*"]
+pi_sandbox_factory = ["containers/**/*", "profiles/**/*", "providers/**/*", "checks/*"]
 
 [tool.setuptools.exclude-package-data]
 "*" = ["**/__pycache__/*", "**/*.pyc", "**/*.pyo"]

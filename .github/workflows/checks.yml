@@ -1,0 +1,60 @@
+name: Checks and release
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: checks-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: python -m pip install -e .
+      - run: python -m unittest discover -s tests -p 'test_*.py'
+      - run: node --test tests/test_provider_runtime.mjs
+      - run: |
+          python -m pip wheel --no-deps . -w dist
+          python -m venv /tmp/factory-package
+          /tmp/factory-package/bin/pip install dist/pi_sandbox_factory-*.whl
+          cd /tmp
+          /tmp/factory-package/bin/pi-sandbox-factory --version
+          /tmp/factory-package/bin/pi-sandbox-factory profile list
+          /tmp/factory-package/bin/pi-sandbox-factory provider list
+  release:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - name: Version and tag
+        run: |
+          python - <<'PYTHON'
+          from datetime import datetime, timezone
+          from pathlib import Path
+          import re, subprocess
+          now = datetime.now(timezone.utc)
+          version = f'{now.year}.{now.month}.{now.day}.{int(now.strftime("%H%M%S"))}'
+          path = Path('pyproject.toml')
+          path.write_text(re.sub(r'^version = ".*"$', f'version = "{version}"', path.read_text(), flags=re.M))
+          subprocess.run(['git', 'config', 'user.name', 'github-actions[bot]'], check=True)
+          subprocess.run(['git', 'config', 'user.email', '41898282+github-actions[bot]@users.noreply.github.com'], check=True)
+          subprocess.run(['git', 'add', 'pyproject.toml'], check=True)
+          subprocess.run(['git', 'commit', '-m', f'Release {version}'], check=True)
+          subprocess.run(['git', 'tag', 'v' + version], check=True)
+          subprocess.run(['git', 'push', '--atomic', 'origin', 'HEAD:main', 'v' + version], check=True)
+          PYTHON

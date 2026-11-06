@@ -4,7 +4,7 @@ import hmac
 import unittest
 from unittest.mock import AsyncMock
 
-from vscode_pi_sandbox.browser_viewer import Viewer, route
+from pi_sandbox_factory.browser_viewer import Viewer, route
 
 KEY = 'b' * 64
 SESSION = 'a' * 32

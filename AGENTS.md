@@ -1,15 +1,16 @@
 # Agent guide
 
-VS Code Pi Sandbox manages Pi/Pendant containers with a Python CLI and Textual UI.
+Pi Sandbox Factory manages Pi/Pendant containers with a Python CLI and Textual UI.
 Read `README.md` and `TESTING.md`. For package work, use `docs/profiles.md`,
 `docs/providers.md` and the runnable `examples/`.
 
 ## Code map
 
-Implementation and shipped assets live in `vscode_pi_sandbox/`:
+Implementation and shipped assets live in `pi_sandbox_factory/`:
 
 - `sandbox.py`: lifecycle, ownership, immutable snapshots and image identities.
 - `sandbox_tui.py`: terminal forms; `sandbox_options.py`: shared validation.
+- `updates.py`: GitHub tags, installed version and pipx upgrade detection.
 - `browser_viewer.py`: authenticated loopback viewer and container-bound lifetime.
 - `registry.py`: Git/local packages, revisions and installation.
 - `model_providers.py` and `providers/`: provider image layer and container runner.
@@ -17,7 +18,7 @@ Implementation and shipped assets live in `vscode_pi_sandbox/`:
 - `containers/`: images, bootstrap and extension pins; `profiles/base/`: generic profile.
 
 The root `sandbox.py` is a checkout convenience wrapper. The installed command
-is `vscode-pi-sandbox`; `python -m vscode_pi_sandbox` is equivalent.
+is `pi-sandbox-factory`; `python -m pi_sandbox_factory` is equivalent.
 
 ## Design
 
@@ -45,7 +46,7 @@ extension changes, not just mocked APIs. Never restart a user's sandbox to test.
 
 Run the relevant suites in `TESTING.md`. Extension implementation and unit tests
 belong in the extension repository; this project pins and integrates them.
-Update pins in `vscode_pi_sandbox/containers/dev/extensions.lock.json` or the
+Update pins in `pi_sandbox_factory/containers/dev/extensions.lock.json` or the
 security directory’s `sources.json`.
 Pi and Pendant have separate version pins; Pendant embeds its own Pi.
 
@@ -53,3 +54,7 @@ Write short, direct documentation explaining supported behavior and actual setup
 Keep private names, credentials, conversation history and investigation logs out of
 this public project. Add an example or test when it explains a contract better
 than another paragraph.
+
+Release versions use UTC CalVer. The GitHub workflow tests changes on `main`, then
+bumps `pyproject.toml` and tags the commit. Keep update checks off the UI thread;
+upgrades require confirmation and must not recreate running sandboxes.

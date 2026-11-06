@@ -19,9 +19,9 @@ p.add_argument('--port',type=int,default=8000,help='Unused host port allowed in 
 p.add_argument('--pendant-questions-only', action='store_true', help='Check Pendant startup and question choices, free text and cancellation')
 p.add_argument('--browser-viewer', action='store_true', help='Check viewer tool and guidance in actual Pendant sessions')
 a=p.parse_args()
-RUNTIME=a.artifacts or Path(tempfile.mkdtemp(prefix='vscode-pi-sandbox-check-'))
+RUNTIME=a.artifacts or Path(tempfile.mkdtemp(prefix='pi-sandbox-factory-check-'))
 RUNTIME.mkdir(parents=True,exist_ok=True)
-DEV='vscode-pi-sandbox-'+a.name
+DEV='pi-sandbox-factory-'+a.name
 fixture=RUNTIME/'fixture';fixture.mkdir(exist_ok=True)
 (fixture/'expected-subagents.json').write_text('false')
 saved_config=json.loads((a.state_dir/a.name/'config.json').read_text())

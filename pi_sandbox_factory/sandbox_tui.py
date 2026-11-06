@@ -1,4 +1,4 @@
-"""Sandbox Cockpit: optional Textual UI over the shared sandbox launcher."""
+"""Terminal interface for Pi Sandbox Factory."""
 import json
 import os
 from pathlib import Path
@@ -6,11 +6,13 @@ import re
 import subprocess
 import sys
 import tempfile
+import pyfiglet
+import shutil
 from typing import Optional
 
 from . import sandbox
 from . import sandbox_skills
-from . import registry, model_providers
+from . import registry, model_providers, updates
 from .sandbox_options import DEFAULTS, SKILLS, PROFILE_SKILLS, options, endpoint_rule, memory_limit, write_json
 
 try:
@@ -24,7 +26,7 @@ try:
     from textual.widgets import (Button, Checkbox as TextualCheckbox, Collapsible, DataTable, Footer, Header,
                                  Input, Label, RichLog, Select, Static, TextArea, OptionList)
 except ImportError as error:
-    raise SystemExit('Sandbox Cockpit needs Textual. Install vscode-pi-sandbox in a Python virtual environment.') from error
+    raise SystemExit('Install Pi Sandbox Factory with pipx install git+https://github.com/kyuz0/pi-sandbox-factory.git.') from error
 
 def profile_titles():
     return registry.choices('profile')
@@ -79,7 +81,7 @@ def safe_text(value):
 
 
 def defaults_path():
-    return Path(os.environ.get('XDG_CONFIG_HOME', str(Path.home() / '.config'))) / 'vscode-pi-sandbox/cockpit.json'
+    return Path(os.environ.get('XDG_CONFIG_HOME', str(Path.home() / '.config'))) / 'pi-sandbox-factory/cockpit.json'
 
 
 def load_defaults():
@@ -112,7 +114,7 @@ class Service:
         self.state = Path(state)
 
     def command(self, *args):
-        return [sys.executable, '-m', 'vscode_pi_sandbox', '--state-dir', str(self.state), *args]
+        return [sys.executable, '-m', 'pi_sandbox_factory', '--state-dir', str(self.state), *args]
 
     def inventory(self):
         result = subprocess.run(self.command('list', '--json'), capture_output=True, text=True, check=True)
@@ -1134,8 +1136,13 @@ class SettingsForm(Screen):
         self.app.pop_screen()
 
 
+def banner(version, compact=False):
+    title = 'Pi Sandbox Factory' if compact else pyfiglet.figlet_format('Pi Sandbox Factory', font='small', width=120).rstrip()
+    return f'[bold #f2b544]{title}[/]  [dim]v{version}[/]' if compact else f'[bold #f2b544]{title}[/]\n[dim]Pi and Pendant development environments · v{version}[/]'
+
+
 class Cockpit(App):
-    TITLE = 'VS Code Pi Sandbox'
+    TITLE = 'Pi Sandbox Factory'
     BINDINGS = [Binding('f2', 'new', 'New sandbox', priority=True),
                 Binding('n', 'new', 'New', show=False), Binding('r', 'refresh_inventory', 'Refresh'),
                 Binding('slash', 'search', 'Search'), Binding('d', 'defaults', 'Defaults'), Binding('q', 'quit', 'Quit')]
@@ -1161,11 +1168,16 @@ class Cockpit(App):
     .wizard-actions { dock: bottom; height: 3; padding: 1 3; }
     Button { height: 1; border: none; margin-right: 1; min-width: 8; }
     #custom-profile-fields, #network-rules-fields { height: auto; }
+    #home > .buttons { margin: 0; }
     #home > .buttons Label { width: 1fr; }
     #network-error { height: auto; color: #b75b52; }
     .path-row { height: 3; }
     .path-row Input { width: 1fr; }
     .error { color: #b75b52; height: auto; }
+    #title-banner { height: auto; padding: 0 2; }
+    #application-update { display: none; height: auto; margin: 0 2; }
+    #application-update-message { width: 1fr; height: auto; }
+    #application-update-run { width: 14; margin: 0 0 0 1; }
     #home { padding: 1 2; }
     #sandboxes { height: 1fr; min-height: 5; }
     #details { height: auto; min-height: 3; padding: 1; }
@@ -1198,9 +1210,15 @@ class Cockpit(App):
         self.service = service or Service(self.state_root)
         self.records = []
         self.defaults = load_defaults()
+        self.version = updates.installed_version()
+        self.available_version = None
 
     def compose(self):
         yield Header()
+        yield Static(banner(self.version, compact=True), id='title-banner')
+        with Horizontal(id='application-update'):
+            yield Static('', id='application-update-message', markup=False)
+            yield Button('Upgrade now', id='application-update-run', variant='primary')
         with Vertical(id='home'):
             with Horizontal(classes='buttons'):
                 yield Label('Sandboxes', classes='title')
@@ -1220,6 +1238,48 @@ class Cockpit(App):
     def on_mount(self):
         self.query_one(DataTable).add_columns('Name', 'Status', 'Models', 'Network')
         self.refresh_inventory()
+        self.check_update()
+        self.resize_banner()
+
+    def on_resize(self):
+        if self.is_mounted:
+            self.resize_banner()
+
+    def resize_banner(self):
+        self.query_one('#title-banner', Static).update(banner(self.version, self.size.width < 100 or self.size.height < 32))
+
+    @work(thread=True, exclusive=True, group='application-update', exit_on_error=False)
+    def check_update(self):
+        latest = updates.available_update(self.version)
+        if latest:
+            self.call_from_thread(self.show_update, latest)
+
+    def show_update(self, latest):
+        self.available_version = latest
+        self.query_one('#application-update-message', Static).update(
+            f'Version {latest} available. pipx upgrade pi-sandbox-factory')
+        button = self.query_one('#application-update-run', Button)
+        button.disabled = not (updates.pipx_install() and shutil.which('pipx'))
+        button.tooltip = 'Available for pipx installations.' if button.disabled else None
+        self.query_one('#application-update').display = True
+
+    def confirm_update(self):
+        self.push_screen(Confirm(
+            f'Upgrade Pi Sandbox Factory to {self.available_version}?\n'
+            'Runs pipx upgrade pi-sandbox-factory, then restarts this manager.\n'
+            'Running sandboxes keep their installed software.', 'Upgrade'), self.upgrade)
+
+    def upgrade(self, confirmed):
+        if not confirmed:
+            return
+        try:
+            with self.suspend():
+                subprocess.run(updates.UPGRADE_COMMAND, check=True)
+        except (OSError, subprocess.SubprocessError) as error:
+            self.query_one('#application-update-message', Static).update(
+                f'Upgrade failed: {error}. Retry or run pipx upgrade pi-sandbox-factory.')
+        else:
+            self.exit(result=updates.RELAUNCH)
 
     @work(thread=True, exclusive=True, group='inventory', exit_on_error=False)
     def refresh_inventory(self):
@@ -1316,6 +1376,9 @@ class Cockpit(App):
             self.push_screen(NewSandbox())
 
     def perform(self, action):
+        if action == 'application-update-run':
+            self.confirm_update()
+            return
         try:
             self.perform_action(action)
         except (OSError, ValueError, KeyError, subprocess.SubprocessError) as error:
@@ -1409,4 +1472,6 @@ class Cockpit(App):
 
 
 def launch(state_root):
-    Cockpit(state_root).run()
+    if Cockpit(state_root).run() == updates.RELAUNCH:
+        os.execv(sys.executable, [sys.executable, '-m', 'pi_sandbox_factory',
+                                 '--state-dir', str(state_root), 'tui'])

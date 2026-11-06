@@ -12,7 +12,7 @@ parser.add_argument("--name", required=True)
 parser.add_argument("--port", type=int, default=18082)
 parser.add_argument("--company-port", type=int, default=18084)
 args = parser.parse_args()
-container = "vscode-pi-sandbox-" + args.name
+container = "pi-sandbox-factory-" + args.name
 
 
 class Handler(BaseHTTPRequestHandler):

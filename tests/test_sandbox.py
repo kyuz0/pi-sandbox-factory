@@ -10,7 +10,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from vscode_pi_sandbox import sandbox
+from pi_sandbox_factory import sandbox
 
 
 class LifecycleTestCase(unittest.TestCase):
@@ -298,7 +298,7 @@ class LocalModelSetupTests(unittest.TestCase):
         self.assertEqual(run.call_args.args[0][-1],'/opt/pi-local-model-manager/scripts/initialize-models.mjs')
         self.assertNotIn('-it',run.call_args.args[0])
         self.assertNotIn('pi',run.call_args.args[0])
-        self.assertIn('vscode-pi-sandbox-example',run.call_args.args[0])
+        self.assertIn('pi-sandbox-factory-example',run.call_args.args[0])
 
     def test_create_and_start_initializes_without_opening_an_editor(self):
         with tempfile.TemporaryDirectory() as temp:
@@ -407,10 +407,10 @@ class ListTests(unittest.TestCase):
             self.save(root, 'active', profile='custom-documents')
             self.save(root, 'created')
             output = io.StringIO()
-            engine_output = ('vscode-pi-sandbox-active\trunning\tactive\n'
-                             'vscode-pi-sandbox-active-proxy\texited\tactive\n'
-                             'vscode-pi-sandbox-stopped\texited\tstopped\n'
-                             'vscode-pi-sandbox-stopped-proxy\texited\tstopped\n')
+            engine_output = ('pi-sandbox-factory-active\trunning\tactive\n'
+                             'pi-sandbox-factory-active-proxy\texited\tactive\n'
+                             'pi-sandbox-factory-stopped\texited\tstopped\n'
+                             'pi-sandbox-factory-stopped-proxy\texited\tstopped\n')
             with redirect_stdout(output), patch.object(sandbox, 'run', return_value=
                     subprocess.CompletedProcess([], 0, engine_output)) as run:
                 sandbox.list_sandboxes(root)
@@ -446,7 +446,7 @@ class ListTests(unittest.TestCase):
 
             def run(argv, **kwargs):
                 if argv[0] == 'docker':
-                    return subprocess.CompletedProcess(argv, 0, 'vscode-pi-sandbox-docker-demo\trunning\tother\n')
+                    return subprocess.CompletedProcess(argv, 0, 'pi-sandbox-factory-docker-demo\trunning\tother\n')
                 return subprocess.CompletedProcess(argv, 0, '')
 
             with redirect_stdout(output), patch.object(sandbox, 'run', side_effect=run) as commands:
@@ -482,7 +482,7 @@ class ListTests(unittest.TestCase):
             self.assertNotIn('fixture-sensitive-value', output.getvalue() + errors.getvalue())
 
     def test_cli_accepts_no_name_and_uses_default_or_custom_state_root(self):
-        for args, root in ((['sandbox.py', 'list'], Path.home() / '.local/state/vscode-pi-sandbox'),
+        for args, root in ((['sandbox.py', 'list'], Path.home() / '.local/state/pi-sandbox-factory'),
                            (['sandbox.py', '--state-dir', '/tmp/custom-sandbox-state', 'list'],
                             Path('/tmp/custom-sandbox-state'))):
             with self.subTest(args=args), patch('sys.argv', args), patch.object(sandbox, 'list_sandboxes') as listing:
@@ -669,7 +669,7 @@ class EditorTests(unittest.TestCase):
             uri = command[command.index('--folder-uri') + 1]
             encoded = uri.split('attached-container+', 1)[1].split('/', 1)[0]
             # A slash-prefixed name fails Podman's lookup and triggers the picker.
-            self.assertEqual(json.loads(bytes.fromhex(encoded)), {'containerName': 'vscode-pi-sandbox-editor-demo'})
+            self.assertEqual(json.loads(bytes.fromhex(encoded)), {'containerName': 'pi-sandbox-factory-editor-demo'})
             self.assertTrue(uri.endswith('/workspace'))
             settings = json.loads(settings_file.read_text())
             self.assertEqual(settings['dev.containers.dockerPath'], 'podman')

@@ -5,9 +5,9 @@ import tempfile
 from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
-from vscode_pi_sandbox import sandbox
-from vscode_pi_sandbox import sandbox_ssh as ssh
-from vscode_pi_sandbox.sandbox_tui import GITHUB_HOSTS, PIP_HOSTS, preset_rules, preset_allowed
+from pi_sandbox_factory import sandbox
+from pi_sandbox_factory import sandbox_ssh as ssh
+from pi_sandbox_factory.sandbox_tui import GITHUB_HOSTS, PIP_HOSTS, preset_rules, preset_allowed
 
 HOST={'alias':'build','hostname':'192.0.2.10','port':22,'user':'demo','host_keys':['ssh-ed25519 AAAA']}
 
@@ -44,13 +44,13 @@ class SSHTests(unittest.TestCase):
             file=Path(tmp)/'known_hosts';file.touch()
             for marker in ['@revoked','@cert-authority']:
                 response=SimpleNamespace(returncode=0,stdout=f'{marker} host ssh-ed25519 AAAA\n')
-                with patch('vscode_pi_sandbox.sandbox_ssh.subprocess.run',return_value=response):
+                with patch('pi_sandbox_factory.sandbox_ssh.subprocess.run',return_value=response):
                     with self.assertRaisesRegex(ValueError,'Marked'):ssh.trusted_keys('host',22,file)
 
     def test_known_host_lookup_does_not_scan_or_accept_new_hosts(self):
         with tempfile.TemporaryDirectory() as tmp:
             file=Path(tmp)/'known_hosts';file.touch()
-            with patch('vscode_pi_sandbox.sandbox_ssh.subprocess.run',return_value=SimpleNamespace(returncode=1,stdout='')) as run:
+            with patch('pi_sandbox_factory.sandbox_ssh.subprocess.run',return_value=SimpleNamespace(returncode=1,stdout='')) as run:
                 with self.assertRaises(ssh.MissingHostKey):ssh.trusted_keys('example.test',2222,file)
                 self.assertEqual(run.call_args.args[0],['ssh-keygen','-F','[example.test]:2222','-f',str(file)])
 

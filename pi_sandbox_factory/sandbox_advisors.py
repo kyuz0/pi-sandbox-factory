@@ -56,7 +56,7 @@ def enabled(config):
 
 
 def names(config):
-    prefix = 'vscode-pi-sandbox-' + config['name'] + '-advisor'
+    prefix = 'pi-sandbox-factory-' + config['name'] + '-advisor'
     return prefix, prefix + '-proxy', prefix + '-socket', prefix + '-home', prefix + '-egress'
 
 
@@ -70,7 +70,7 @@ def image(config):
     from . import sandbox as core
     lock = sandbox_extensions.read_lock(source_path(config))['pi-advisor']
     digest = core.tree_digest(core.ROOT / 'containers/advisor') + hashlib.sha256(json.dumps(lock, sort_keys=True).encode()).hexdigest()[:12]
-    return f'localhost/vscode-pi-sandbox-advisor:{config["uid"]}-{config["gid"]}-{digest}'
+    return f'localhost/pi-sandbox-factory-advisor:{config["uid"]}-{config["gid"]}-{digest}'
 
 
 def build(config):

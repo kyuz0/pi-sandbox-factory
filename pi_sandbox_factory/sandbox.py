@@ -24,7 +24,7 @@ from types import SimpleNamespace
 from .sandbox_options import options, memory_limit, permissions, write_json, guidance
 
 ROOT = Path(__file__).resolve().parent
-LABEL = 'io.vscode-pi-sandbox.name'
+LABEL = 'io.pi-sandbox-factory.name'
 PI_VERSION = '1.4.0'
 PENDANT_VERSION = '0.94.2'
 RUNTIME_ENV = {
@@ -162,7 +162,7 @@ def parse_rules(text):
 def squid_config(rules):
     lines = [
         'http_port 127.0.0.1:3128',
-        'visible_hostname vscode-pi-sandbox-gateway',
+        'visible_hostname pi-sandbox-factory-gateway',
         # The entrypoint supervises Squid directly. A persistent PID file can
         # mistake a reused container PID for the previous process after a crash.
         'pid_filename none',
@@ -242,7 +242,7 @@ def choose_engine(requested, quiet=False):
 
 
 def names(config):
-    prefix = 'vscode-pi-sandbox-' + config['name']
+    prefix = 'pi-sandbox-factory-' + config['name']
     return prefix, prefix + '-proxy', prefix + '-socket', prefix + '-home'
 
 
@@ -253,8 +253,8 @@ def image_names(config):
         suffix += '-browser'
     if 'model_providers' in config:
         suffix += '-models-' + model_providers.digest(config)
-    return (f'localhost/vscode-pi-sandbox-dev:{profile["name"]}-{base_tag(config)}-{profile["digest"]}{suffix}',
-            'localhost/vscode-pi-sandbox-proxy:1')
+    return (f'localhost/pi-sandbox-factory-dev:{profile["name"]}-{base_tag(config)}-{profile["digest"]}{suffix}',
+            'localhost/pi-sandbox-factory-proxy:1')
 
 
 def network_mode(config):
@@ -278,7 +278,7 @@ def build(config):
     common = config['common']
     if tree_digest(Path(common['path'])) != common['digest']:
         raise ValueError('Saved common image inputs were modified; use recreate --profile to refresh them')
-    base = f'localhost/vscode-pi-sandbox-base:{base_tag(config)}'
+    base = f'localhost/pi-sandbox-factory-base:{base_tag(config)}'
     engine = config['engine']
     run([engine, 'build', '-t', proxy, ROOT / 'containers/proxy'])
     with sandbox_extensions.build_contexts(common['path']) as contexts:
@@ -530,8 +530,8 @@ def up(config, state):
     for _ in range(40):
         ready = 'test -f /home/node/.vscode-server/data/Machine/settings.json'
         entrypoint = Path(config.get('common', {}).get('path', '/nonexistent')) / 'entrypoint.sh'
-        if 'options' in config and entrypoint.is_file() and '/tmp/vscode-pi-sandbox-ready' in entrypoint.read_text():
-            ready += ' && test -f /tmp/vscode-pi-sandbox-ready'
+        if 'options' in config and entrypoint.is_file() and '/tmp/pi-sandbox-factory-ready' in entrypoint.read_text():
+            ready += ' && test -f /tmp/pi-sandbox-factory-ready'
         if restricted:
             ready += ' && test -S /run/egress/proxy.sock && echo >/dev/tcp/127.0.0.1/3128'
         result = run([engine, 'exec', dev, 'bash', '-c', ready], capture=True, check=False,
@@ -888,11 +888,13 @@ def open_editor(config, state):
 
 
 def main():
-    parser = argparse.ArgumentParser(prog="vscode-pi-sandbox", description=__doc__)
-    parser.add_argument('--state-dir', default=str(Path.home() / '.local/state/vscode-pi-sandbox'))
+    parser = argparse.ArgumentParser(prog="pi-sandbox-factory", description=__doc__)
+    from .updates import installed_version
+    parser.add_argument('--version', action='version', version=installed_version())
+    parser.add_argument('--state-dir', default=str(Path.home() / '.local/state/pi-sandbox-factory'))
     sub = parser.add_subparsers(dest='command')
     parser.set_defaults(command='tui')
-    sub.add_parser('tui', help='Open Sandbox Cockpit (requires Textual)')
+    sub.add_parser('tui', help='Open the terminal manager')
     sub.add_parser('profiles', help='List available profiles')
     for kind in ('profile','provider'):
         package=sub.add_parser(kind,help='Manage installed '+kind+' packages')

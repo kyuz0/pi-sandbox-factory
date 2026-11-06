@@ -31,7 +31,7 @@ def read_lock(common_path):
 
 
 def cache_root():
-    return Path(os.environ.get('XDG_CACHE_HOME', Path.home() / '.cache')) / 'vscode-pi-sandbox/extensions'
+    return Path(os.environ.get('XDG_CACHE_HOME', Path.home() / '.cache')) / 'pi-sandbox-factory/extensions'
 
 
 def archive(source, cache=None):

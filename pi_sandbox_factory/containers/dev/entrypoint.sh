@@ -1,8 +1,8 @@
 #!/bin/bash
 set -euo pipefail
-rm -f /tmp/vscode-pi-sandbox-ready
+rm -f /tmp/pi-sandbox-factory-ready
 python3 /usr/local/lib/sandbox-bootstrap.py
-touch /tmp/vscode-pi-sandbox-ready
+touch /tmp/pi-sandbox-factory-ready
 if [ "${SANDBOX_NETWORK_MODE:-allowlist}" = unrestricted ]; then
     exec sleep infinity
 fi

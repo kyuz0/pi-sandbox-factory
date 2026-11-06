@@ -6,7 +6,7 @@ import tarfile
 import tempfile
 import unittest
 from unittest.mock import patch
-from vscode_pi_sandbox import sandbox_extensions as extensions
+from pi_sandbox_factory import sandbox_extensions as extensions
 
 
 def bundle(name='package.json', content=b'{}', kind=tarfile.REGTYPE):

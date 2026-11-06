@@ -96,13 +96,13 @@ def enabled(config): return bool(config.get('ssh',{}).get('hosts'))
 
 
 def names(config):
-    prefix = 'vscode-pi-sandbox-' + config['name'] + '-ssh'
+    prefix = 'pi-sandbox-factory-' + config['name'] + '-ssh'
     return prefix, prefix+'-socket', prefix+'-keys'
 
 
 def image(config):
     from . import sandbox as core
-    return f'localhost/vscode-pi-sandbox-ssh:{config["uid"]}-{config["gid"]}-{core.tree_digest(core.ROOT / "containers/ssh-access")}'
+    return f'localhost/pi-sandbox-factory-ssh:{config["uid"]}-{config["gid"]}-{core.tree_digest(core.ROOT / "containers/ssh-access")}'
 
 
 def build(config):

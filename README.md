@@ -1,9 +1,11 @@
-# VS Code Pi Sandbox
+# Pi Sandbox Factory
 
 Run Pi and Pendant in independent development containers, managed from a terminal.
 Each sandbox works on a folder you choose and keeps its own models, sessions and
 editor state. Profiles add tools and skills; model providers configure the models
 Pi can use. Local model discovery is included by default.
+
+![Pi Sandbox Factory terminal interface](docs/sandboxes.png)
 
 ## Install
 
@@ -11,17 +13,21 @@ You need Linux, Python 3.10+, Git, rootless Podman and desktop VS Code with `cod
 on your PATH. The launcher installs the Dev Containers extension if needed.
 Docker also works, but forwarding a host-loopback model requires rootless Podman.
 
-The distribution and command are both named `vscode-pi-sandbox`. Install from
-this checkout:
+Install pipx with your distribution's package manager, then:
 
 ```sh
-python3 -m venv .venv
-.venv/bin/pip install .
-.venv/bin/vscode-pi-sandbox
+pipx ensurepath
+pipx install git+https://github.com/kyuz0/pi-sandbox-factory.git
+pi-sandbox-factory
 ```
 
-A built wheel can be installed with `pipx install ./vscode_pi_sandbox-*.whl`.
+Open a new terminal after `pipx ensurepath` if the command is not found.
 The first sandbox build downloads Pi, Pendant and their dependencies.
+
+The manager checks GitHub for updates in the background. **Upgrade now** runs
+`pipx upgrade pi-sandbox-factory` after confirmation and restarts the manager.
+You can run the same command in your terminal. Existing sandboxes receive image
+updates through **Actions → Update sources and recreate…**.
 
 Choose **New sandbox**, select your project folder and enable the port used by
 your model server, usually `8000`. Create it, then choose **Open in VS Code**.
@@ -33,8 +39,8 @@ Refresh**. [CLI and everyday use](docs/usage.md).
 Use **Packages** or install a profile from a Git URL:
 
 ```sh
-vscode-pi-sandbox profile add reporting git@git.example.com:team/reporting.git
-vscode-pi-sandbox provider add company git@git.example.com:team/company-models.git
+pi-sandbox-factory profile add reporting git@git.example.com:team/reporting.git
+pi-sandbox-factory provider add company git@git.example.com:team/company-models.git
 ```
 
 For repositories containing several plugins, add `--subdir FOLDER` to select one.

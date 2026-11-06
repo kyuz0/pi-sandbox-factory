@@ -5,7 +5,7 @@ import subprocess
 import tempfile
 import unittest
 from unittest.mock import patch
-from vscode_pi_sandbox import registry, sandbox, model_providers
+from pi_sandbox_factory import registry, sandbox, model_providers
 
 
 class RegistryTests(unittest.TestCase):
@@ -179,7 +179,7 @@ class RegistryTests(unittest.TestCase):
             patch(
                 "sys.argv",
                 [
-                    "vscode-pi-sandbox",
+                    "pi-sandbox-factory",
                     "profile",
                     "add",
                     "sample",

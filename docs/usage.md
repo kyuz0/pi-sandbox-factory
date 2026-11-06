@@ -4,11 +4,11 @@ Pi and Pendant in a container, with a Textual manager and a dedicated VS Code wi
 
 Requirements: Linux, Python 3.10+, rootless Podman or Docker, and desktop VS Code with `code` on PATH. Host-loopback model access currently requires rootless Podman. Build steps download application dependencies; model servers and model files are managed separately.
 
-```sh
-python3 -m venv .venv
-.venv/bin/pip install .
-.venv/bin/vscode-pi-sandbox
-```
+Install and update with [pipx](../README.md#install). Run `pi-sandbox-factory`
+to open the manager. The version appears beside the title; `--version` prints it
+from the terminal. Update checks run in the background and stay quiet when GitHub
+is unreachable. The upgrade button is available for pipx installations; source
+checkouts use their usual Git and package-install workflow.
 
 Select **New sandbox**, choose a name and workspace, review settings, then create the sandbox. The base profile includes Pi, Pendant with built-in goals, and document tools. Install additional profiles through **Packages**, or select a custom profile folder.
 
@@ -20,7 +20,7 @@ Deleting a sandbox removes its containers, private home and editor state while p
 
 You can start your inference server before or after creating the sandbox. During creation or in Settings, enable host-local models and enter its ports, such as `8000` or `8000-8002`. The launcher adds those exact destinations to the restricted gateway policy. The development container keeps its isolated network; only the gateway maps `local-model.internal` to host loopback.
 
-The manager initializes the model catalogue before opening VS Code. If the server is offline, the editor still opens with **Model not connected**. Start the server, then choose **Settings → Models → Refresh** or run `vscode-pi-sandbox configure NAME`.
+The manager initializes the model catalogue before opening VS Code. If the server is offline, the editor still opens with **Model not connected**. Start the server, then choose **Settings → Models → Refresh** or run `pi-sandbox-factory configure NAME`.
 
 For later model changes within an open Pi or Pendant session:
 
@@ -39,18 +39,18 @@ Other remote destinations may be added explicitly in Settings. Disabling host-lo
 ## CLI and storage
 
 ```sh
-vscode-pi-sandbox create example --workspace /absolute/path/to/project \
+pi-sandbox-factory create example --workspace /absolute/path/to/project \
   --engine podman --memory 8g --local-model-ports 8000 \
   --allow-domain local-model.internal:8000 --start
-vscode-pi-sandbox open example
-vscode-pi-sandbox down example
-vscode-pi-sandbox up example
-vscode-pi-sandbox delete example
+pi-sandbox-factory open example
+pi-sandbox-factory down example
+pi-sandbox-factory up example
+pi-sandbox-factory delete example
 ```
 
 CLI `delete` is an explicit destructive command; the TUI adds a confirmation dialog.
 
-Saved state defaults to `~/.local/state/vscode-pi-sandbox`. Use `--state-dir PATH` before the command for an independent inventory. TUI defaults live in `~/.config/vscode-pi-sandbox/cockpit.json` (or under `XDG_CONFIG_HOME`). Workspaces are user-selected folders outside source/state. Container names and ownership labels are specific to this application.
+Saved state defaults to `~/.local/state/pi-sandbox-factory`. Use `--state-dir PATH` before the command for an independent inventory. TUI defaults live in `~/.config/pi-sandbox-factory/cockpit.json` (or under `XDG_CONFIG_HOME`). Workspaces are user-selected folders outside source/state. Container names and ownership labels are specific to this application.
 
 ### Package download presets
 
@@ -60,11 +60,9 @@ For JavaScript packages, check **npm · JavaScript packages**. This adds `regist
 
 Common presets are **pip** for Python packages, **npm** for JavaScript packages, and **GitHub** for repositories and release downloads. They can be combined, work in new-sandbox configuration and Settings → Network, and stay synchronized with manual allowlist edits. Enable only the services the project needs; new sandboxes leave these presets unchecked.
 
-This covers packages and build dependencies hosted on PyPI. Git URLs, private indexes and packages that download additional assets from other sites need explicit destinations of their own. See the [PyPI index API](https://docs.pypi.org/api/index-api/) for how the index links to package downloads.
-
 To update an existing restricted sandbox, select it and choose **Settings → Network**. Edit destinations or check the pip preset, then **Apply network**. Only the gateway restarts; development processes, terminals and files remain in place. Active network requests may need to reconnect. A stopped gateway stays stopped and uses the new rules at its next start. Use **Settings → Configuration** for network mode or host model port changes.
 
-CLI equivalent: `vscode-pi-sandbox network NAME --allowlist /path/to/allowlist.txt`.
+CLI equivalent: `pi-sandbox-factory network NAME --allowlist /path/to/allowlist.txt`.
 
 The **GitHub** preset allows HTTPS repository and release access. For SSH hosts or authenticated Git access with an isolated key, see [SSH and GitHub](ssh.md). [Advisors](advisors.md) covers Codex, Antigravity and Claude setup.
 

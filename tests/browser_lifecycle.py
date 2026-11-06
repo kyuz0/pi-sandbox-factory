@@ -13,8 +13,8 @@ import urllib.error
 import urllib.request
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from vscode_pi_sandbox import sandbox
-from vscode_pi_sandbox.browser_viewer import ensure_viewer
+from pi_sandbox_factory import sandbox
+from pi_sandbox_factory.browser_viewer import ensure_viewer
 
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('--state-dir', type=Path, required=True)

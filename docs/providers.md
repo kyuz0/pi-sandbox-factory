@@ -8,9 +8,9 @@ Model Manager.
 ## Install and select
 
 ```sh
-vscode-pi-sandbox provider add company git@git.example.com:team/company-models.git
-vscode-pi-sandbox provider list
-vscode-pi-sandbox provider show company
+pi-sandbox-factory provider add company git@git.example.com:team/company-models.git
+pi-sandbox-factory provider list
+pi-sandbox-factory provider show company
 ```
 
 For a provider in a shared plugin repository, add `--subdir FOLDER` when
@@ -29,12 +29,12 @@ For the CLI, put settings in a JSON file:
 ```
 
 ```sh
-vscode-pi-sandbox create project --workspace /absolute/path/to/project \
+pi-sandbox-factory create project --workspace /absolute/path/to/project \
   --providers-file providers.json --local-model-ports 8000 \
   --allow-domain local-model.internal:8000 --allow-domain models.example.com:443 --start
-vscode-pi-sandbox configure project --provider company --key
-vscode-pi-sandbox configure project --provider company --preview
-vscode-pi-sandbox configure project --provider company --status
+pi-sandbox-factory configure project --provider company --key
+pi-sandbox-factory configure project --provider company --preview
+pi-sandbox-factory configure project --provider company --status
 ```
 
 `--key` prompts without echo. `--key-stdin` accepts a key from a credential tool.

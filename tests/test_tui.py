@@ -6,8 +6,8 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from vscode_pi_sandbox import sandbox
-from vscode_pi_sandbox.sandbox_tui import Cockpit, Confirm, NewSandbox, SettingsForm, Operation, DEFAULT_SETTINGS, Service
+from pi_sandbox_factory import sandbox
+from pi_sandbox_factory.sandbox_tui import Cockpit, Confirm, NewSandbox, SettingsForm, Operation, DEFAULT_SETTINGS, Service
 from textual.widgets import Input, Button, DataTable, Checkbox, TextArea, OptionList
 
 class FakeService:
@@ -30,14 +30,15 @@ class TUITests(unittest.TestCase):
     def _callTestMethod(self,method):self.runner.run(method())
     def setUp(self):
         self.tmp=tempfile.TemporaryDirectory();self.root=Path(self.tmp.name)
-        self.defaults=patch('vscode_pi_sandbox.sandbox_tui.load_defaults',side_effect=lambda:copy.deepcopy(DEFAULT_SETTINGS));self.defaults.start()
+        self.defaults=patch('pi_sandbox_factory.sandbox_tui.load_defaults',side_effect=lambda:copy.deepcopy(DEFAULT_SETTINGS));self.defaults.start()
+        self.update_check=patch('pi_sandbox_factory.updates.available_update',return_value=None);self.update_check.start()
         self.records=[]
         for name in ['alpha','beta']:
             state=self.root/name;state.mkdir();(state/'allowlist.txt').write_text('local-model.internal:8000\n')
             c=dict(name=name,engine='podman',network='allowlist',workspace=str(self.root/'files'/name),
                    profile=sandbox.load_profile('base'),local_model_ports='8000',memory='8g',subagents=False)
             self.records.append(dict(name=name,profile='base',engine='podman',dev='running',proxy='running',workspace=c['workspace'],config=c))
-    def tearDown(self):self.defaults.stop();self.tmp.cleanup()
+    def tearDown(self):self.update_check.stop();self.defaults.stop();self.tmp.cleanup()
     async def ready(self,app,pilot):await app.workers.wait_for_complete();await pilot.pause()
 
     async def settings_page(self, app, pilot, index=2):
@@ -51,6 +52,58 @@ class TUITests(unittest.TestCase):
         menu=app.screen.query_one('#more-actions',OptionList)
         menu.highlighted=6;menu.focus()
         await pilot.press('enter');await pilot.pause()
+
+    async def test_banner_and_update_notice_fit_small_and_large_terminals(self):
+        for size in ((80,24),(120,40)):
+            app=Cockpit(self.root,FakeService(self.records))
+            async with app.run_test(size=size) as pilot:
+                await self.ready(app,pilot)
+                with patch('pi_sandbox_factory.updates.pipx_install',return_value=True), patch('pi_sandbox_factory.sandbox_tui.shutil.which',return_value='/bin/pipx'):
+                    app.show_update('2099.1.1.1')
+                await pilot.pause()
+                title=app.query_one('#title-banner')
+                self.assertEqual(title.region.height,1 if size[0]==80 else 6)
+                self.assertFalse(app.query_one('#application-update-run',Button).disabled)
+                self.assertLess(app.query_one('#new').region.bottom,size[1])
+                self.assertLess(app.query_one('#more').region.bottom,size[1])
+                self.assertGreaterEqual(app.query_one('#sandboxes').region.height,5)
+                self.assertIn('pipx upgrade pi-sandbox-factory',str(app.query_one('#application-update-message').render()))
+                self.assertTrue(await pilot.click('#settings'))
+                await pilot.pause()
+                self.assertEqual(type(app.screen).__name__,'SettingsMenu')
+
+    async def test_update_requires_confirmation_and_reports_failure(self):
+        from contextlib import nullcontext
+        import subprocess
+        app=Cockpit(self.root,FakeService([]))
+        async with app.run_test(size=(100,36)) as pilot:
+            await self.ready(app,pilot)
+            with patch('pi_sandbox_factory.updates.pipx_install',return_value=True), patch('pi_sandbox_factory.sandbox_tui.shutil.which',return_value='/bin/pipx'):
+                app.show_update('2099.1.1.1')
+            await pilot.pause()
+            with patch.object(app,'suspend',return_value=nullcontext()), patch('pi_sandbox_factory.sandbox_tui.subprocess.run',side_effect=subprocess.CalledProcessError(1,['pipx'])) as run:
+                await pilot.click('#application-update-run');await pilot.pause()
+                self.assertIsInstance(app.screen,Confirm)
+                await pilot.click('#cancel');await pilot.pause()
+                run.assert_not_called()
+                await pilot.click('#application-update-run');await pilot.pause()
+                await pilot.click('#yes');await pilot.pause()
+                run.assert_called_once_with(('pipx','upgrade','pi-sandbox-factory'),check=True)
+                self.assertIn('Upgrade failed',str(app.query_one('#application-update-message').render()))
+                self.assertFalse(app.query_one('#application-update-run',Button).disabled)
+
+    async def test_successful_update_relaunches_and_source_install_disables_button(self):
+        from contextlib import nullcontext
+        from pi_sandbox_factory import updates
+        app=Cockpit(self.root,FakeService([]))
+        async with app.run_test(size=(100,36)) as pilot:
+            await self.ready(app,pilot)
+            with patch('pi_sandbox_factory.updates.pipx_install',return_value=False):
+                app.show_update('2099.1.1.1')
+            self.assertTrue(app.query_one('#application-update-run',Button).disabled)
+            with patch.object(app,'suspend',return_value=nullcontext()), patch('pi_sandbox_factory.sandbox_tui.subprocess.run'), patch.object(app,'exit') as finish:
+                app.upgrade(True)
+                finish.assert_called_once_with(result=updates.RELAUNCH)
 
     async def test_new_shortcut_works_while_search_has_focus(self):
         for records in ([], self.records):
@@ -83,7 +136,7 @@ class TUITests(unittest.TestCase):
                     self.assertIsInstance(app.screen, NewSandbox)
 
     async def test_advisors_live_in_settings_and_allow_initial_setup(self):
-        from vscode_pi_sandbox.sandbox_tui import AdvisorsScreen
+        from pi_sandbox_factory.sandbox_tui import AdvisorsScreen
         service=FakeService(self.records)
         service.advisors=lambda name,settings,log:service.calls.append(['advisors',name,settings])
         app=Cockpit(self.root,service)
@@ -139,7 +192,7 @@ class TUITests(unittest.TestCase):
             await pilot.press('q')
 
     async def test_github_preset_in_network_editor(self):
-        from vscode_pi_sandbox.sandbox_tui import GITHUB_HOSTS, preset_allowed
+        from pi_sandbox_factory.sandbox_tui import GITHUB_HOSTS, preset_allowed
         app=Cockpit(self.root,FakeService(self.records))
         async with app.run_test(size=(100,36)) as pilot:
             await self.ready(app,pilot);await self.settings_page(app,pilot,index=0)
@@ -150,7 +203,7 @@ class TUITests(unittest.TestCase):
             await pilot.press('q')
 
     async def test_ssh_settings_keep_key_import_separate(self):
-        from vscode_pi_sandbox.sandbox_tui import SSHScreen
+        from pi_sandbox_factory.sandbox_tui import SSHScreen
         service=FakeService(self.records);app=Cockpit(self.root,service)
         async with app.run_test(size=(100,36)) as pilot:
             await self.ready(app,pilot);await self.settings_page(app,pilot,index=4)
@@ -191,7 +244,7 @@ class TUITests(unittest.TestCase):
             app.screen.query_one('#new-advisor-codex',Checkbox).value=True
             app.screen.query_one('#new-advisor-agy',Checkbox).value=True
             app.screen.query_one('#new-advisor-claude',Checkbox).value=True
-            with patch('vscode_pi_sandbox.sandbox.choose_engine',return_value='podman'):
+            with patch('pi_sandbox_factory.sandbox.choose_engine',return_value='podman'):
                 await pilot.click('#apply');await self.ready(app,pilot)
             self.assertIsInstance(app.screen,Operation)
             draft=service.calls[0][1]
@@ -208,7 +261,7 @@ class TUITests(unittest.TestCase):
             await self.settings_page(app,pilot)
             form=app.screen;self.assertIsInstance(form,SettingsForm)
             form.query_one('#model-ports',Input).value='8080'
-            with patch('vscode_pi_sandbox.sandbox.choose_engine',return_value='podman'):
+            with patch('pi_sandbox_factory.sandbox.choose_engine',return_value='podman'):
                 await pilot.click('#apply');await pilot.pause()
             self.assertIsInstance(app.screen,Confirm);await pilot.click('#yes');await self.ready(app,pilot)
             self.assertEqual(service.calls[0][0:2],['update','beta'])
@@ -227,7 +280,7 @@ class TUITests(unittest.TestCase):
             for name in ['open','settings','new','more','packages']:
                 b=app.query_one('#'+name,Button)
                 self.assertLessEqual(b.region.right,80,name);self.assertLessEqual(b.region.bottom,23,name)
-            self.assertEqual(len(app.query(Button)),5)
+            self.assertEqual(len(app.query('#home Button')),5)
             app.save_screenshot(filename='sandbox-home-declutter.svg',path='/tmp')
             await self.settings_page(app,pilot,index=0)
             self.assertLessEqual(app.screen.query_one('#apply-network',Button).region.bottom,23)
@@ -269,7 +322,7 @@ class TUITests(unittest.TestCase):
             self.assertFalse(checkbox.value)
             checkbox.value=True;await pilot.pause()
             self.assertEqual(field.text.count('pypi.org:443'),1)
-            with patch('vscode_pi_sandbox.sandbox.choose_engine',return_value='podman'):
+            with patch('pi_sandbox_factory.sandbox.choose_engine',return_value='podman'):
                 draft, key=app.screen.collect()
             self.assertIn('files.pythonhosted.org:443',draft['allowlist'])
             self.assertIn('example.com:443',draft['allowlist'])
@@ -290,7 +343,7 @@ class TUITests(unittest.TestCase):
             self.assertEqual(field.text,'pypi.org:443\nexample.com:443')
             field.load_text('registry.npmjs.org:443\npypi.org:443');await pilot.pause()
             self.assertTrue(checkbox.value)
-            with patch('vscode_pi_sandbox.sandbox.choose_engine',return_value='podman'):
+            with patch('pi_sandbox_factory.sandbox.choose_engine',return_value='podman'):
                 draft, key=app.screen.collect()
             self.assertIn('registry.npmjs.org:443',draft['allowlist'])
 
@@ -358,7 +411,7 @@ class TUITests(unittest.TestCase):
             self.assertIsInstance(app.screen,Operation)
 
     async def test_saved_unregistered_provider_remains_in_configuration(self):
-        from vscode_pi_sandbox import registry
+        from pi_sandbox_factory import registry
         provider={'name':'company','settings':{'endpoint':'https://models.example.com/v1'},
                   'manifest':{'description':'Company models','settings':{'endpoint':{'type':'text','network':True},'key':{'type':'secret'}}}}
         self.records[0]['config']['model_providers']=[provider]
@@ -370,7 +423,7 @@ class TUITests(unittest.TestCase):
                 self.assertTrue(form.query_one('#source-company',Checkbox).value)
                 self.assertEqual(form.query_one('#source-company-endpoint',Input).value,'https://models.example.com/v1')
                 self.assertEqual(len(form.query('#source-company-key')),0)
-                with patch('vscode_pi_sandbox.sandbox.choose_engine',return_value='podman'):
+                with patch('pi_sandbox_factory.sandbox.choose_engine',return_value='podman'):
                     draft,_=form.collect()
                 self.assertEqual(draft['model_providers']['company'],provider['settings'])
                 self.assertIn('models.example.com:443',draft['allowlist'])

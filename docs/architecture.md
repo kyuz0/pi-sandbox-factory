@@ -45,6 +45,8 @@ the development container, plus optional Pi extensions and skills. Both Pi and
 Pendant use the private home catalogue. A shared lock serializes model updates;
 credentials enter through stdin and are never included in image layers.
 
+## Browser access
+
 Browser support uses one headless Chromium per Pi session inside the development
 container. A host Python process relays authenticated viewer requests through a
 fixed container helper; it has no arbitrary destination or command interface.

@@ -4,14 +4,14 @@ import {mkdtemp, mkdir, writeFile, readFile, cp, rm, access} from 'node:fs/promi
 import {tmpdir} from 'node:os';
 import {join, resolve} from 'node:path';
 import {spawn} from 'node:child_process';
-import {locked, guard} from '../vscode_pi_sandbox/providers/provider-lock.mjs';
+import {locked, guard} from '../pi_sandbox_factory/providers/provider-lock.mjs';
 
 async function fixture(t, adapter) {
   const root = await mkdtemp(join(tmpdir(), 'provider-test-'));
   t.after(() => rm(root, {recursive: true, force: true}));
   await mkdir(join(root, 'agent'));
   for (const file of ['provider-runner.mjs', 'provider-lock.mjs'])
-    await cp(resolve('vscode_pi_sandbox/providers', file), join(root, file));
+    await cp(resolve('pi_sandbox_factory/providers', file), join(root, file));
   await writeFile(join(root, 'adapter.mjs'), adapter);
   await writeFile(join(root, 'providers.json'), JSON.stringify([{id:'test', directory:root,
     manifest:{entry:'adapter.mjs', settings:{endpoint:{type:'text', default:'default-endpoint'}}}, settings:{}}]));

@@ -52,7 +52,7 @@ def build(config, image, launcher, base_image=None):
     skills = config.get('extra_skills', [])
     if not skills:
         return
-    with tempfile.TemporaryDirectory(prefix='vscode-pi-sandbox-skills-') as temp:
+    with tempfile.TemporaryDirectory(prefix='pi-sandbox-factory-skills-') as temp:
         context = Path(temp)
         resources = []
         for skill in skills:

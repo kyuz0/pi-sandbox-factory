@@ -21,7 +21,7 @@ def root():
         os.environ.get(
             "SANDBOX_REGISTRY_DIR",
             Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config"))
-            / "vscode-pi-sandbox/packages",
+            / "pi-sandbox-factory/packages",
         )
     )
 
