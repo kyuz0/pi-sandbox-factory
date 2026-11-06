@@ -1142,7 +1142,10 @@ def main():
             result = subprocess.run(command + ['--keys-stdin'], input=payload, text=True, capture_output=True)
         if result.returncode:
             raise ValueError('Could not read or save search API keys; check the selected provider and key format')
-        statuses = json.loads(result.stdout)
+        try:
+            statuses = json.loads(result.stdout)
+        except json.JSONDecodeError:
+            raise ValueError('Update sources and recreate this sandbox before managing search keys with this version') from None
         if args.status or args.export_keys:
             print(json.dumps(statuses))
         else:

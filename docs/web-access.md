@@ -126,7 +126,8 @@ Pass an options file during creation or as `options` in an `update` settings fil
 ```
 
 Save Brave’s key with the command above to activate it. Existing single-provider
-settings retain **Only…** mode when updated.
+settings retain **Only…** mode when updated. Use **Actions → Update sources and
+recreate…** before copying keys from a sandbox created with an older version.
 
 Category IDs are `dev-python`, `dev-npmjs`, `dev-rust`, `dev-github`,
 `dev-stackexchange`, `dev-readthedocs`, `ut1-press`, `ut1-financial`, `ut1-bank`
