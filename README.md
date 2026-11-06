@@ -1,14 +1,16 @@
 # Pi Sandbox Factory
 
-Pi Sandbox Factory helps you use the Pi coding agent on your projects inside a
-development container. You choose a project folder, create a sandbox from the
-terminal interface, then open it in VS Code. The sandbox comes with Pi and
-Pendant, the VS Code extension that lets you chat with Pi while you work.
+Pi Sandbox Factory makes it easy to run Pi coding agents in a sandbox, with
+controls over the files they can access, the commands they can run and the
+network destinations they can reach. The agent works inside a development
+container with access to your chosen project folder. Network access is restricted
+by default, and commands that need broader permissions go through approval.
+Approved commands still run inside the container.
 
-Each sandbox has its own tools, model settings and conversation history. Your
-project files stay in the folder you selected. Local model discovery is included,
-and you can add other model connections or customize the development tools as
-your needs change.
+You manage sandboxes through a terminal interface and open them in VS Code with
+Pendant, the extension that provides Pi’s chat interface. Each sandbox keeps its
+own tools, model settings and conversations. Local model discovery is included;
+you can add other model providers and reusable profiles for different projects.
 
 ![Pi Sandbox Factory terminal interface](docs/sandboxes.png)
 
