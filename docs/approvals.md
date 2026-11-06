@@ -34,14 +34,13 @@ assistant replies, within an estimated 8,192-token reviewer input budget.
 Omissions are reported to the reviewer. When history fills, it is rebuilt from
 original instructions; if those cannot be reconstructed intact, automatic
 approval is withheld. Reviewer history is held in memory and resets on Pi
-restart. This does not require changing Pi's compaction process.
+restart.
 
 A review can produce up to 32,768 output tokens and has a ten-minute maximum
-deadline. Normal response time depends on the model and context; the deadline
-is not a delay imposed on each command. Invalid replies, unexpected tool calls,
+deadline. Invalid replies, unexpected tool calls,
 timeouts and provider failures do not grant permission. Default failure handling
 returns the reason to the agent without opening a dialog. The agent can retry a failed
-review or choose an allowed alternative. No failed review grants access. Thinking
+review or choose an allowed alternative. Thinking
 is set to low, and its tokens share the output allowance.
 
 ## Configuration and updates

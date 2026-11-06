@@ -10,6 +10,7 @@ Implementation and shipped assets live in `pi_sandbox_factory/`:
 
 - `sandbox.py`: lifecycle, ownership, immutable snapshots and image identities.
 - `sandbox_tui.py`: terminal forms; `sandbox_options.py`: shared validation.
+- `web_access.py`: search settings; `network_groups.py`: trusted category updates and gateway rules.
 - `updates.py`: GitHub tags, installed version and pipx upgrade detection.
 - `browser_viewer.py`: authenticated loopback viewer and container-bound lifetime.
 - `registry.py`: Git/local packages, revisions and installation.

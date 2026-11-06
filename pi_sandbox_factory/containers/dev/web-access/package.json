@@ -1,0 +1,7 @@
+{
+  "name": "pi-sandbox-web-access",
+  "private": true,
+  "dependencies": {
+    "pi-web-access": "0.47.0"
+  }
+}

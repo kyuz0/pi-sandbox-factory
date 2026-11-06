@@ -116,6 +116,22 @@ async function main() {
   assert.deepEqual(inventory.diagnostics.filter(d => d.level === 'error'), [], 'Extension errors');
   assert(!fs.existsSync('/opt/pi-security/node_modules/pi-goal'), 'Legacy Goal package installed');
   assert(inventory.tools.some(t => t.name === 'ask_user_question'), 'ask_user_question tool missing');
+  if (process.argv.includes('--web-access')) {
+    assert(inventory.tools.some(t => t.name === 'web_search'), 'Web search missing');
+    assert(inventory.tools.some(t => t.name === 'fetch_content'), 'Page reader missing');
+    await request({type:'session_set_model',provider:'fixture',modelId:'fixture-model',persist:false}, 'inventory');
+    await request({type:'session_prompt',text:'RUN_WEB_ACCESS',images:[],source:'interactive'}, 'inventory');
+    const state = await waitForReply('inventory', 'WEB_ACCESS_DONE');
+    const results = state.messages.filter(m => m.role === 'toolResult');
+    assert.equal(results.length, 3, JSON.stringify(results));
+    assert(!results[0].isError, JSON.stringify(results[0]));
+    assert(!results[1].isError, JSON.stringify(results[1]));
+    assert(JSON.stringify(results[1]).includes('Comprehensions'), 'Allowed page content missing');
+    assert(/403|Forbidden|denied/i.test(JSON.stringify(results[2])), 'Unselected site was not blocked');
+    assert.equal(sessions.get('inventory').dialogs, 0);
+    console.log('PASS actual Pendant: live Exa search, allowed Python page, blocked unselected page; no approval dialog');
+    return;
+  }
   if (process.argv.includes('--viewer')) {
     assert(inventory.tools.some(t => t.name === 'browser_viewer'), 'Viewer tool missing');
     await request({type:'session_dispose',reason:'replacement'}, 'inventory');

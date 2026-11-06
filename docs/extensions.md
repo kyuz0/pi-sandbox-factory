@@ -17,11 +17,11 @@ Fixes and unit tests belong in the extension repositories. This repository manag
 
 ## Goals
 
-Pendant uses its built-in goals. The **Pendant goals** setting controls whether they are enabled. The standalone Pi CLI has no Goal extension installed by the sandbox.
+Enable **Pendant goals** in Configuration to use Pendant’s built-in goals. This feature is available in Pendant, not the standalone Pi CLI.
 
 ## Questions in Pi and Pendant
 
-`rpiv-ask-user-question` loads by default. The agent uses `ask_user_question` to request a choice or clarification. Pendant displays native question cards; Pi displays a terminal questionnaire. Both accept option selections and free-text answers. Asking a question does not require an automatic permission review; the user answers the question directly. This exception applies only to `ask_user_question` and grants no command, file or network access.
+`rpiv-ask-user-question` loads by default. The agent uses `ask_user_question` to request a choice or clarification. Pendant displays native question cards; Pi displays a terminal questionnaire. Both accept option selections and free-text answers. Questions go directly to you, bypassing automatic permission review.
 
 For an existing sandbox, rebuild with its profile selected:
 

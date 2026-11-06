@@ -3,6 +3,7 @@ import json
 import os
 from pathlib import Path
 import shutil
+import subprocess
 
 os.umask(0o077)
 agent = Path('/home/node/.pi/agent')
@@ -14,10 +15,10 @@ for source in sorted(shared.iterdir()):
         continue
     # Sessions, OAuth refreshes, trust decisions, and settings need writable storage.
     if source.name in {'sessions', 'models.json',
-                       'auth.json', 'settings.json', 'trust.json', 'APPEND_SYSTEM.md', 'pendant-goals.json'}:
+                       'auth.json', 'web-search.json', 'settings.json', 'trust.json', 'APPEND_SYSTEM.md', 'pendant-goals.json'}:
         target = agent / source.name
         # Migrate writable configuration links created by older versions.
-        migrate = (source.name in {'models.json', 'APPEND_SYSTEM.md'} and target.is_symlink()
+        migrate = (source.name in {'models.json', 'web-search.json', 'APPEND_SYSTEM.md'} and target.is_symlink()
                    and target.readlink() == source)
         if source.is_file() and (not target.exists() or migrate):
             temporary = agent / ('.' + source.name + '.seed')
@@ -50,7 +51,7 @@ settings = json.loads(settings_file.read_text())
 # Replace legacy registrations with the image-managed versions. Pi rejects
 # duplicate Bash tools; a raw scheduler would expose an independent-agent path.
 managed_packages = ('pi-sandbox', '@erichll/pi-sandbox', '@erichll/pi-auto-review',
-                    '@gotgenes/pi-permission-system', 'pi-goal', 'pi-schedule-prompt', 'betterwright', '@juicesharp/rpiv-ask-user-question')
+                    '@gotgenes/pi-permission-system', 'pi-goal', 'pi-schedule-prompt', 'betterwright', 'pi-web-access', '@juicesharp/rpiv-ask-user-question')
 
 def managed_package(resource):
     source = resource.get('source') if isinstance(resource, dict) else resource
@@ -114,11 +115,18 @@ managed['extensions'].add('/opt/pi-advisor/extensions/advisor.js')
 managed['skills'].add('/opt/pi-advisor/skills/advisor')
 managed['extensions'].update(['/opt/pi-security/approval-mode.ts', '/opt/pi-security/packages/pi-auto-review/src/container-approval-mode.ts'])
 managed['extensions'].add('/opt/betterwright/extension.mjs')
+web_extension = '/opt/pi-web-access/node_modules/pi-web-access/dist/index.js'
+managed['extensions'].add(web_extension)
 for key, values in managed.items():
     settings[key] = [p for p in settings.get(key, []) if not isinstance(p, str) or p not in values]
 if os.environ.get('PI_ADVISOR_SOCKET'):
     image_resources['extensions'].append('/opt/pi-advisor/extensions/advisor.js')
     image_resources['skills'].append('/opt/pi-advisor/skills/advisor')
+if (selection.get('web_access') or {}).get('enabled'):
+    if not Path(web_extension).is_file():
+        raise ValueError('Web access is enabled but absent from this image; recreate the sandbox')
+    image_resources['extensions'].append(web_extension)
+    subprocess.run(['python3', '/usr/local/lib/sandbox-web-access.py'], check=True)
 if browser_enabled:
     if not Path('/opt/betterwright/extension.mjs').is_file():
         raise ValueError('Betterwright is enabled but missing from this image; recreate with --browser')

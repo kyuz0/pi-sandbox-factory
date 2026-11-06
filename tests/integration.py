@@ -18,6 +18,7 @@ p.add_argument('--artifacts',type=Path)
 p.add_argument('--port',type=int,default=8000,help='Unused host port allowed in the disposable sandbox')
 p.add_argument('--pendant-questions-only', action='store_true', help='Check Pendant startup and question choices, free text and cancellation')
 p.add_argument('--browser-viewer', action='store_true', help='Check viewer tool and guidance in actual Pendant sessions')
+p.add_argument('--web-access', action='store_true', help='Live keyless Exa search and category-controlled retrieval in Pi and Pendant')
 a=p.parse_args()
 RUNTIME=a.artifacts or Path(tempfile.mkdtemp(prefix='pi-sandbox-factory-check-'))
 RUNTIME.mkdir(parents=True,exist_ok=True)
@@ -52,11 +53,13 @@ try:
  subprocess.run(['podman','exec','-i',DEV,'python3','-c',code],input=json.dumps(config),text=True,check=True)
  if a.browser_viewer:
   subprocess.run(['podman','exec',DEV,'node','/opt/betterwright/check.mjs'],check=True)
- else:
+ elif not a.web_access:
   subprocess.run([sys.executable,str(ROOT/'sandbox.py'),'--state-dir',str(a.state_dir),'check',a.name,'--allowed-url',f'http://local-model.internal:{a.port}/v1/models'],check=True)
  checks = [('check_security_rpc.py',['python3','-']),('check_automation_rpc.py',['python3','-']),('check_pendant_worker.cjs',['node','-'])]
  if a.browser_viewer:
   checks = [('check_browser_rpc.py', ['python3', '-']), ('check_pendant_worker.cjs', ['node', '-', '--viewer'])]
+ elif a.web_access:
+  checks = [('check_web_access_rpc.py', ['python3', '-']), ('check_pendant_worker.cjs', ['node', '-', '--web-access'])]
  elif a.pendant_questions_only:
   checks = [('check_pendant_worker.cjs', ['node', '-', '--questions-only'])]
  for file,command in checks:
@@ -88,7 +91,7 @@ try:
  reviews = fixture/'reviews.jsonl'
  if reviews.exists():
   assert not any(json.loads(line)['question'] for line in reviews.read_text().splitlines()), 'Question tool unexpectedly invoked the reviewer'
- print('PASS Pi/Pendant browser viewer integration' if a.browser_viewer else 'PASS Pendant startup and questions; no question review calls' if a.pendant_questions_only else 'PASS real Pi/Pendant security, Goal, scheduling and transport using fixture replies',flush=True)
+ print('PASS Pi/Pendant browser viewer integration' if a.browser_viewer else 'PASS Pendant startup and questions; no question review calls' if a.pendant_questions_only else 'PASS Pi/Pendant web access integration' if a.web_access else 'PASS real Pi/Pendant security, Goal, scheduling and transport using fixture replies',flush=True)
 finally:
  server.terminate();server.wait(timeout=20)
  if saved_models is None:

@@ -2,4 +2,5 @@ recursive-include pi_sandbox_factory/containers *
 recursive-include pi_sandbox_factory/profiles *
 recursive-include pi_sandbox_factory/providers *
 recursive-include pi_sandbox_factory/checks *
+recursive-include pi_sandbox_factory/network-catalog *
 global-exclude __pycache__ *.py[cod]

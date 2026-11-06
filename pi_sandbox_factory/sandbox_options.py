@@ -3,11 +3,12 @@ import json
 import re
 from pathlib import Path
 from urllib.parse import urlsplit
+from . import web_access, network_groups
 
 SKILLS = {}
 PROFILE_SKILLS = {'base': []}
 DEFAULTS = {'approval': 'automatic', 'inner_sandbox': True, 'goals': True,
-            'scheduling': True, 'browser': False, 'disabled_skills': []}
+            'scheduling': True, 'browser': False, 'disabled_skills': [], 'web_access': None, 'website_groups': []}
 
 
 def options(value=None):
@@ -23,6 +24,8 @@ def options(value=None):
     disabled = result['disabled_skills']
     if not isinstance(disabled, list) or any(x not in SKILLS for x in disabled):
         raise ValueError('Unknown disabled skill')
+    result['web_access'] = web_access.settings(result['web_access'])
+    result['website_groups'] = network_groups.selected(result['website_groups'])
     return result
 
 
@@ -93,4 +96,5 @@ def guidance(selected, subagents=False):
         lines.append('Use schedule_prompt for requested future or recurring prompts. Jobs inject into this chat, '
                      'with its model and approval rules. Timers run only while this Pi session is open; '
                      'never promise delivery while Pi or the container is stopped. /schedule-prompt manages jobs.')
-    return '\n\n'.join(lines) + '\n'
+    lines.append(web_access.guidance(selected['web_access']))
+    return '\n\n'.join(x for x in lines if x) + '\n'

@@ -10,6 +10,7 @@ from contextlib import closing
 import hashlib
 import ipaddress
 import json
+from . import web_access, network_groups
 import os
 from pathlib import Path
 import re
@@ -159,7 +160,7 @@ def parse_rules(text):
     return rules
 
 
-def squid_config(rules):
+def squid_config(rules, groups=None):
     lines = [
         'http_port 127.0.0.1:3128',
         'visible_hostname pi-sandbox-factory-gateway',
@@ -178,16 +179,28 @@ def squid_config(rules):
         'http_access deny !sandbox_methods',
         # Reject unknown names before forwarding, so denied requests cause no DNS.
     ]
+    category = network_groups.acl(groups or {})
+    declarations = [line for line in category if line.startswith('acl ')]
+    category_access = [line for line in category if not line.startswith('acl ')]
+    lines += declarations
     if rules:
         lines += ['acl sandbox_hosts dstdomain -n ' + ' '.join(sorted({r[0] for r in rules})),
-                  'http_access deny !sandbox_hosts']
+                  'http_access deny !sandbox_hosts' + (' !category_hosts' if category else '')]
+    elif category:
+        lines += ['http_access deny !category_hosts']
     else:
         return '\n'.join(lines + ['http_access deny all', ''])
     for i, (host, port) in enumerate(rules):
         lines += [f'acl host_{i} dstdomain -n {host}', f'acl port_{i} port {port}']
     for i, _ in enumerate(rules):
         lines.append(f'http_access allow host_{i} port_{i}')
-    return '\n'.join(lines + ['http_access deny all', ''])
+    return '\n'.join(lines + category_access + ['http_access deny all', ''])
+
+
+def network_policy(config, rules):
+    selected = options(config.get('options'))
+    combined = list(dict.fromkeys(rules + web_access.destinations(selected['web_access'])))
+    return squid_config(combined, config.get('website_groups', {}))
 
 
 def validate_models(config, rules, strict=True):
@@ -251,6 +264,8 @@ def image_names(config):
     suffix = ('-' + hashlib.sha256(json.dumps([s['digest'] for s in config['extra_skills']]).encode()).hexdigest()[:12]) if config.get('extra_skills') else ''
     if options(config.get('options'))['browser']:
         suffix += '-browser'
+    if options(config.get('options'))['web_access']['enabled']:
+        suffix += '-web'
     if 'model_providers' in config:
         suffix += '-models-' + model_providers.digest(config)
     return (f'localhost/pi-sandbox-factory-dev:{profile["name"]}-{base_tag(config)}-{profile["digest"]}{suffix}',
@@ -287,12 +302,18 @@ def build(config):
              '--build-arg', f'PENDANT_VERSION={PENDANT_VERSION}', common['path']])
     browser = options(config.get('options'))['browser']
     has_providers = 'model_providers' in config
-    tools = dev + '-tools' if config.get('extra_skills') or browser or has_providers else dev
+    web = options(config.get('options'))['web_access']['enabled']
+    tools = dev + '-tools' if config.get('extra_skills') or browser or web or has_providers else dev
     run([engine, 'build', '-t', tools, '--build-arg', f'BASE_IMAGE={base}', profile['path']])
     if browser:
-        target = dev + '-browser' if config.get('extra_skills') or has_providers else dev
+        target = dev + '-browser' if config.get('extra_skills') or web or has_providers else dev
         run([engine, 'build', '-t', target, '--build-arg', f'BASE_IMAGE={tools}',
              Path(common['path']) / 'browser'])
+        tools = target
+    if web:
+        target = dev + '-web' if config.get('extra_skills') or has_providers else dev
+        run([engine, 'build', '-t', target, '--build-arg', f'BASE_IMAGE={tools}',
+             Path(common['path']) / 'web-access'])
         tools = target
     if has_providers:
         target = dev + '-models' if config.get('extra_skills') else dev
@@ -452,6 +473,9 @@ def up(config, state):
     current = {name: inspect(config, name) for name in (proxy, dev)}
     if restricted:
         upgrade_gateway_config(state)
+        groups = network_groups.snapshots(options(config.get('options'))['website_groups'], config.get('website_groups'))
+        if groups != config.get('website_groups', {}):
+            config.update(update_network(config, state, (state / 'allowlist.txt').read_text()))
     active = (proxy, dev) if restricted else (dev,)
     if any(current[name] is None for name in active):
         dev_image, proxy_image = image_names(config)
@@ -642,8 +666,9 @@ def create(args, state):
     mode = getattr(args, 'network', 'allowlist')
     if mode == 'unrestricted' and (args.allowlist or args.allow_domain):
         raise ValueError('--network unrestricted cannot be combined with an allowlist')
-    if mode == 'allowlist' and not (args.allowlist or args.allow_domain):
-        raise ValueError('Allowlist networking requires --allowlist or --allow-domain')
+    selected_options = options(json.loads(Path(args.options_file).read_text()) if getattr(args, 'options_file', None) else None)
+    if mode == 'allowlist' and not (args.allowlist or args.allow_domain or selected_options['website_groups'] or selected_options['web_access']['enabled']):
+        raise ValueError('Allowlist networking requires an allowed destination, website category or search service')
     workspace = directory(args.workspace)
     shared = directory(args.pi_config) if args.pi_config else None
     if workspace == Path('/') or workspace == Path.home():
@@ -676,10 +701,10 @@ def create(args, state):
                   network=mode, subagents=getattr(args, 'subagents', False))
     model_ports = getattr(args, 'local_model_ports', None)
     configure_local_gateway(config, model_ports, rules)
-    if getattr(args, 'options_file', None):
-        config['options'] = options(json.loads(Path(args.options_file).read_text()))
+    config['options'] = selected_options
     if getattr(args, 'browser', False):
         config['options'] = options({**config.get('options', {}), 'browser': True})
+    config['website_groups'] = network_groups.snapshots(options(config.get('options'))['website_groups'])
     config['advisors'] = sandbox_advisors.validate({'providers': getattr(args, 'advisor', [])})
     state.mkdir(parents=True, mode=0o700)
     try:
@@ -695,7 +720,7 @@ def create(args, state):
         raise
     (state / 'config.json').write_text(json.dumps(config, indent=2) + '\n')
     (state / 'allowlist.txt').write_text(policy_text)
-    (state / 'squid.conf').write_text(squid_config(rules))
+    (state / 'squid.conf').write_text(network_policy(config, rules))
     attach = {'workspaceFolder': '/workspace', 'remoteUser': 'node',
               'extensions': ['cdervis.vscode-pi'],
               'settings': {'pendant.agentDir': '/home/node/.pi/agent'},
@@ -711,6 +736,7 @@ def prepare_options(config, state):
     write_json(state / 'options.json', selected)
     target = state / 'runtime-config'
     target.mkdir(exist_ok=True, mode=0o700)
+    write_json(target / 'web-search.json', web_access.extension_config(selected['web_access'], network_mode(config) == 'allowlist'))
     source = Path(config['common']['path']) / 'security/config'
     for path in source.glob('*.json'):
         value = json.loads(path.read_text())
@@ -736,6 +762,8 @@ def apply_settings(config, state, changes):
     if 'advisors' in updated:
         updated['advisors'] = sandbox_advisors.validate(updated['advisors'])
     updated['options'] = options(updated.get('options'))
+    updated['website_groups'] = network_groups.snapshots(updated['options']['website_groups'],
+        config.get('website_groups'))
     updated['memory'] = memory_limit(updated.get('memory'))
     if type(updated.get('subagents', False)) is not bool:
         raise ValueError('subagents must be a boolean')
@@ -758,11 +786,11 @@ def apply_settings(config, state, changes):
     down(config, remove=True)
     write_json(state / 'config.json', updated)
     (state / 'allowlist.txt').write_text(text)
-    (state / 'squid.conf').write_text(squid_config(rules))
+    (state / 'squid.conf').write_text(network_policy(updated, rules))
     up(updated, state)
 
 
-def update_network(config, state, text):
+def update_network(config, state, text, groups=None):
     if network_mode(config) != 'allowlist':
         raise ValueError('Use Settings to switch to restricted networking first.')
     rules = parse_rules(text)
@@ -772,13 +800,22 @@ def update_network(config, state, text):
     current = inspect(config, proxy)  # Verify ownership before changing live policy.
     old_text = (state / 'allowlist.txt').read_text()
     old_policy = (state / 'squid.conf').read_text()
+    updated = dict(config)
+    selected_options = options(config.get('options'))
+    if groups is not None:
+        selected_options['website_groups'] = network_groups.selected(groups)
+    updated['options'] = selected_options
+    updated['website_groups'] = network_groups.snapshots(selected_options['website_groups'], config.get('website_groups'))
+    policy = network_policy(updated, rules)
+    changed = policy != old_policy
     try:
         # Preserve the inode of the bind-mounted policy file.
-        (state / 'squid.conf').write_text(squid_config(rules))
-        if current and current['State']['Running']:
+        (state / 'squid.conf').write_text(policy)
+        if changed and current and current['State']['Running']:
             restart_existing(config, proxy)
             ensure_gateway(config)
         (state / 'allowlist.txt').write_text(text)
+        write_json(state / 'config.json', updated)
     except Exception:
         (state / 'squid.conf').write_text(old_policy)
         (state / 'allowlist.txt').write_text(old_text)
@@ -787,6 +824,7 @@ def update_network(config, state, text):
             ensure_gateway(config)
         raise
     print('Network rules updated. Development container and terminals preserved; gateway connections may need to reconnect.')
+    return updated
 
 
 def initialize_models(config, preview=False):
@@ -940,15 +978,18 @@ def main():
         'delete': 'Remove both containers, private volumes, and saved state; keep the host workspace',
         'configure': 'Check or refresh enabled providers',
     }
-    for command in ('update', 'build', 'up', 'down', 'delete', 'recreate', 'open', 'configure', 'shell', 'pi', 'exec', 'check', 'policy', 'network', 'advisor-login', 'advisor-check', 'ssh-import-key', 'ssh-unlock'):
+    for command in ('update', 'build', 'up', 'down', 'delete', 'recreate', 'open', 'configure', 'shell', 'pi', 'exec', 'check', 'policy', 'network', 'web-key', 'advisor-login', 'advisor-check', 'ssh-import-key', 'ssh-unlock'):
         cmd = sub.add_parser(command, **({'help': descriptions[command]} if command in descriptions else {}))
         cmd.add_argument('name')
         if command == 'ssh-import-key':
             cmd.add_argument('--key-file', required=True)
         if command == 'advisor-login':
             cmd.add_argument('provider', choices=['codex', 'agy', 'claude'])
+        if command == 'web-key':
+            cmd.add_argument('--key-stdin', action='store_true', help='Read a key from stdin instead of a masked prompt')
         if command == 'network':
             cmd.add_argument('--allowlist', required=True)
+            cmd.add_argument('--website-groups', nargs='*', choices=list(network_groups.catalog()), default=None)
         if command == 'configure':
             cmd.add_argument('--preview', action='store_true', help='Read-only model discovery')
             cmd.add_argument('--provider', help='Configure one selected provider')
@@ -1070,8 +1111,20 @@ def main():
                 if len(secret)>65536:parser.error('Credential input too large')
             up(config,state)
             model_providers.configure(config,'status' if args.status else 'preview' if args.preview else 'refresh',args.provider,secret)
+    elif args.command == 'web-key':
+        if not options(config.get('options'))['web_access']['enabled']:
+            raise ValueError('Enable Web access in Configuration first')
+        current = inspect(config, names(config)[0])
+        if not current or not current['State']['Running']:
+            raise ValueError('Start this sandbox before setting its search API key')
+        import getpass
+        key = sys.stdin.read(16385) if args.key_stdin else getpass.getpass('Search API key (empty removes saved key): ')
+        result = subprocess.run([config['engine'], 'exec', '-i', names(config)[0], 'python3',
+            '/usr/local/lib/sandbox-web-access.py', '--key-stdin'], input=key, text=True)
+        if result.returncode:
+            raise ValueError('Could not save the search API key')
     elif args.command == 'network':
-        update_network(config, state, Path(args.allowlist).expanduser().read_text())
+        update_network(config, state, Path(args.allowlist).expanduser().read_text(), args.website_groups)
     elif args.command == 'policy':
         if args.network == 'unrestricted' and args.allowlist:
             parser.error('--network unrestricted cannot be combined with --allowlist')
@@ -1085,7 +1138,7 @@ def main():
         config['network'] = args.network
         (state / 'config.json').write_text(json.dumps(config, indent=2) + '\n')
         (state / 'allowlist.txt').write_text(text)
-        (state / 'squid.conf').write_text(squid_config(rules))
+        (state / 'squid.conf').write_text(network_policy(config, rules))
         up(config, state)
     else:
         dev = names(config)[0]

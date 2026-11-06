@@ -64,10 +64,11 @@ enter credentials through **Settings → Models**. Git authentication uses your
 host account; it is not copied into the sandbox.
 
 A profile or provider contains executable code. Install packages you trust.
-Profiles do not grant network access: allowed destinations remain explicit.
+Configure allowed hosts and website categories under **Network**.
 Existing sandboxes retain their saved package versions until you update them.
 
 - [Create a profile](docs/profiles.md), with a runnable reporting example.
 - [Create a provider](docs/providers.md), including the adapter contract.
+- [Web search and website categories](docs/web-access.md).
 - [Isolation and architecture](docs/architecture.md), [approvals](docs/approvals.md), [SSH](docs/ssh.md), [advisors](docs/advisors.md).
 - [Development and tests](TESTING.md), [agent guide](AGENTS.md).

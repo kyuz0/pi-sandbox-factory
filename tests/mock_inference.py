@@ -70,6 +70,21 @@ class Handler(BaseHTTPRequestHandler):
             outcome = 'deny' if ('DENY_BY_FIXTURE' in content or 'ALLOW_EXECUTED' in content) else 'defer' if 'DEFER_BY_FIXTURE' in content else 'allow'
             delta['content'] = json.dumps({'outcome': outcome, 'risk_level': 'medium',
                                           'user_authorization': 'high', 'rationale': 'Synthetic integration review: ' + outcome})
+        elif 'RUN_WEB_ACCESS' in content:
+            names = {t['function']['name'] for t in request.get('tools', [])}
+            assert {'web_search', 'fetch_content'} <= names, 'Web tools missing'
+            assert 'A search result does not grant network access' in content, 'Web guidance missing'
+            outputs = [m for m in messages if m.get('role') == 'tool']
+            actions = [('web_search', {'query': 'Python documentation list comprehensions', 'numResults': 2}),
+                       ('fetch_content', {'url': 'https://docs.python.org/3/tutorial/datastructures.html'}),
+                       ('fetch_content', {'url': 'https://www.rust-lang.org/'})]
+            if len(outputs) < len(actions):
+                tool, params = actions[len(outputs)]
+                delta = {'role': 'assistant', 'tool_calls': [{'index': 0, 'id': 'web-' + str(len(outputs)),
+                    'type': 'function', 'function': {'name': tool, 'arguments': json.dumps(params)}}]}
+                finish = 'tool_calls'
+            else:
+                delta['content'] = 'WEB_ACCESS_DONE'
         elif 'RUN_QUESTION_' in content:
             outputs = [m for m in messages if m.get('role') == 'tool']
             if outputs:

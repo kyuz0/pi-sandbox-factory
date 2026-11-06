@@ -12,7 +12,7 @@ from typing import Optional
 
 from . import sandbox
 from . import sandbox_skills
-from . import registry, model_providers, updates
+from . import registry, model_providers, updates, web_access, network_groups
 from .sandbox_options import DEFAULTS, SKILLS, PROFILE_SKILLS, options, endpoint_rule, memory_limit, write_json
 
 try:
@@ -183,6 +183,11 @@ class Service:
             log('Advisors added. Return to Settings → Advisors to sign in; no login has been performed.')
 
     def setup(self, name, draft, key, log):
+        if key:
+            result = subprocess.run(self.command('web-key', name, '--key-stdin'), input=key, text=True, capture_output=True)
+            if result.returncode:
+                raise ValueError('Could not save the search API key. Configure it with the web-key command.')
+            log('Search API key saved in the sandbox.')
         if (draft.get('local_model_ports') or draft.get('model_providers')) and not draft['open_editor']:
             self.run(['configure', name], log)
     def provider(self, name, provider, action, key, log):
@@ -229,21 +234,106 @@ class Service:
             log('In an already open Pi/Pendant session, refresh there too before selecting a model with /model.')
 
 
+class WebsiteGroups(Vertical):
+    DEFAULT_CSS = "WebsiteGroups { height: auto; }"
+
+    def __init__(self, names):
+        super().__init__()
+        self.names = names
+
+    def compose(self):
+        with Collapsible(title='Website categories · optional', collapsed=True):
+            yield Static('Categories allow HTTP/HTTPS access. Lists update automatically from V2Fly and UT1 Toulouse.', classes='section-intro')
+            for prefix, title in [('dev-', 'Developer services · V2Fly'), ('ut1-', 'Topics · UT1 Toulouse')]:
+                yield Label(title)
+                for name, group in network_groups.catalog().items():
+                    if name.startswith(prefix):
+                        with Vertical(classes='setting'):
+                            yield Checkbox(group['title'], value=name in self.names, id='category-' + name)
+                            yield Static(group['description'], classes='setting-help checkbox-help')
+
+    def selected(self):
+        return [name for name in network_groups.catalog() if self.query_one('#category-' + name, Checkbox).value]
+
+
+class WebAccessForm(Vertical):
+    DEFAULT_CSS = "WebAccessForm, #web-fields { height: auto; }"
+
+    def __init__(self, value, defaults=False):
+        super().__init__()
+        self.value, self.defaults_mode = value, defaults
+
+    def compose(self):
+        value = self.value
+        with Collapsible(title='Web access · search and read pages', collapsed=True):
+            with Vertical(classes='setting'):
+                yield Checkbox('Enable pi-web-access', value=value['enabled'], id='web-enabled')
+                yield Static('Adds web_search and fetch_content to Pi and Pendant. The chosen search service is allowed automatically; reading result pages uses your network rules and website categories.', classes='setting-help checkbox-help')
+            with Vertical(id='web-fields'):
+                with Vertical(classes='setting'):
+                    yield Label('Search service')
+                    yield Select([(spec[0], name) for name, spec in web_access.SERVICES.items()], value=value['service'], allow_blank=False, id='web-service')
+                with Vertical(id='web-endpoint-field', classes='setting'):
+                    yield Label('Endpoint URL · required for SearXNG; optional OpenAI Responses URL')
+                    yield Input(value['endpoint'], id='web-endpoint')
+                with Vertical(id='web-model-field', classes='setting'):
+                    yield Label('OpenAI search model · leave empty for the extension default')
+                    yield Input(value['model'], id='web-model')
+                if not self.defaults_mode:
+                    with Vertical(id='web-key-field', classes='setting'):
+                        yield Label('API key · leave empty to keep a saved key')
+                        yield Input(password=True, id='web-key')
+                        yield Static('Saved in this sandbox’s private Pi configuration, where the agent can read it.', classes='setting-help')
+                yield Static('', id='web-hosts', markup=False)
+
+    def on_mount(self):
+        self.sync_fields()
+
+    @on(Select.Changed, '#web-service')
+    @on(Checkbox.Changed, '#web-enabled')
+    def sync_fields(self):
+        service = self.query_one('#web-service', Select).value
+        self.query_one('#web-fields').display = self.query_one('#web-enabled', Checkbox).value
+        self.query_one('#web-endpoint-field').display = service in ('openai', 'searxng')
+        self.query_one('#web-model-field').display = service == 'openai'
+        if not self.defaults_mode:
+            self.query_one('#web-key-field').display = service in ('exa-api', 'openai', 'brave', 'tavily')
+        host = web_access.SERVICES[service][2]
+        self.query_one('#web-hosts', Static).update('Search destination: ' + (host or 'your configured server') + '. A custom endpoint uses its own hostname and port.')
+
+    def collect(self):
+        service = self.query_one('#web-service', Select).value
+        value = web_access.settings({
+            'enabled': self.query_one('#web-enabled', Checkbox).value,
+            'service': service,
+            'endpoint': self.query_one('#web-endpoint', Input).value if service in ('openai', 'searxng') else '',
+            'model': self.query_one('#web-model', Input).value if service == 'openai' else '',
+        })
+        key = self.query_one('#web-key', Input).value.strip() if not self.defaults_mode and value['enabled'] and service in ('exa-api', 'openai', 'brave', 'tavily') else ''
+        return value, key
+
+
 class NetworkForm(Screen):
     BINDINGS = [('escape', 'back', 'Back')]
 
-    def __init__(self, name, text):
+    def __init__(self, name, text, config=None):
         super().__init__()
         self.sandbox_name, self.rules = name, text
+        self.config = config or {}
 
     def compose(self):
         yield Header()
         with VerticalScroll(classes='form'):
             yield Label('Network · ' + self.sandbox_name)
-            yield Static('Update allowed destinations without restarting the development container. The gateway restarts briefly; active requests may need to reconnect. Host model ports stay unchanged.')
+            yield Static('Applying network changes restarts the gateway; active requests may need to reconnect. Development processes keep running.')
             yield Checkbox('pip · Python packages from PyPI', value=pip_allowed(self.rules), id='pip-preset')
             yield Checkbox('npm · JavaScript packages', value=preset_allowed(self.rules, NPM_HOSTS), id='npm-preset')
             yield Checkbox('GitHub · repositories, API and release downloads', value=preset_allowed(self.rules, GITHUB_HOSTS), id='github-preset')
+            yield WebsiteGroups(options(self.config.get('options'))['website_groups'])
+            search = web_access.destinations(options(self.config.get('options'))['web_access'])
+            if search:
+                yield Static('Search service also allows: ' + ', '.join(f'{host}:{port}' for host, port in search), markup=False)
+            yield Label('Additional allowed destinations · hostname:port')
             yield TextArea(self.rules, id='allowlist')
             with Collapsible(title='Import or export rules', collapsed=True):
                 yield Input(placeholder='Allowlist file path', id='network-file')
@@ -312,11 +402,12 @@ class NetworkForm(Screen):
                 self.query_one('#network-error', Static).update(str(error))
                 return
             service = self.app.service
+            groups = self.query_one(WebsiteGroups).selected()
             def apply(log):
                 with tempfile.TemporaryDirectory(prefix='sandbox-network-') as tmp:
                     path = Path(tmp) / 'allowlist.txt'
                     path.write_text(text)
-                    service.run(['network', self.sandbox_name, '--allowlist', str(path)], log)
+                    service.run(['network', self.sandbox_name, '--allowlist', str(path), '--website-groups', *groups], log)
             self.app.pop_screen()
             self.app.push_screen(Operation('Updating network · ' + self.sandbox_name, apply))
 
@@ -518,7 +609,7 @@ class AdvisorsScreen(Screen):
             with Collapsible(title='Usage and network', collapsed=True):
                 yield Label('Maximum calls per Pi session · blank for no limit')
                 yield Input(str(settings.get('max_calls') or ''), id='advisor-calls', type='integer')
-                yield Static('Provider hosts use a separate allowlist. These rules do not change the development container’s network.')
+                yield Static('These destinations apply to the advisor’s separate gateway.')
                 yield Label('Additional exact destinations · host:port, one per line')
                 yield TextArea(settings.get('extra_hosts', ''), id='advisor-hosts')
         with Horizontal(classes='wizard-actions'):
@@ -921,6 +1012,7 @@ class SettingsForm(Screen):
                     yield Checkbox('pip · Python packages from PyPI', value=pip_allowed(value.get('allowlist', '')), id='pip-preset')
                     yield Checkbox('npm · JavaScript packages', value=preset_allowed(value.get('allowlist', ''), NPM_HOSTS), id='npm-preset')
                     yield Checkbox('GitHub · repositories, API and release downloads', value=preset_allowed(value.get('allowlist', ''), GITHUB_HOSTS), id='github-preset')
+                    yield WebsiteGroups(selected['website_groups'])
                     yield Static('Select the package registries you need. Git URLs, private registries and additional download hosts need their own entries.')
                     yield Label('Edit allowed destinations in Settings → Network.' if self.editing else 'Allowed destinations · one hostname:port per line; comments allowed')
                     yield TextArea(value.get('allowlist', ''), id='allowlist')
@@ -930,6 +1022,7 @@ class SettingsForm(Screen):
                         yield Button('Profile defaults', id='reset-rules')
                     yield Label('Allowlist file path (for import/export)')
                     yield Input(id='rules-path')
+            yield WebAccessForm(selected['web_access'], self.defaults_mode)
             with Collapsible(title='Agent · ' + selected['approval'].capitalize() + ' approval · Inner sandbox ' + ('on' if selected['inner_sandbox'] else 'off'), collapsed=True, id='agent-section'):
                 yield Checkbox('Use inner command sandbox', value=selected['inner_sandbox'], id='inner-sandbox')
                 yield Label('Approval mode')
@@ -942,7 +1035,7 @@ class SettingsForm(Screen):
             with Collapsible(title='Skills and features', collapsed=True, id='skills-section'):
                 with Vertical(classes='setting'):
                     yield Checkbox('Browser · Betterwright', value=selected['browser'], id='browser')
-                    yield Static('Installs a headless browser and its dependencies. Uses the selected network policy; no extra destinations are allowed.', classes='setting-help checkbox-help')
+                    yield Static('Adds a headless browser with a live viewer for you to see and interact with its pages.', classes='setting-help checkbox-help')
                 for skill in PROFILE_SKILLS.get(self.profile_name, []):
                     yield Checkbox(SKILLS[skill][0], value=skill not in selected['disabled_skills'], id='skill-' + skill)
                 for skill in value.get('extra_skills', []):
@@ -951,7 +1044,6 @@ class SettingsForm(Screen):
                         yield Static(skill['repo'] + ' · ' + skill['commit'][:12], markup=False, classes='setting-help checkbox-help')
                 yield Checkbox('Pendant goals', value=selected['goals'], id='goals')
                 yield Checkbox('Scheduled prompts in the current chat', value=selected['scheduling'], id='scheduling')
-                yield Static('Installed profile skills can be enabled or disabled. Add a remote skill below.', classes='section-intro')
                 with Vertical(classes='setting'):
                     yield Label('Additional skill Git repository URL')
                     yield Input(value.get('skill_repo', ''), id='skill-repo')
@@ -1046,6 +1138,8 @@ class SettingsForm(Screen):
         if draft['local_model_ports']:
             sandbox.local_model_ports(draft['local_model_ports'])
         selected = options(draft.get('options'))
+        selected['web_access'], key = self.query_one(WebAccessForm).collect()
+        selected['website_groups'] = self.query_one(WebsiteGroups).selected()
         selected.update(approval=self.query_one('#approval', Select).value, inner_sandbox=check('inner-sandbox'),
                         goals=check('goals'), scheduling=check('scheduling'), browser=check('browser'))
         selected['disabled_skills'] = [s for s in SKILLS if
@@ -1069,11 +1163,10 @@ class SettingsForm(Screen):
             sandbox.configure_local_gateway({'engine':actual, 'network':draft['network']}, draft['local_model_ports'], rules)
         if draft['network'] == 'allowlist':
             rules += [r for r in sandbox.parse_rules('\n'.join(provider_rules)) if r not in rules]
-        if draft['network'] == 'allowlist' and not rules:
+        if draft['network'] == 'allowlist' and not rules and not selected['website_groups'] and not selected['web_access']['enabled']:
             raise ValueError('Add an allowed destination or enable host-local models.')
         draft['allowlist'] = '\n'.join(f'{host}:{port}' for host,port in rules)
         sandbox.validate_env(draft['env_file'])
-        key = ''
         draft['remove_skills'] = [s['name'] for s in draft.get('extra_skills', []) if not check('extra-' + s['name'])]
         if draft['skill_repo']:
             sandbox_skills.validate_source(draft['skill_repo'], draft['skill_path'])
@@ -1422,7 +1515,7 @@ class Cockpit(App):
             if config.get('network', 'allowlist') != 'allowlist':
                 self.notify('Use Settings to switch to restricted networking first.')
                 return
-            self.push_screen(NetworkForm(name, (self.state_root / name / 'allowlist.txt').read_text()))
+            self.push_screen(NetworkForm(name, (self.state_root / name / 'allowlist.txt').read_text(), config))
         elif action == 'configuration':
             if not record.get('engine'):
                 self.notify('Repair the saved configuration before editing it.', severity='error')

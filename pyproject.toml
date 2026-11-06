@@ -23,7 +23,7 @@ packages = ["pi_sandbox_factory"]
 include-package-data = true
 
 [tool.setuptools.package-data]
-pi_sandbox_factory = ["containers/**/*", "profiles/**/*", "providers/**/*", "checks/*"]
+pi_sandbox_factory = ["containers/**/*", "profiles/**/*", "providers/**/*", "checks/*", "network-catalog/*"]
 
 [tool.setuptools.exclude-package-data]
 "*" = ["**/__pycache__/*", "**/*.pyc", "**/*.pyo"]

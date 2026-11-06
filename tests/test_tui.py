@@ -432,4 +432,58 @@ class TUITests(unittest.TestCase):
                 self.assertEqual(draft['model_providers']['company'],provider['settings'])
                 self.assertIn('models.example.com:443',draft['allowlist'])
 
-if __name__=='__main__':unittest.main()
+
+class WebAccessUITests(unittest.TestCase):
+    setUpClass = classmethod(TUITests.setUpClass.__func__)
+    tearDownClass = classmethod(TUITests.tearDownClass.__func__)
+    _callTestMethod = TUITests._callTestMethod
+    setUp = TUITests.setUp
+    tearDown = TUITests.tearDown
+    ready = TUITests.ready
+    async def test_web_settings_keep_key_out_of_saved_options(self):
+        from pi_sandbox_factory.sandbox_tui import WebAccessForm, WebsiteGroups, preset
+        from textual.widgets import Select, Collapsible
+        app = Cockpit(self.root, FakeService([]))
+        async with app.run_test(size=(80,24)) as pilot:
+            await self.ready(app, pilot)
+            draft = preset('base', DEFAULT_SETTINGS)
+            draft.update(name='web', workspace=str(self.root), local_model_ports=None)
+            app.push_screen(SettingsForm(draft))
+            await pilot.pause()
+            web = app.screen.query_one(WebAccessForm)
+            web.query_one('#web-enabled', Checkbox).value = True
+            web.query_one('#web-service', Select).value = 'brave'
+            await pilot.pause()
+            web.query_one('#web-key', Input).value = 'synthetic-test-key'
+            app.screen.query_one('#category-dev-python', Checkbox).value = True
+            value, key = app.screen.collect()
+            self.assertEqual(key, 'synthetic-test-key')
+            self.assertNotIn(key, json.dumps(value))
+            self.assertEqual(value['options']['web_access']['service'], 'brave')
+            self.assertEqual(value['options']['website_groups'], ['dev-python'])
+            self.assertFalse(web.query_one('#web-endpoint-field').display)
+            web.query_one('#web-service', Select).value = 'searxng'
+            await pilot.pause()
+            self.assertTrue(web.query_one('#web-endpoint-field').display)
+            with self.assertRaises(ValueError):
+                app.screen.collect()
+            web.query_one('#web-endpoint', Input).value = 'https://search.example.net'
+            value, key = app.screen.collect()
+            self.assertEqual(key, '')
+            self.assertEqual(value['options']['web_access']['endpoint'], 'https://search.example.net')
+
+    async def test_network_category_selection_reaches_cli(self):
+        app = Cockpit(self.root, FakeService(self.records))
+        async with app.run_test(size=(80,24)) as pilot:
+            await self.ready(app, pilot)
+            app.perform_action('network-settings')
+            await pilot.pause()
+            app.screen.query_one('#category-ut1-press', Checkbox).value = True
+            app.screen.query_one('#apply-network', Button).press()
+            await pilot.pause()
+            await app.workers.wait_for_complete()
+            call = app.service.calls[-1]
+            self.assertEqual(call[-2:], ['--website-groups', 'ut1-press'])
+
+if __name__ == '__main__':
+    unittest.main()

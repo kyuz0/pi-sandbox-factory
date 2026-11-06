@@ -122,3 +122,22 @@ then versions and tags successful pushes to `main` only when package code,
 bundled assets or packaging configuration changes. Documentation, tests and
 workflow changes alone do not create a release. Full container checks remain in
 the disposable integration recipe above.
+
+## Web access
+
+`test_web_access.py` covers service selection, category expansion, automatic
+refresh, offline fallback and gateway rule ordering. TUI tests cover creation,
+editing, keys and category selection. The normal suite makes no search requests.
+
+For a live check, create the disposable sandbox described above with an options
+file containing `{"web_access":{"enabled":true},"website_groups":["dev-python"]}`.
+Run `tests/integration.py` with `--web-access` instead of
+`--pendant-questions-only`. It drives the installed Pi and Pendant with fixture
+model replies, searches through keyless Exa, reads Python documentation and checks
+that an unselected website is blocked. No personal account is needed. Other paid
+services require their own credentials for live checks.
+
+When changing category rules, verify an allowed domain, a misleading suffix such
+as `python.org.example.net`, an unselected site, a redirect to an unselected site,
+and a category hostname resolving to loopback. Existing explicit local-model
+ports must still work. Category refresh must not restart the development container.

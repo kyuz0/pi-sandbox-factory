@@ -54,11 +54,11 @@ Saved state defaults to `~/.local/state/pi-sandbox-factory`. Use `--state-dir PA
 
 ### Package download presets
 
-In Settings → Network, check **pip · Python packages from PyPI** and apply the settings. This adds `pypi.org:443` (package index) and `files.pythonhosted.org:443` (downloads) to the restricted allowlist. Unchecking removes those two entries; other destinations remain unchanged. The checkbox also reflects manual edits. New sandboxes do not enable it automatically.
+In Settings → Network, check **pip · Python packages from PyPI** and apply the settings. This adds `pypi.org:443` (package index) and `files.pythonhosted.org:443` (downloads) to the restricted allowlist.
 
 For JavaScript packages, check **npm · JavaScript packages**. This adds `registry.npmjs.org:443`, the [default npm registry](https://docs.npmjs.com/cli/v11/using-npm/registry/). Node.js and npm are already installed in the development image. The preset also covers Yarn or pnpm when configured to use this registry. Packages with install scripts that fetch binaries elsewhere need those destinations added separately.
 
-Common presets are **pip** for Python packages, **npm** for JavaScript packages, and **GitHub** for repositories and release downloads. They can be combined, work in new-sandbox configuration and Settings → Network, and stay synchronized with manual allowlist edits. Enable only the services the project needs; new sandboxes leave these presets unchecked.
+The **GitHub** preset covers repositories and release downloads. Presets are available during creation and in **Settings → Network**.
 
 To update an existing restricted sandbox, select it and choose **Settings → Network**. Edit destinations or check the pip preset, then **Apply network**. Only the gateway restarts; development processes, terminals and files remain in place. Active network requests may need to reconnect. A stopped gateway stays stopped and uses the new rules at its next start. Use **Settings → Configuration** for network mode or host model port changes.
 
