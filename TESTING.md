@@ -14,6 +14,8 @@ subfolder exports, provider selection and terminal interactions, including 80×2
 cover the adapter contract, preview, credential handling and refresh locking.
 Creation tests cover **Create from existing…**, optional search keys, independent
 package snapshots after source deletion, and unchanged source settings.
+Launcher tests cover the visible Pi CLI button, terminal handoff and return,
+VS Code as the default action, startup failure and the configured working folder.
 These tests use fixtures and no account credentials.
 
 ## Package installation

@@ -7,17 +7,19 @@ container with access to your chosen project folder. Network access is restricte
 by default, and commands that need broader permissions go through approval.
 Approved commands still run inside the container.
 
-You manage sandboxes through a terminal interface and open them in VS Code with
-Pendant, the extension that provides Pi’s chat interface. Each sandbox keeps its
-own tools, model settings and conversations. Local model discovery is included;
+You manage sandboxes through a terminal interface. Open them in VS Code with
+Pendant, its Pi chat extension, or use Pi directly in your terminal. You can also
+use both at once. Each sandbox keeps its own tools, model settings and
+conversations. Local model discovery is included;
 you can add other providers and reusable profiles for different projects.
 
 ![Pi Sandbox Factory terminal interface](docs/sandboxes.png)
 
 ## Install
 
-You need Linux, Python 3.10+, Git, rootless Podman and desktop VS Code with `code`
-on your PATH. The launcher installs the Dev Containers extension if needed.
+You need Linux, Python 3.10+, Git and rootless Podman. For the VS Code interface,
+install desktop VS Code with `code` on your PATH. The launcher installs the Dev
+Containers extension if needed.
 Docker also works, but forwarding a host-loopback model requires rootless Podman.
 
 Install pipx with your distribution's package manager, then:
@@ -37,7 +39,7 @@ You can run the same command in your terminal. Existing sandboxes receive image
 updates through **Actions → Update sources and recreate…**.
 
 Choose **New sandbox**, select your project folder and enable the port used by
-your model server, usually `8000`. Create it, then choose **Open in VS Code**.
+your model server, usually `8000`. Create it, then choose **Open in VS Code** or **Open Pi CLI**.
 Start the model server separately. If it starts later, use **Settings → Models →
 Refresh**. [CLI and everyday use](docs/usage.md).
 

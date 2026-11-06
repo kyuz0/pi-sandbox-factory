@@ -1236,6 +1236,9 @@ def main():
             if command[:1] == ['--']:
                 command = command[1:]
             if args.command == 'pi':
+                up(config, state)
+                if config.get('local_model_ports') or config.get('model_providers'):
+                    initialize_models(config)
                 command = ['pi'] + command
             if not command:
                 parser.error('exec requires a command after the sandbox name')

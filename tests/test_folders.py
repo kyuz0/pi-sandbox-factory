@@ -29,6 +29,26 @@ class FolderTests(unittest.TestCase):
     def validate(self, rows, **kwargs):
         return folders.validate(rows, self.workspace, self.state, **kwargs)
 
+    def test_pi_cli_starts_discovers_and_launches_in_starting_folder(self):
+        config=dict(self.config, name='example', local_model_ports='8000')
+        state=self.state/'example';state.mkdir()
+        (state/'config.json').write_text(json.dumps(config))
+        argv=['pi-sandbox-factory','--state-dir',str(self.state),'pi','example','--','--continue']
+        calls=[]
+        with patch('sys.argv',argv), \
+             patch.object(sandbox,'up',side_effect=lambda *a:calls.append('up')), \
+             patch.object(sandbox,'initialize_models',side_effect=lambda *a:calls.append('models')), \
+             patch('sys.stdin.isatty',return_value=True), \
+             patch.object(sandbox,'run',side_effect=lambda args:calls.append(args)):
+            sandbox.main()
+        self.assertEqual(calls[:2],['up','models'])
+        self.assertEqual(calls[2],['podman','exec','--workdir','/workspace/app','-it',
+                                   sandbox.names(config)[0],'pi','--continue'])
+        with patch('sys.argv',argv), patch.object(sandbox,'up',side_effect=ValueError('start failed')), \
+             patch.object(sandbox,'run') as run:
+            with self.assertRaisesRegex(ValueError,'start failed'):sandbox.main()
+            run.assert_not_called()
+
     def test_starting_folder_resolution(self):
         self.assertEqual(folders.container_cwd(self.config), '/workspace/app')
         self.assertEqual(folders.working_directory(self.workspace), '.')

@@ -713,7 +713,7 @@ class MoreActions(ModalScreen[Optional[str]]):
         running = record['dev'] == 'running'
         self.sandbox_name = record['name']
         self.actions = [('Stop sandbox' if running else 'Start sandbox', 'stop' if running else 'start'),
-                        ('Pi terminal', 'pi'), ('Container shell', 'shell'),
+                        ('Container shell', 'shell'),
                         ('Test MCP connections', 'connections'), ('Container logs', 'logs'),
                         ('Update sources and recreate…', 'rebuild'), ('Delete sandbox…', 'delete')]
 
@@ -1709,6 +1709,7 @@ class Cockpit(App):
             yield Static('', id='home-error', markup=False)
             with Horizontal(classes='buttons'):
                 yield Button('Open in VS Code', id='open', variant='primary')
+                yield Button('Open Pi CLI', id='pi', tooltip='Use Pi in this terminal; return here when Pi exits.')
                 yield Button('Settings', id='settings')
                 yield Button('Actions…', id='more')
         yield Footer()
@@ -1820,7 +1821,7 @@ class Cockpit(App):
             text += ' · Gateway: ' + str(record.get('proxy', 'Unknown'))
             text += ' · Profile: ' + str(record['profile'])
         self.query_one('#details', Static).update(safe_text(text))
-        for action in ('open', 'settings', 'more'):
+        for action in ('open', 'pi', 'settings', 'more'):
             self.query_one('#' + action, Button).disabled = record is None
 
     @on(DataTable.RowSelected)
@@ -1955,9 +1956,12 @@ class Cockpit(App):
 
     def interactive(self, command, name):
         with self.suspend():
-            result = subprocess.run(self.service.command('up', name), check=False)
-            if result.returncode == 0:
-                subprocess.run(self.service.command(command, name), check=False)
+            if command == 'pi':
+                subprocess.run(self.service.command('pi', name), check=False)
+            else:
+                result = subprocess.run(self.service.command('up', name), check=False)
+                if result.returncode == 0:
+                    subprocess.run(self.service.command(command, name), check=False)
         self.refresh_inventory()
 
 

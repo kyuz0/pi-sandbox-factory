@@ -54,7 +54,7 @@ class TUITests(unittest.TestCase):
     async def delete_menu(self, app, pilot):
         await pilot.click('#more');await pilot.pause()
         menu=app.screen.query_one('#more-actions',OptionList)
-        menu.highlighted=6;menu.focus()
+        menu.highlighted=5;menu.focus()
         await pilot.press('enter');await pilot.pause()
 
     async def test_banner_and_update_notice_fit_small_and_large_terminals(self):
@@ -353,16 +353,36 @@ class TUITests(unittest.TestCase):
         app=Cockpit(self.root,FakeService(self.records))
         async with app.run_test(size=(80,24)) as pilot:
             await self.ready(app,pilot);self.assertEqual(app.theme,'cockpit-gold')
-            for name in ['open','settings','new','create-from','more','packages']:
+            for name in ['open','pi','settings','new','create-from','more','packages']:
                 b=app.query_one('#'+name,Button)
                 self.assertLessEqual(b.region.right,80,name);self.assertLessEqual(b.region.bottom,23,name)
-            self.assertEqual(len(app.query('#home Button')),6)
+            self.assertEqual(len(app.query('#home Button')),7)
             app.save_screenshot(filename='sandbox-home-declutter.svg',path='/tmp')
             await self.settings_page(app,pilot,index=0)
             self.assertLessEqual(app.screen.query_one('#apply-network',Button).region.bottom,23)
             app.save_screenshot(filename='sandbox-network-declutter.svg',path='/tmp')
             await pilot.press('escape');await pilot.pause()
             await pilot.press('q')
+
+    async def test_pi_button_uses_terminal_and_returns_to_manager(self):
+        from contextlib import nullcontext
+        import subprocess
+        service=FakeService(self.records)
+        service.command=Service(self.root).command
+        app=Cockpit(self.root,service)
+        async with app.run_test(size=(80,24)) as pilot:
+            await self.ready(app,pilot)
+            app.query_one(DataTable).move_cursor(row=1)
+            with patch.object(app,'suspend',return_value=nullcontext()) as suspend, \
+                 patch('pi_sandbox_factory.sandbox_tui.subprocess.run',return_value=subprocess.CompletedProcess([],0)) as run:
+                await pilot.click('#pi');await self.ready(app,pilot)
+                suspend.assert_called_once()
+                run.assert_called_once_with(service.command('pi','beta'),check=False)
+            self.assertEqual(len(app.screen_stack),1)
+            self.assertEqual(app.selected_name(),'beta')
+            app.query_one(DataTable).focus()
+            await pilot.press('enter');await self.ready(app,pilot)
+            self.assertEqual(service.calls,[['start','beta'],['open','beta']])
 
     async def test_missing_model_is_completed_with_warning(self):
         app=Cockpit(self.root,FakeService(self.records))
@@ -411,7 +431,7 @@ class TUITests(unittest.TestCase):
             self.assertEqual(app.screen.actions[0],('Start sandbox','start'))
             await pilot.press('escape');await pilot.pause()
             app.query_one('#search',Input).value='no-match';await pilot.pause()
-            for name in ('open','settings','more'):
+            for name in ('open','pi','settings','more'):
                 self.assertTrue(app.query_one('#'+name,Button).disabled)
             self.assertFalse(app.query_one('#new',Button).disabled)
 

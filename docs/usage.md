@@ -1,8 +1,8 @@
 # Usage
 
-Pi and Pendant in a container, with a Textual manager and a dedicated VS Code window. Each sandbox has its own workspace selection, private home, model configuration and editor state.
+Run Pi in your terminal or through Pendant in a dedicated VS Code window. Each sandbox has its own workspace selection, private home, model configuration and editor state.
 
-Requirements: Linux, Python 3.10+, rootless Podman or Docker, and desktop VS Code with `code` on PATH. Host-loopback model access currently requires rootless Podman. Build steps download application dependencies; model servers and model files are managed separately.
+Requirements: Linux, Python 3.10+, rootless Podman or Docker. Desktop VS Code with `code` on PATH is required only for the editor interface. Host-loopback model access currently requires rootless Podman. Build steps download application dependencies; model servers and model files are managed separately.
 
 Install and update with [pipx](../README.md#install). Run `pi-sandbox-factory`
 to open the manager. The version appears beside the title; `--version` prints it
@@ -22,7 +22,19 @@ Model and advisor logins, SSH credentials, browser sessions and conversations
 start fresh. Environment files and Pi seed directories must be selected again.
 The new sandbox keeps independent copies of its packages.
 
-Use **Open in VS Code** for the selected sandbox, **Settings** for its configuration and **Actions** for start/stop, Pi, shell, logs, rebuild and deletion. Press **D** on the home screen to configure defaults for new sandboxes.
+Use **Open in VS Code** or **Open Pi CLI** for the selected sandbox. VS Code is
+the default; for terminal-only use, clear **Open VS Code after creation** during
+setup. **Open Pi CLI** starts the sandbox if needed and opens Pi in the current
+terminal. Exit Pi to return to the manager.
+
+Both can run at once: open VS Code, return to the manager and choose **Open Pi
+CLI**, or run `pi-sandbox-factory pi NAME` in another terminal. They share the
+workspace, mounts and model configuration; each starts its own conversation.
+Both use the starting folder configured under **Settings → Folders**.
+
+Use **Settings** for configuration and **Actions** for start/stop, shell, logs,
+rebuild and deletion. Press **D** on the home screen to configure defaults for
+new sandboxes.
 
 Deleting a sandbox removes its containers, private home and editor state while preserving the workspace. Closing the manager or editor leaves containers running.
 
@@ -94,6 +106,7 @@ pi-sandbox-factory create example --workspace /absolute/path/to/project \
   --engine podman --memory 8g --local-model-ports 8000 \
   --allow-domain local-model.internal:8000 --start
 pi-sandbox-factory open example
+pi-sandbox-factory pi example
 pi-sandbox-factory down example
 pi-sandbox-factory up example
 pi-sandbox-factory delete example
