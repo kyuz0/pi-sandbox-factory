@@ -14,6 +14,7 @@ from typing import Optional
 
 from . import sandbox
 from .folders_ui import FolderFields
+from .tui_widgets import Checkbox
 from . import sandbox_skills
 from . import registry, model_providers, updates, web_access, network_groups
 from .sandbox_options import DEFAULTS, SKILLS, PROFILE_SKILLS, options, endpoint_rule, memory_limit, write_json
@@ -24,9 +25,8 @@ try:
     from textual.binding import Binding
     from textual.containers import Horizontal, Vertical, VerticalScroll
     from textual.screen import ModalScreen, Screen
-    from textual.content import Content
     from textual.theme import Theme
-    from textual.widgets import (Button, Checkbox as TextualCheckbox, Collapsible, DataTable, Footer, Header,
+    from textual.widgets import (Button, Collapsible, DataTable, Footer, Header,
                                  Input, Label, RichLog, Select, Static, TextArea, OptionList)
 except ImportError as error:
     raise SystemExit('Install Pi Sandbox Factory with pipx install git+https://github.com/kyuz0/pi-sandbox-factory.git.') from error
@@ -37,13 +37,6 @@ DEFAULT_SETTINGS = {'profile': 'base', 'model_providers': {'local':{}}, 'workspa
                     'engine': 'podman', 'memory': '8g', 'subagents': False, 'env_file': '',
                     'pi_config': '', 'skill_repo': '', 'skill_path': '', 'open_editor': True,
                     'local_model_ports': '8000', 'options': DEFAULTS}
-
-
-class Checkbox(TextualCheckbox):
-    """Distinguish both states by shape, including in monochrome terminals."""
-    @property
-    def _button(self):
-        return Content('[✓]' if self.value else '[ ]').stylize(self.get_visual_style('toggle--button'))
 
 
 def safe_text(value):
@@ -279,12 +272,20 @@ class WebsiteGroups(Vertical):
         with Collapsible(title='Website categories · optional', collapsed=True):
             yield Static('Categories allow HTTP/HTTPS access. Lists update automatically from V2Fly and UT1 Toulouse.', classes='section-intro')
             for prefix, title in [('dev-', 'Developer services · V2Fly'), ('ut1-', 'Topics · UT1 Toulouse')]:
-                yield Label(title)
+                yield Label(title, classes='group-title')
                 for name, group in network_groups.catalog().items():
                     if name.startswith(prefix):
                         with Vertical(classes='setting'):
                             yield Checkbox(group['title'], value=name in self.names, id='category-' + name)
                             yield Static(group['description'], classes='setting-help checkbox-help')
+
+    def on_mount(self):
+        self.update_title()
+
+    @on(Checkbox.Changed)
+    def update_title(self):
+        count = len(self.selected())
+        self.query_one(Collapsible).title = 'Website categories · ' + (f'{count} selected' if count else 'optional')
 
     def selected(self):
         return [name for name in network_groups.catalog() if self.query_one('#category-' + name, Checkbox).value]
@@ -308,8 +309,9 @@ class SearchProviderDialog(ModalScreen):
         choices = [name for name in web_access.SERVICES if name == self.provider_name or name not in self.providers]
         name = self.provider_name or choices[0]
         with Vertical(id='search-provider-dialog'):
-            yield Label('Edit search provider' if self.provider_name else 'Add search provider')
+            yield Label('Edit search provider' if self.provider_name else 'Add search provider', classes='title')
             with VerticalScroll(id='search-provider-fields'):
+                yield Label('Search provider')
                 yield Select([(web_access.SERVICES[n][0], n) for n in choices], value=name, allow_blank=False, disabled=bool(self.provider_name), id='search-provider-name')
                 with Vertical(id='search-endpoint-field', classes='setting'):
                     yield Label('Endpoint URL')
@@ -320,11 +322,11 @@ class SearchProviderDialog(ModalScreen):
                     yield Input(self.original.get('model', ''), id='search-model')
                 with Vertical(id='search-key-field', classes='setting'):
                     yield Static('', id='search-key-status', classes='setting-help')
-                    yield Label('API key · leave empty to keep the saved key')
+                    yield Label('API key · leave empty to keep the saved key' if self.original.get('has_key') else 'API key', id='search-key-label')
                     yield Input(password=True, id='search-key')
                     yield Checkbox('Remove saved key', id='search-remove-key')
             yield Static('', id='search-provider-error', markup=False)
-            with Horizontal(classes='buttons'):
+            with Horizontal(classes='buttons dialog-actions'):
                 yield Button('Cancel', id='search-cancel')
                 if self.provider_name:
                     yield Button('Remove provider', id='search-remove')
@@ -340,6 +342,7 @@ class SearchProviderDialog(ModalScreen):
         self.query_one('#search-model-field').display = name == 'openai'
         self.query_one('#search-key-field').display = name != 'searxng'
         self.query_one('#search-endpoint-help', Static).update('Required: your SearXNG server URL.' if name == 'searxng' else 'Optional: a custom OpenAI Responses URL.')
+        self.query_one('#search-remove-key', Checkbox).display = bool(self.original.get('has_key'))
         self.query_one('#search-key-status', Static).update('API key configured' if self.original.get('has_key') else 'No API key required' if name == 'exa' else 'API key missing · inactive')
 
     def action_cancel(self):
@@ -396,7 +399,7 @@ class CopyWebAccess(ModalScreen):
             yield Checkbox('Include search API keys', value=True, id='copy-web-keys')
             yield Static('', id='copy-web-help', markup=False)
             yield Static('', id='copy-web-error', markup=False)
-            with Horizontal(classes='buttons'):
+            with Horizontal(classes='buttons dialog-actions'):
                 yield Button('Cancel', id='copy-web-cancel')
                 yield Button('Copy configuration', id='copy-web-apply', variant='primary')
 
@@ -445,7 +448,8 @@ class CopyWebAccess(ModalScreen):
 class WebAccessForm(Vertical):
     DEFAULT_CSS = """
     WebAccessForm, #web-fields, #web-provider-list { height: auto; }
-    .search-provider-row { height: auto; min-height: 2; margin-bottom: 1; }
+    .search-provider-row { height: auto; min-height: 2; margin-bottom: 1; max-width: 48; }
+    #web-fields > .buttons { margin-top: 0; }
     .search-provider-row Static { width: 1fr; height: auto; }
     """
 
@@ -456,7 +460,7 @@ class WebAccessForm(Vertical):
         self.keys = {}
 
     def compose(self):
-        with Collapsible(title='Web access · search and read pages', collapsed=True):
+        with Collapsible(title='Web access · search and read pages', collapsed=True, id='web-section'):
             with Vertical(classes='setting'):
                 yield Checkbox('Enable pi-web-access', value=self.value['enabled'], id='web-enabled')
                 yield Static('Search provider endpoints are allowed automatically. Reading pages uses your network rules and website categories.', classes='setting-help checkbox-help')
@@ -465,10 +469,12 @@ class WebAccessForm(Vertical):
                     yield Label('Search mode')
                     yield Select(self.mode_choices(), value=self.value['mode'], allow_blank=False, id='web-mode')
                 yield Vertical(id='web-provider-list')
-                yield Button('Add provider', id='web-add')
-                yield Button('Copy from sandbox…', id='web-copy')
-                yield Button('Save as default web access', id='web-save-defaults')
-                yield Static('Includes API keys, stored privately on this workstation for new sandboxes.', classes='setting-help')
+                with Horizontal(classes='buttons'):
+                    yield Button('Add provider', id='web-add')
+                    yield Button('Copy from sandbox…', id='web-copy')
+                with Vertical(classes='setting', id='web-defaults-setting'):
+                    yield Button('Save as default web access', id='web-save-defaults')
+                    yield Static('Includes API keys, stored privately on this workstation for new sandboxes.', classes='setting-help')
                 yield Static('', id='web-active', markup=False, classes='setting-help')
 
     def copy_sources(self):
@@ -510,6 +516,7 @@ class WebAccessForm(Vertical):
         await self.refresh_providers()
         self.sync_fields()
         self.query_one('#web-copy', Button).disabled = not self.copy_sources()
+        self.query_one('#web-defaults-setting').display = not self.defaults_mode
         if getattr(self.screen, 'editing', False) and hasattr(self.app.service, 'search_status'):
             self.refresh_key_status(self.screen.draft['name'])
 
@@ -539,10 +546,15 @@ class WebAccessForm(Vertical):
         self.query_one('#web-add', Button).disabled = len(self.providers) == len(web_access.SERVICES)
         names = [web_access.SERVICES[n][0] for n, row in self.providers.items() if mode in ('auto', n) and web_access.ready(n, row)]
         self.query_one('#web-active', Static).update('Active providers: ' + (', '.join(names) or 'none'))
+        self.sync_fields()
 
     @on(Checkbox.Changed, '#web-enabled')
     def sync_fields(self):
-        self.query_one('#web-fields').display = self.query_one('#web-enabled', Checkbox).value
+        enabled = self.query_one('#web-enabled', Checkbox).value
+        self.query_one('#web-fields').display = enabled
+        mode = self.query_one('#web-mode', Select).value
+        self.query_one('#web-section', Collapsible).title = 'Web access · ' + (
+            ('Automatic fallback' if mode == 'auto' else 'Only ' + web_access.SERVICES[mode][0]) if enabled else 'Off')
 
     @on(Select.Changed, '#web-mode')
     async def mode_changed(self):
@@ -626,7 +638,7 @@ class NetworkForm(Screen):
     def compose(self):
         yield Header()
         with VerticalScroll(classes='form'):
-            yield Label('Network · ' + self.sandbox_name)
+            yield Label('Network · ' + self.sandbox_name, classes='title')
             yield Static('Applying network changes restarts the gateway; active requests may need to reconnect. Development processes keep running.')
             yield WebsiteGroups(options(self.config.get('options'))['website_groups'])
             search = web_access.destinations(options(self.config.get('options'))['web_access'])
@@ -635,7 +647,8 @@ class NetworkForm(Screen):
             yield Label('Additional allowed destinations · hostname:port')
             yield TextArea(self.rules, id='allowlist')
             with Collapsible(title='Import or export rules', collapsed=True):
-                yield Input(placeholder='Allowlist file path', id='network-file')
+                yield Label('Allowlist file path')
+                yield Input(placeholder='~/network-rules.txt', id='network-file')
                 with Horizontal(classes='buttons'):
                     yield Button('Import', id='network-import')
                     yield Button('Export', id='network-export')
@@ -688,6 +701,11 @@ class NetworkForm(Screen):
 
 
 class Confirm(ModalScreen[bool]):
+    BINDINGS = [('escape', 'cancel', 'Cancel')]
+
+    def action_cancel(self):
+        self.dismiss(False)
+
     def __init__(self, message, action):
         super().__init__()
         self.message, self.action = message, action
@@ -695,7 +713,7 @@ class Confirm(ModalScreen[bool]):
     def compose(self):
         with Vertical(id='confirm-box'):
             yield Static(self.message, markup=False)
-            with Horizontal(classes='buttons'):
+            with Horizontal(classes='buttons dialog-actions'):
                 yield Button('Cancel', id='cancel', variant='primary')
                 yield Button(self.action, id='yes', variant='error')
 
@@ -744,7 +762,8 @@ class SettingsMenu(ModalScreen[Optional[str]]):
                ('Configuration · resources, tools and network mode', 'configuration'),
                ('Advisors · Codex, Antigravity and Claude', 'advisors'),
                ('SSH · hosts and private key access', 'ssh-settings'),
-               ('Folders · starting folder and host mounts', 'folders')]
+               ('Folders · starting folder and host mounts', 'folders'),
+               ('Web access · search providers and API keys', 'web-access')]
 
     def __init__(self, name):
         super().__init__()
@@ -785,8 +804,8 @@ class FoldersScreen(Screen):
             yield Static('Changing host mounts recreates the sandbox. Changing only the starting folder takes effect when you reopen Pi or VS Code.')
             yield Static('', id='folders-error', classes='error', markup=False)
         with Horizontal(classes='wizard-actions'):
-            yield Button('Apply', id='folders-apply', variant='primary')
             yield Button('Back', id='folders-back')
+            yield Button('Apply', id='folders-apply', variant='primary')
         yield Footer()
 
     @on(Button.Pressed)
@@ -840,8 +859,8 @@ class SSHScreen(Screen):
                     yield Button('Unlock existing key', id='ssh-unlock', disabled=not hosts)
             yield Static('Apply destinations first, then import a key. Encrypted keys ask for their passphrase directly in your terminal. Removing all destinations disables access; deleting the sandbox also deletes its private key copy.')
         with Horizontal(classes='wizard-actions'):
-            yield Button('Apply', id='ssh-apply', variant='primary')
             yield Button('Back', id='ssh-back')
+            yield Button('Apply', id='ssh-apply', variant='primary')
         yield Footer()
 
     @on(Button.Pressed)
@@ -927,8 +946,8 @@ class AdvisorsScreen(Screen):
                 yield Label('Additional exact destinations · host:port, one per line')
                 yield TextArea(settings.get('extra_hosts', ''), id='advisor-hosts')
         with Horizontal(classes='wizard-actions'):
-            yield Button('Apply', id='advisor-apply', variant='primary')
             yield Button('Back', id='advisor-back')
+            yield Button('Apply', id='advisor-apply', variant='primary')
         yield Footer()
 
     @on(Button.Pressed)
@@ -983,8 +1002,10 @@ class ModelsScreen(Screen):
         with VerticalScroll(classes='form'):
             yield Label('Models · '+self.record['name'],classes='title')
             yield Static('Choose a model source to check or refresh. Add sources and edit their settings in Configuration.')
+            yield Label('Model provider')
             yield Select([(r['manifest'].get('description',r['name']),r['name']) for r in rows],id='model-provider',allow_blank=not rows,value=rows[0]['name'] if rows else Select.BLANK)
-            yield Input(password=True,placeholder='Credential, when required; never saved in launcher settings',id='provider-key')
+            yield Label('Provider credential · when required')
+            yield Input(password=True,id='provider-key')
             with Horizontal(classes='buttons'):
                 yield Button('Status',id='provider-status')
                 yield Button('Preview',id='provider-preview')
@@ -1021,12 +1042,19 @@ class PackagesScreen(Screen):
         with VerticalScroll(classes='form'):
             yield Label('Profiles and Providers',classes='title')
             yield Static('Profiles set up the tools, skills and instructions for your work. Providers configure the models Pi can use. Install only packages you trust.')
+            yield Label('Package type')
             yield Select([('Profile','profile'),('Provider','provider')],value='profile',allow_blank=False,id='package-kind')
+            yield Label('Installed packages')
             yield Static('',id='package-list',markup=False)
-            yield Input(placeholder='Local name, e.g. reporting',id='package-name')
-            yield Input(placeholder='Git HTTPS/SSH URL or local folder',id='package-source')
-            yield Input(placeholder='Plugin subfolder, e.g. scribe (optional)',id='package-subdir')
-            yield Input(placeholder='Optional tag, branch or commit',id='package-ref')
+            yield Label('Local name')
+            yield Input(placeholder='reporting',id='package-name')
+            yield Label('Git URL or local folder')
+            yield Input(placeholder='',id='package-source')
+            with Collapsible(title='Repository subfolder and revision', collapsed=True):
+                yield Label('Subfolder in the repository · optional')
+                yield Input(placeholder='scribe',id='package-subdir')
+                yield Label('Tag, branch or commit · optional')
+                yield Input(id='package-ref')
             with Horizontal(classes='buttons'):
                 yield Button('Install',id='package-add')
                 yield Button('Update',id='package-update')
@@ -1122,6 +1150,11 @@ class Operation(Screen):
 
 class FolderPicker(ModalScreen[Optional[str]]):
     """Browse directories without requiring a desktop file dialog."""
+    BINDINGS = [('escape', 'cancel', 'Cancel')]
+
+    def action_cancel(self):
+        self.dismiss(None)
+
     def __init__(self, start):
         super().__init__()
         candidate = Path(start).expanduser()
@@ -1129,14 +1162,15 @@ class FolderPicker(ModalScreen[Optional[str]]):
 
     def compose(self):
         with Vertical(id='folder-box'):
-            yield Label('Choose workspace folder')
+            yield Label('Choose workspace folder', classes='title')
             yield Input(str(self.folder), id='folder-path')
             yield DataTable(id='folders', cursor_type='row')
             with Horizontal(classes='buttons'):
                 yield Button('Up', id='folder-up')
                 yield Button('Open folder', id='folder-open')
-                yield Button('Use this folder', id='folder-use', variant='primary')
+                yield Static('', classes='action-spacer')
                 yield Button('Cancel', id='folder-cancel')
+                yield Button('Use this folder', id='folder-use', variant='primary')
 
     def on_mount(self):
         self.query_one(DataTable).add_column('Folders')
@@ -1205,7 +1239,7 @@ class CreateFromSandbox(ModalScreen):
                 yield Static('', id='copy-keys-help', markup=False)
                 yield Static('Sign in to models and advisors again; SSH keys, browser sessions and chat history are not copied.')
             yield Static('', id='copy-error', classes='error', markup=False)
-            with Horizontal(classes='buttons'):
+            with Horizontal(classes='buttons dialog-actions'):
                 yield Button('Cancel', id='copy-cancel')
                 yield Button('Continue', id='copy-continue', variant='primary')
 
@@ -1346,9 +1380,10 @@ class NewSandbox(Screen):
 class SettingsForm(Screen):
     BINDINGS = [Binding('escape', 'back', 'Back')]
 
-    def __init__(self, draft, editing=False, defaults=False, search_keys=None):
+    def __init__(self, draft, editing=False, defaults=False, search_keys=None, section=None):
         super().__init__()
         self.draft, self.editing, self.defaults_mode = draft, editing, defaults
+        self.initial_section = section
         self.search_keys = search_keys
         self.profile_name = (draft['reused_profile']['name'] if draft.get('reused_profile') and draft['profile'] == draft['reused_profile']['path']
                              else sandbox.load_profile(draft['profile'])['name'])
@@ -1363,9 +1398,10 @@ class SettingsForm(Screen):
                          ('' if self.defaults_mode else '\nWorkspace: ' + value['workspace']), markup=False)
             yield Checkbox('Connect to models on this host (rootless Podman)',
                            value=bool(value.get('local_model_ports')), id='local-models')
-            yield Label('Host model ports · comma-separated ports or ranges')
-            yield Input(value.get('local_model_ports') or '8000', id='model-ports')
-            yield Static('Inside the sandbox, local-model.internal reaches host loopback through the restricted gateway.')
+            with Vertical(classes='setting'):
+                yield Label('Host model ports · comma-separated ports or ranges')
+                yield Input(value.get('local_model_ports') or '8000', id='model-ports')
+                yield Static('Inside the sandbox, local-model.internal reaches these ports on your computer.', classes='setting-help')
             configured=value.get('model_providers',{'local':{}})
             if isinstance(configured,list):configured={r['name']:r.get('settings',{}) for r in configured}
             saved_rows={r['name']:r for r in value.get('model_providers',[]) if isinstance(r,dict)}
@@ -1384,8 +1420,6 @@ class SettingsForm(Screen):
                         yield Input(configured.get(name,{}).get(key,spec.get('default','')),id='source-'+name+'-'+key)
                     if info.get('network'):yield Static('Required network access: '+', '.join(info['network']))
                 yield Static('Install additional providers from the home screen’s Packages button. Enter credentials after creation in Settings → Models.')
-            yield Checkbox('Open VS Code after creation' if not self.editing else 'Open VS Code after applying',
-                           value=value.get('open_editor', True), id='open-editor')
             if not self.editing and not self.defaults_mode:
                 with Collapsible(title='Folders · starting folder and host mounts', collapsed=not bool(value.get('extra_folders')), id='folders-section'):
                     yield FolderFields(value, self.app.state_root)
@@ -1407,18 +1441,19 @@ class SettingsForm(Screen):
                 yield Select([('Restricted — only allowed destinations', 'allowlist'),
                               ('Unrestricted — ordinary container network', 'unrestricted')],
                              value=value['network'], allow_blank=False, id='network')
-                if self.editing:
+                if self.editing and value['network'] == 'allowlist':
                     yield Static('Allowed destinations: Settings → Network. Changes there preserve the development container.')
                 with Vertical(id='network-rules-fields'):
                     yield WebsiteGroups(selected['website_groups'])
-                    yield Label('Edit allowed destinations in Settings → Network.' if self.editing else 'Allowed destinations · one hostname:port per line; comments allowed')
+                    yield Label('Allowed destinations · one hostname:port per line; comments allowed')
                     yield TextArea(value.get('allowlist', ''), id='allowlist')
-                    with Horizontal(classes='buttons'):
-                        yield Button('Import file', id='import-rules')
-                        yield Button('Export file', id='export-rules')
-                        yield Button('Profile defaults', id='reset-rules')
-                    yield Label('Allowlist file path (for import/export)')
-                    yield Input(id='rules-path')
+                    with Collapsible(title='Import or export rules', collapsed=True):
+                        yield Label('Allowlist file path')
+                        yield Input(id='rules-path')
+                        with Horizontal(classes='buttons'):
+                            yield Button('Import file', id='import-rules')
+                            yield Button('Export file', id='export-rules')
+                            yield Button('Profile defaults', id='reset-rules')
             yield WebAccessForm(selected['web_access'], self.defaults_mode)
             with Collapsible(title='Agent · ' + selected['approval'].capitalize() + ' approval · Inner sandbox ' + ('on' if selected['inner_sandbox'] else 'off'), collapsed=True, id='agent-section'):
                 yield Checkbox('Use inner command sandbox', value=selected['inner_sandbox'], id='inner-sandbox')
@@ -1464,16 +1499,29 @@ class SettingsForm(Screen):
                 yield Label('Seed Pi agent directory · optional, fresh configuration by default')
                 yield Input(value.get('pi_config') or '', id='pi-config', disabled=self.editing)
             yield Static('', id='form-error', classes='error', markup=False)
-        with Horizontal(classes='wizard-actions'):
-            yield Button('Back', id='back')
-            yield Button('Save defaults' if self.defaults_mode else
-                         ('Apply and recreate' if self.editing else 'Create and start'), id='apply', variant='primary')
+        with Vertical(classes='wizard-actions settings-actions'):
+            yield Checkbox('Open VS Code after applying' if self.editing else 'Open VS Code after creation',
+                           value=False if self.editing else value.get('open_editor', True), id='open-editor')
+            with Horizontal(classes='action-buttons'):
+                yield Button('Back', id='back')
+                yield Button('Save defaults' if self.defaults_mode else
+                             ('Apply and recreate' if self.editing else 'Create and start'), id='apply', variant='primary')
         yield Footer()
 
     def on_mount(self):
         self.approval_description()
-        if self.editing and self.draft['network'] == 'allowlist':
-            self.query_one('#network-rules-fields').display = False
+        self.network_changed()
+        self.local_models_changed()
+        if self.initial_section:
+            section = self.query_one('#' + self.initial_section, Collapsible)
+            section.collapsed = False
+            self.call_after_refresh(section.scroll_visible, top=True, animate=False)
+            if self.initial_section == 'web-section':
+                self.query_one('#web-enabled', Checkbox).focus()
+
+    @on(Checkbox.Changed, '#local-models')
+    def local_models_changed(self):
+        self.query_one('#model-ports', Input).disabled = not self.query_one('#local-models', Checkbox).value
 
     def approval_description(self):
         mode = self.query_one('#approval', Select).value
@@ -1498,6 +1546,8 @@ class SettingsForm(Screen):
     def network_changed(self):
         mode = self.query_one('#network', Select).value
         self.query_one('#network-section', Collapsible).title = 'Network · ' + ('Restricted' if mode == 'allowlist' else 'Unrestricted')
+        self.query_one('#network-rules-fields').display = (mode == 'allowlist' and
+            (not self.editing or self.draft['network'] != 'allowlist'))
 
     def collect(self):
         draft = dict(self.draft)
@@ -1603,6 +1653,12 @@ class SettingsForm(Screen):
                 service.update(draft['name'], draft, key, log)
             else:
                 service.create(draft, key, log)
+            if draft.get('open_editor'):
+                try:
+                    service.run(['open', draft['name']], log)
+                except (OSError, ValueError) as error:
+                    log(f'Sandbox {"updated" if editing else "created"}, but VS Code could not open: {error}')
+                    log('Use Open in VS Code on the sandbox list to try again.')
         self.app.pop_screen()
         if not editing:
             self.app.pop_screen()
@@ -1628,18 +1684,19 @@ class Cockpit(App):
     Footer { background: #34383d; }
     .title { color: #f2b544; text-style: bold; margin: 0 0 1 0; }
     Label { margin: 0; height: auto; }
-    .form { padding: 1 3; }
+    .form { padding: 1 3; max-width: 112; }
     NewSandbox .form { padding: 0 3; }
     NewSandbox #new-title { margin-bottom: 0; }
     CreateFromSandbox .title, CreateFromSandbox #copy-source { margin-bottom: 0; }
     .form > Static { height: auto; margin-bottom: 1; }
     .setting { height: auto; margin-bottom: 1; }
-    .setting > Checkbox, .setting > Input { margin-bottom: 0; }
+    .setting > Checkbox, .setting > Input, .setting > Select { margin-bottom: 0; }
     .setting-help { height: auto; color: #b8bdc3; }
     .checkbox-help { padding-left: 4; }
     .section-intro { height: auto; margin-bottom: 1; }
     Input, Select { margin-bottom: 1; }
-    TextArea { height: 9; }
+    TextArea { height: 9; margin-bottom: 1; }
+    .group-title { text-style: bold; margin-bottom: 1; }
     Checkbox { height: 1; border: none; padding: 0; margin: 0 0 1 0; }
     Checkbox > .toggle--button { color: #f1f3f5; background: transparent; text-style: bold; }
     Checkbox.-on > .toggle--button { color: #f2b544; background: transparent; }
@@ -1649,14 +1706,29 @@ class Cockpit(App):
     Button:focus { text-style: bold underline; }
     Collapsible { margin-bottom: 1; padding: 0; border: none; }
     .buttons { height: 1; min-height: 1; margin: 1 0; }
-    .wizard-actions { dock: bottom; height: 3; padding: 1 3; }
+    .wizard-actions { dock: bottom; height: 3; padding: 1 3; margin-bottom: 1; max-width: 112; }
+    .settings-actions { height: 5; padding: 1 3; }
+    .action-buttons { height: 1; }
+    .wizard-actions Button { min-width: 12; padding: 0 2; }
+    .wizard-actions Button.-primary { dock: right; margin-right: 0; }
+    .tall-terminal .wizard-actions { height: 5; }
+    .tall-terminal .wizard-actions Button { height: 3; padding: 1 2; }
+    .tall-terminal .settings-actions { height: 7; }
+    .tall-terminal .action-buttons { height: 3; }
+    .dialog-actions { align-horizontal: right; }
+    .dialog-actions Button { min-width: 12; padding: 0 2; }
+    .action-spacer { width: 1fr; height: 1; }
+    Collapsible Button { background: #34383d; }
+    Collapsible Button:hover { background: #454b52; }
     Button { height: 1; border: none; margin-right: 1; min-width: 8; }
     #custom-profile-fields, #network-rules-fields { height: auto; }
     #home > .buttons { margin: 0; }
     #home > .buttons Label { width: 1fr; }
     #network-error { height: auto; color: #b75b52; }
     .path-row { height: 3; }
-    .path-row Input { width: 1fr; }
+    .path-row Input { width: 1fr; margin-bottom: 0; }
+    .path-row Button { height: 3; padding: 1 0; margin-top: 0; }
+    #mkdir { margin: 1 0 1 2; }
     .error { color: #b75b52; height: auto; }
     #title-banner { height: auto; padding: 0 2; }
     #application-update { display: none; height: auto; margin: 0 2; }
@@ -1674,8 +1746,10 @@ class Cockpit(App):
     #operation-log { height: 1fr; max-height: 24; min-height: 5; border: round #34383d; padding: 0 1; }
     #operation-back { margin: 1 0; width: 24; }
     Confirm, FolderPicker, MoreActions, SettingsMenu { align: center middle; background: #000000 70%; }
-    #confirm-box { width: 75; height: auto; max-height: 90%; padding: 2; background: #34383d; border: solid #f2b544; }
+    #confirm-box { width: 75; max-width: 95%; height: auto; max-height: 90%; padding: 1 2; background: #34383d; border: solid #f2b544; }
     #confirm-box Static { height: auto; }
+    #confirm-box > Label { margin-bottom: 1; color: #f2b544; text-style: bold; }
+    #confirm-box > OptionList { height: auto; max-height: 14; margin-bottom: 1; }
     #folder-box { width: 85%; height: 85%; padding: 1 2; background: #34383d; border: solid #f2b544; }
     #folders { height: 1fr; }
     '''
@@ -1722,7 +1796,7 @@ class Cockpit(App):
         yield Footer()
 
     def on_mount(self):
-        self.query_one(DataTable).add_columns('Name', 'Status', 'Models', 'Network')
+        self.query_one(DataTable).add_columns('Name', 'Status', 'Model sources', 'Network')
         self.refresh_inventory()
         self.check_update()
         self.resize_banner()
@@ -1732,6 +1806,7 @@ class Cockpit(App):
             self.resize_banner()
 
     def resize_banner(self):
+        self.set_class(self.size.height >= 32, 'tall-terminal')
         self.query_one('#title-banner', Static).update(banner(self.version, self.size.width < 100 or self.size.height < 32))
 
     @work(thread=True, exclusive=True, group='application-update', exit_on_error=False)
@@ -1793,8 +1868,12 @@ class Cockpit(App):
             if text not in (record['name'] + ' ' + record['profile'] + ' ' + (record.get('workspace') or '')).casefold():
                 continue
             config = record['config']
+            providers = config.get('model_providers', [])
+            source_names = list(providers) if isinstance(providers, dict) else [row['name'] for row in providers]
+            sources = (['Local ' + config['local_model_ports']] if config.get('local_model_ports') else [])
+            sources += [name for name in source_names if name != 'local']
             table.add_row(*[safe_text(x) for x in (record['name'], record['dev'].capitalize(),
-                          'Not checked' if config.get('local_model_ports') else 'Not configured',
+                          ', '.join(sources) or 'Not configured',
                           'Restricted' if config.get('network', 'allowlist') == 'allowlist' else 'Unrestricted')], key=record['name'])
         if selected in table.rows:
             table.move_cursor(row=table.get_row_index(selected))
@@ -1909,10 +1988,10 @@ class Cockpit(App):
             self.push_screen(ModelsScreen(record))
         elif action == 'network-settings':
             if config.get('network', 'allowlist') != 'allowlist':
-                self.notify('Use Settings to switch to restricted networking first.')
+                self.notify('Choose Restricted in Settings → Configuration → Network first.')
                 return
             self.push_screen(NetworkForm(name, (self.state_root / name / 'allowlist.txt').read_text(), config))
-        elif action == 'configuration':
+        elif action in ('configuration', 'web-access'):
             if not record.get('engine'):
                 self.notify('Repair the saved configuration before editing it.', severity='error')
                 return
@@ -1922,7 +2001,7 @@ class Cockpit(App):
             if value['profile'] not in profile_titles():
                 value['profile'] = config['profile']['path']
             value['allowlist'] = (self.state_root / name / 'allowlist.txt').read_text()
-            self.push_screen(SettingsForm(value, editing=True))
+            self.push_screen(SettingsForm(value, editing=True, section='web-section' if action == 'web-access' else None))
         elif action in ('preview-models', 'refresh-models'):
             mode = 'preview' if action == 'preview-models' else 'refresh'
             self.push_screen(Operation('Local models · ' + name, lambda log: self.service.models(name, mode, log)))

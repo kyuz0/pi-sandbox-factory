@@ -201,3 +201,12 @@ The extension and its runtime dependencies are pinned in
 `pi_sandbox_factory/containers/dev/compaction-recall/package-lock.json`.
 Its Node requirement applies to both the container CLI and VS Code's remote
 Node runtime, which Pendant uses. Check both when updating this package.
+
+## Terminal layout
+
+`test_tui_layout.py` checks path-control alignment, dependent-option spacing,
+visible actions, Escape cancellation, direct web-access navigation, conditional
+fields and the selected editor launch. Run it with the other TUI tests.
+Review new and edited forms at 80×24 and 120×40, including expanded sections,
+validation errors and long paths. Inspect the rendered view as well as geometry;
+use Textual's `App.export_screenshot()` for SVG captures with fixture data.

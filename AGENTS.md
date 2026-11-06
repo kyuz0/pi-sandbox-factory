@@ -55,6 +55,32 @@ replacing project instructions. Folder grants never become workstation defaults.
 Keep the UI usable at 80×24. Test actual shipped Pendant workers for bootstrap or
 extension changes, not just mocked APIs. Never restart a user's sandbox to test.
 
+## Terminal layout and navigation
+
+- Group each label, control and explanation in one `.setting`. Keep help directly
+  below its control; put one blank row between groups, not inside them.
+- Path inputs and Browse buttons share a three-row height. Put dependent options
+  one row below, indented two columns. Use the shared checkbox from `tui_widgets.py`.
+- Give inputs persistent labels; placeholders are examples, not labels. Use the
+  same title style and left edge across screens, and limit forms to 112 columns.
+- Align page Back/Cancel left and the primary action right, at the form edges.
+  Group dialog actions on the right, Cancel before Save. Keep contextual actions
+  beside their object. Use three-row page action buttons at 32 terminal rows or
+  more; below that, use one row with two columns of inner padding.
+  Dock page actions below scrollable
+  fields, with three columns of side padding and a blank row above and below
+  their contents. Reserve the status-bar row separately; it must not cover the
+  bottom padding. Put after-save choices, such as opening the editor, beside the final
+  action rather than between unrelated sections. Keep buttons visibly distinct
+  from their section background; constrain dialogs and scroll their fields so errors cannot hide Save.
+  Escape cancels dialogs without applying changes.
+- Put common tasks in the visible Settings menu. A shortcut should open and focus
+  the existing form, not duplicate its save logic. Keep optional setup collapsed
+  and show its state in the heading. Disable fields whose controlling option is off.
+- Review rendered screens at 80×24 and 120×40, including expanded sections, long
+  paths, errors and keyboard focus. Check monochrome checkbox states too. Geometry
+  tests complement visual inspection; neither replaces the other.
+
 ## Changes and docs
 
 Run the relevant suites in `TESTING.md`. Extension implementation and unit tests

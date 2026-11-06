@@ -3,17 +3,20 @@ import copy
 from pathlib import Path
 
 from textual import on
-from textual.containers import Horizontal, Vertical
+from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.screen import ModalScreen
-from textual.widgets import Button, Checkbox, Input, Label, Static
+from textual.widgets import Button, Input, Label, Static
 
 from . import folders
+from .tui_widgets import Checkbox
 
 
 class FolderEditor(ModalScreen):
     DEFAULT_CSS = '''
     FolderEditor { align: center middle; background: #000000 70%; }
-    FolderEditor > Vertical { width: 70; max-width: 95%; height: auto; padding: 1 2; background: $panel; }
+    FolderEditor > Vertical { width: 70; max-width: 95%; height: 24; max-height: 95%; padding: 1 2; background: $panel; border: solid $primary; }
+    FolderEditor #folder-fields { height: 1fr; min-height: 5; }
+    FolderEditor Static { height: auto; }
     FolderEditor Input { margin-bottom: 1; }
     FolderEditor Horizontal { height: auto; margin-top: 1; }
     FolderEditor Button { margin-right: 1; }
@@ -27,26 +30,29 @@ class FolderEditor(ModalScreen):
 
     def compose(self):
         with Vertical():
-            yield Label('Edit folder' if self.row else 'Add host folder')
-            yield Label('Folder on your computer')
-            yield Input((self.row or {}).get('source', ''), placeholder='~/Documents/reference', id='folder-source')
-            yield Label('Name under /mnt · leave empty to use the folder name')
-            yield Input((self.row or {}).get('name', ''), id='folder-name')
-            yield Checkbox('Read-only', value=(self.row or {}).get('read_only', True), id='folder-read-only')
-            yield Static('', id='folder-preview', markup=False)
-            yield Static('', id='folder-error', markup=False)
-            with Horizontal():
-                yield Button('Save folder', id='folder-save', variant='primary')
+            yield Label('Edit folder' if self.row else 'Add host folder', classes='title')
+            with VerticalScroll(id='folder-fields'):
+                yield Label('Folder on your computer')
+                yield Input((self.row or {}).get('source', ''), placeholder='~/Documents/reference', id='folder-source')
+                yield Label('Name under /mnt · leave empty to use the folder name')
+                yield Input((self.row or {}).get('name', ''), id='folder-name')
+                yield Checkbox('Read-only', value=(self.row or {}).get('read_only', True), id='folder-read-only')
+                yield Static('', id='folder-preview', markup=False)
+                yield Static('', id='folder-error', classes='error', markup=False)
+            with Horizontal(classes='dialog-actions'):
                 yield Button('Cancel', id='folder-cancel')
+                yield Button('Save folder', id='folder-save', variant='primary')
 
     def on_mount(self):
         self.preview()
 
     @on(Input.Changed)
     def preview(self):
-        name = self.query_one('#folder-name', Input).value.strip() or folders.suggested_name(
-            self.query_one('#folder-source', Input).value.strip(), self.rows)
-        self.query_one('#folder-preview', Static).update('Available in the sandbox at /mnt/' + name)
+        source = self.query_one('#folder-source', Input).value.strip()
+        name = self.query_one('#folder-name', Input).value.strip() or folders.suggested_name(source, self.rows)
+        preview = self.query_one('#folder-preview', Static)
+        preview.display = bool(source)
+        preview.update('Available in the sandbox at /mnt/' + name)
 
     @on(Button.Pressed)
     def pressed(self, event):
@@ -61,7 +67,9 @@ class FolderEditor(ModalScreen):
                 result = folders.validate(self.rows + [row], self.workspace, self.state_root, private_paths=self.private_paths)
                 self.dismiss(result[-1])
             except (ValueError, OSError) as error:
-                self.query_one('#folder-error', Static).update(str(error))
+                feedback = self.query_one('#folder-error', Static)
+                feedback.update(str(error))
+                self.call_after_refresh(feedback.scroll_visible, animate=False)
 
     def action_cancel(self):
         self.dismiss(None)
@@ -75,6 +83,7 @@ class FolderFields(Vertical):
     FolderFields .mount-row Static { height: auto; }
     FolderFields .mount-buttons { height: auto; }
     FolderFields Button { margin-right: 1; }
+    FolderFields .mount-help { margin: 1 0; }
     FolderFields #working-directory { margin-bottom: 1; }
     '''
 
@@ -84,13 +93,13 @@ class FolderFields(Vertical):
         self.rows = copy.deepcopy(config.get('extra_folders', []))
 
     def compose(self):
-        yield Static('Main workspace: ' + str(self.config['workspace']) + ' → /workspace', markup=False)
+        yield Static('Main workspace: ' + str(self.config['workspace']) + ' → /workspace', markup=False, classes='section-intro')
         yield Label('Start Pi and VS Code in · relative to /workspace')
         yield Input(self.config.get('working_directory', '.'), placeholder='.', id='working-directory')
         yield Label('Additional host folders')
         yield Vertical(id='folder-rows')
         yield Button('Add folder…', id='folder-add')
-        yield Static('Removing a mount leaves its host files intact. Separately mounted filesystems inside an added folder are not included.', markup=False)
+        yield Static('Removing a mount leaves its host files intact. Separately mounted filesystems inside an added folder are not included.', markup=False, classes='setting-help mount-help')
 
     async def on_mount(self):
         await self.refresh_rows()
