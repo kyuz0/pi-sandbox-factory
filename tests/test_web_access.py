@@ -23,6 +23,14 @@ class WebAccessTests(unittest.TestCase):
         self.assertEqual(web_access.destinations({'enabled': False}), [])
         self.assertEqual(web_access.destinations({'enabled': True, 'service': 'searxng', 'endpoint': 'https://search.example.net:8443'}), [('search.example.net', 8443)])
 
+    def test_search_and_fetch_have_separate_permission_rules(self):
+        policy = json.loads((Path(__file__).resolve().parents[1] /
+            'pi_sandbox_factory/containers/dev/security/config/permissions.json').read_text())['permission']
+        self.assertEqual(policy['web_search'], 'allow')
+        self.assertEqual(policy['get_search_content'], 'allow')
+        self.assertEqual(policy['fetch_content'], 'ask')
+        self.assertEqual(policy['*'], 'ask')
+
     def test_reject_invalid_service_settings(self):
         for setting in ({'enabled': 'yes'}, {'service': 'invalid'}, {'enabled': True, 'service': 'searxng'},
                         {'endpoint': 'https://u:p@example.com'}, {'endpoint': 'https://example.com?a=1'},

@@ -6,7 +6,7 @@ From the checkout, install the package into a virtual environment:
 python3 -m venv .venv
 .venv/bin/pip install -e .
 .venv/bin/python -m unittest discover -s tests -p 'test_*.py'
-node --test tests/test_provider_runtime.mjs
+node --test tests/test_provider_runtime.mjs tests/test_web_search_policy.mjs
 ```
 
 The Python suite covers lifecycle, ownership, rollback, package revisions,
@@ -134,7 +134,10 @@ file containing `{"web_access":{"enabled":true},"website_groups":["dev-python"]}
 Run `tests/integration.py` with `--web-access` instead of
 `--pendant-questions-only`. It drives the installed Pi and Pendant with fixture
 model replies, searches through keyless Exa, reads Python documentation and checks
-that an unselected website is blocked. No personal account is needed. Other paid
+that an unselected website is blocked. It also checks that searches and stored
+results skip review, automatic page retrieval through search is rejected, and each
+explicit fetch produces one approval notice with its reason, including denials.
+No personal account is needed. Other paid
 services require their own credentials for live checks.
 
 When changing category rules, verify an allowed domain, a misleading suffix such

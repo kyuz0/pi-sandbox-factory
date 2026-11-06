@@ -21,6 +21,16 @@ Search requests go to Exa. Reading `docs.python.org` goes directly to that host
 through the sandbox gateway. Exa can also include text from other sites in its
 search response. Hosted page-reader fallbacks are off.
 
+Search and stored search results run without automatic review. Direct page reads
+use `fetch_content`, which follows the selected approval mode. Search runs without
+background page downloads or summary workflows; Pi uses `fetch_content` when it
+needs the full page. Text supplied by the search service remains part of its response.
+
+Restricted networking is the default. With no categories selected, direct access
+uses only your individual host allowances and the search service endpoints.
+Choosing unrestricted networking removes the category-based destination limits;
+fetch approval remains a separate setting.
+
 ## Website categories
 
 Developer groups come from

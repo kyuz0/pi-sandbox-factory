@@ -77,7 +77,11 @@ class Handler(BaseHTTPRequestHandler):
             outputs = [m for m in messages if m.get('role') == 'tool']
             actions = [('web_search', {'query': 'Python documentation list comprehensions', 'numResults': 2}),
                        ('fetch_content', {'url': 'https://docs.python.org/3/tutorial/datastructures.html'}),
-                       ('fetch_content', {'url': 'https://www.rust-lang.org/'})]
+                       ('fetch_content', {'url': 'https://www.rust-lang.org/'}),
+                       ('web_search', {'query': 'Python', 'includeContent': True}),
+                       ('web_search', {'query': 'Python', 'workflow': 'auto-summary'}),
+                       ('get_search_content', {'responseId': 'missing-fixture-result'}),
+                       ('fetch_content', {'url': 'https://docs.python.org/?DENY_BY_FIXTURE'})]
             if len(outputs) < len(actions):
                 tool, params = actions[len(outputs)]
                 delta = {'role': 'assistant', 'tool_calls': [{'index': 0, 'id': 'web-' + str(len(outputs)),

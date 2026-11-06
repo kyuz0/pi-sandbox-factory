@@ -32,11 +32,20 @@ try:
         if event.get('type') == 'agent_settled':
             break
     results = [e for e in events if e.get('type') == 'tool_execution_end']
-    assert len(results) == 3, json.dumps(events)
+    assert len(results) == 7, json.dumps(events)
     assert not results[0].get('isError'), results[0]
     assert not results[1].get('isError'), results[1]
     assert 'Comprehensions' in json.dumps(results[1]), results[1]
     assert any(s in json.dumps(results[2]) for s in ('403', 'Forbidden', 'denied')), results[2]
+    for result in results[3:5]:
+        assert result.get('isError'), result
+        assert 'use fetch_content' in json.dumps(result), result
+    assert results[6].get('isError'), results[6]
+    assert 'Synthetic integration review: deny' in json.dumps(results[6]), results[6]
+    notices = [e for e in events if e.get('type') == 'extension_ui_request' and e.get('method') == 'notify' and 'Auto-review' in e.get('message', '')]
+    assert len(notices) == 3, notices
+    assert all('fetch_content' in n['message'] for n in notices), notices
+    assert all('Synthetic integration review:' in n['message'] for n in notices), notices
     print('PASS actual Pi CLI: live Exa search, allowed Python page, blocked unselected page')
 
 finally:

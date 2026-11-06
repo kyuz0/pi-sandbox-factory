@@ -88,7 +88,8 @@ def extension_config(value, restricted=True):
 def guidance(value):
     if not settings(value)['enabled']:
         return ''
-    return ('Use web_search for web searches and fetch_content to read pages. '
+    return ('Use web_search with includeContent=false and workflow=none for searches. '
+            'Use fetch_content to read pages through the configured approval policy. '
             'Search queries go to the selected service, which can return text from other websites. '
             'Reading a page directly requires that destination to be allowed by the sandbox network policy. '
             'A search result does not grant network access to its website. '

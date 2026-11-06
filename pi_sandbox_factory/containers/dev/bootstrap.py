@@ -115,7 +115,8 @@ managed['extensions'].add('/opt/pi-advisor/extensions/advisor.js')
 managed['skills'].add('/opt/pi-advisor/skills/advisor')
 managed['extensions'].update(['/opt/pi-security/approval-mode.ts', '/opt/pi-security/packages/pi-auto-review/src/container-approval-mode.ts'])
 managed['extensions'].add('/opt/betterwright/extension.mjs')
-web_extension = '/opt/pi-web-access/node_modules/pi-web-access/dist/index.js'
+managed['extensions'].add('/opt/pi-web-access/node_modules/pi-web-access/dist/index.js')
+web_extension = '/opt/pi-web-access/extension.mjs'
 managed['extensions'].add(web_extension)
 for key, values in managed.items():
     settings[key] = [p for p in settings.get(key, []) if not isinstance(p, str) or p not in values]

@@ -10,6 +10,7 @@
     "bash": "allow", "bash_escalate": "allow", "subagent": "allow",
     "advisor_status": "allow", "advisor_ask": "ask",
     "ask_user_question": "allow", "browser_viewer": "allow",
+    "web_search": "allow", "get_search_content": "allow", "fetch_content": "ask",
     "external_directory": "ask",
     "path": {
       "*": "allow",

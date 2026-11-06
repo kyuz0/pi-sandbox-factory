@@ -14,6 +14,7 @@ const worker = fork(path.join(directory, 'dist/pi-sdk-worker.cjs'), [], {
 const pending = new Map();
 const sessions = new Map();
 const diagnostics = [];
+const workerMessages = [];
 let sequence = 0;
 let errors = '';
 let failure;
@@ -38,6 +39,7 @@ function request(command, sessionKey) {
   });
 }
 worker.on('message', message => {
+  workerMessages.push(message);
   if (message.type === 'sdk_bridge_ready') return readyResolve(message);
   if (['sdk_worker_failure', 'sdk_bridge_rejected', 'runtime_interrupted'].includes(message.type))
     return fail(new Error(JSON.stringify(message)));
@@ -123,12 +125,20 @@ async function main() {
     await request({type:'session_prompt',text:'RUN_WEB_ACCESS',images:[],source:'interactive'}, 'inventory');
     const state = await waitForReply('inventory', 'WEB_ACCESS_DONE');
     const results = state.messages.filter(m => m.role === 'toolResult');
-    assert.equal(results.length, 3, JSON.stringify(results));
+    assert.equal(results.length, 7, JSON.stringify(results));
     assert(!results[0].isError, JSON.stringify(results[0]));
     assert(!results[1].isError, JSON.stringify(results[1]));
     assert(JSON.stringify(results[1]).includes('Comprehensions'), 'Allowed page content missing');
     assert(/403|Forbidden|denied/i.test(JSON.stringify(results[2])), 'Unselected site was not blocked');
     assert.equal(sessions.get('inventory').dialogs, 0);
+    for (const result of results.slice(3, 5)) {
+      assert(result.isError, JSON.stringify(result));
+      assert(JSON.stringify(result).includes('use fetch_content'), JSON.stringify(result));
+    }
+    assert(results[6].isError && JSON.stringify(results[6]).includes('Synthetic integration review: deny'), JSON.stringify(results[6]));
+    const notices = workerMessages.filter(m => m.type === 'extension_ui_notification' && JSON.stringify(m).includes('Auto-review'));
+    assert.equal(notices.length, 3, JSON.stringify(workerMessages.filter(m => JSON.stringify(m).includes('Auto-review'))));
+    assert(notices.every(n => JSON.stringify(n).includes('fetch_content') && JSON.stringify(n).includes('Synthetic integration review:')), JSON.stringify(notices));
     console.log('PASS actual Pendant: live Exa search, allowed Python page, blocked unselected page; no approval dialog');
     return;
   }
