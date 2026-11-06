@@ -618,6 +618,7 @@ class PackagesScreen(Screen):
             yield Static('',id='package-list',markup=False)
             yield Input(placeholder='Local name, e.g. reporting',id='package-name')
             yield Input(placeholder='Git HTTPS/SSH URL or local folder',id='package-source')
+            yield Input(placeholder='Plugin subfolder, e.g. scribe (optional)',id='package-subdir')
             yield Input(placeholder='Optional tag, branch or commit',id='package-ref')
             with Horizontal(classes='buttons'):
                 yield Button('Install',id='package-add')
@@ -645,6 +646,8 @@ class PackagesScreen(Screen):
             args.append(self.query_one('#package-source',Input).value.strip())
             ref=self.query_one('#package-ref',Input).value.strip()
             if ref:args+=['--ref',ref]
+            subdir=self.query_one('#package-subdir',Input).value.strip()
+            if subdir:args+=['--subdir',subdir]
         service=self.app.service
         self.app.pop_screen();self.app.push_screen(Operation('Managing '+kind+' · '+name,lambda log:service.run(args,log)))
     def action_back(self):self.app.pop_screen()

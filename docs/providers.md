@@ -13,6 +13,10 @@ vscode-pi-sandbox provider list
 vscode-pi-sandbox provider show company
 ```
 
+For a provider in a shared plugin repository, add `--subdir FOLDER` when
+installing. Updates retain the selected folder and ref. The TUI's **Packages**
+screen exposes the same setting.
+
 In **Configuration → Additional model providers**, enable the package and fill in
 its non-secret settings. Required destinations are shown and added to the form's
 allowlist. Apply rebuilds the sandbox; it preserves the workspace and private home.

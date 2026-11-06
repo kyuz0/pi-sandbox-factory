@@ -117,6 +117,84 @@ class RegistryTests(unittest.TestCase):
             "git@git.example.com:team/repo.git",
         )
 
+    def test_monorepo_plugins_install_and_update_independently(self):
+        plugin = self.source / "profiles" / "sample"
+        plugin.mkdir(parents=True)
+        for filename in ("profile.json", "profile.md", "Dockerfile"):
+            (self.source / filename).rename(plugin / filename)
+        other = self.source / "other"
+        other.mkdir()
+        (other / "provider.json").write_text(
+            json.dumps({"name": "company", "version": 1, "entry": "adapter.mjs"})
+        )
+        (other / "adapter.mjs").write_text("export async function run() {}")
+        (self.source / "README.md").write_text("Repository overview")
+        self.git("init", "-q", "-b", "main")
+        first = self.commit()
+        row = registry.add("profile", "sample", str(self.source), subdir="profiles/sample")
+        provider = registry.add("provider", "company", str(self.source), subdir="other")
+        registry.add("profile", "pinned", str(self.source), first, subdir="profiles/sample")
+        self.assertEqual(row["commit"], first)
+        self.assertEqual(row["subdir"], "profiles/sample")
+        self.assertEqual(
+            {p.name for p in Path(row["path"]).iterdir()},
+            {"profile.json", "profile.md", "Dockerfile"},
+        )
+        self.assertFalse((Path(provider["path"]) / "profiles").exists())
+        (plugin / "profile.md").write_text("Updated sample")
+        second = self.commit()
+        updated = registry.update("profile", "sample")
+        self.assertEqual(updated["commit"], second)
+        self.assertEqual(updated["subdir"], "profiles/sample")
+        self.assertEqual(Path(updated["path"], "profile.md").read_text(), "Updated sample")
+        self.assertEqual(registry.installed("provider")["company"], provider)
+        self.assertEqual(registry.update("profile", "pinned")["commit"], first)
+        (plugin / "Dockerfile").unlink()
+        self.commit()
+        with self.assertRaises(ValueError):
+            registry.update("profile", "sample")
+        self.assertEqual(registry.installed("profile")["sample"], updated)
+
+    def test_local_subdirectory_rejects_escape_and_symlink_components(self):
+        for path in ("../package", "/tmp", "missing"):
+            with self.subTest(path=path), self.assertRaises(ValueError):
+                registry.add("profile", "sample", str(self.source), subdir=path)
+        (self.source / "link").symlink_to(self.source, target_is_directory=True)
+        with self.assertRaisesRegex(ValueError, "symlinks"):
+            registry.add("profile", "sample", str(self.source), subdir="link")
+        (self.source / "link").unlink()
+        row = registry.add("profile", "sample", str(self.root), subdir="package")
+        self.assertEqual(row["subdir"], "package")
+        self.assertTrue(Path(row["path"], "Dockerfile").exists())
+
+    def test_git_subdirectory_rejects_symlink_escape(self):
+        self.git("init", "-q", "-b", "main")
+        (self.source / "link").symlink_to(self.root, target_is_directory=True)
+        self.commit()
+        with self.assertRaisesRegex(ValueError, "symlinks"):
+            registry.add("profile", "sample", str(self.source), subdir="link/package")
+
+    def test_cli_passes_subdirectory_to_registry(self):
+        with (
+            patch(
+                "sys.argv",
+                [
+                    "vscode-pi-sandbox",
+                    "profile",
+                    "add",
+                    "sample",
+                    str(self.source),
+                    "--subdir",
+                    "tools/sample",
+                ],
+            ),
+            patch.object(registry, "add", return_value={"name": "sample", "commit": "abc"}) as add,
+        ):
+            sandbox.main()
+        add.assert_called_once_with(
+            "profile", "sample", str(self.source), None, subdir="tools/sample"
+        )
+
     def provider(self):
         (self.source / "adapter.mjs").write_text(
             'export async function run(){return {state:"ready",message:"fixture"}}'

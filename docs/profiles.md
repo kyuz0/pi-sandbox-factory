@@ -14,6 +14,14 @@ vscode-pi-sandbox create reports --profile reporting --workspace /absolute/path/
 ```
 
 Replace the folder with a Git HTTPS or SSH URL to install from a repository.
+For a repository containing several plugins, select the folder:
+
+```sh
+vscode-pi-sandbox profile add reporting git@git.example.com:team/plugins.git --subdir reporting
+```
+
+Updates reuse that folder. Only its files become the package's build inputs.
+The TUI's **Packages** screen has a matching plugin-subfolder field.
 Use `--ref TAG_OR_COMMIT` to pin it. Local Git repositories install their committed
 files; commit edits before updating. A plain folder installs its current files.
 

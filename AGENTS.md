@@ -22,7 +22,8 @@ is `vscode-pi-sandbox`; `python -m vscode_pi_sandbox` is equivalent.
 
 Profiles provide tools, skills and instructions. Providers configure models.
 Neither requires a new launcher branch for a particular company or use case.
-Private providers and specialist profiles belong in independent repositories.
+Keep private providers and specialist profiles outside this application. A plugin
+repository can contain several packages, each installed with `--subdir`.
 
 Git authentication happens on the host. Provider credentials stay in private
 container state. Profiles and adapters are trusted executable packages; the

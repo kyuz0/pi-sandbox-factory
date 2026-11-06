@@ -134,15 +134,31 @@ def git(*args, capture=False):
     )
 
 
-def export(source, dest, ref=None):
+def package_directory(root, subdir):
+    relative = Path(subdir or ".")
+    if relative.is_absolute() or ".." in relative.parts:
+        raise ValueError("Package subdirectory must stay inside the source repository")
+    selected = root / relative
+    if not selected.is_dir():
+        raise ValueError("Package subdirectory does not exist: " + str(relative))
+    current = root
+    for part in relative.parts:
+        current = current / part
+        if current.is_symlink():
+            raise ValueError("Package subdirectory must not follow symlinks")
+    return selected
+
+
+def export(source, dest, ref=None, *, subdir="."):
     source = source_url(source)
     local = Path(source)
     if local.is_dir() and not (local / ".git").exists():
         if ref:
             raise ValueError("A revision requires a Git repository")
-        safe_tree(local)
+        selected = package_directory(local, subdir)
+        safe_tree(selected)
         shutil.copytree(
-            local, dest, ignore=shutil.ignore_patterns("__pycache__", ".env", ".env.*", ".venv")
+            selected, dest, ignore=shutil.ignore_patterns("__pycache__", ".env", ".env.*", ".venv")
         )
         return None
     if ref and (ref.startswith("-") or any(c.isspace() for c in ref)):
@@ -172,8 +188,9 @@ def export(source, dest, ref=None):
         ).stdout.strip()
         git("-C", checkout, "checkout", "--quiet", "--detach", revision)
         git("-C", checkout, "submodule", "update", "--init", "--recursive")
-        safe_tree(checkout)
-        shutil.copytree(checkout, dest, ignore=shutil.ignore_patterns(".git", "__pycache__"))
+        selected = package_directory(checkout, subdir)
+        safe_tree(selected)
+        shutil.copytree(selected, dest, ignore=shutil.ignore_patterns(".git", "__pycache__"))
         return revision
 
 
@@ -199,12 +216,16 @@ def write_registry(base, data):
     temp.replace(base / "registry.json")
 
 
-def add(kind, name, source, ref=None, *, replace=False):
+def add(kind, name, source, ref=None, *, subdir=".", replace=False):
     from .sandbox import tree_digest
 
     if kind not in KINDS or not NAME.fullmatch(name) or name in ("base", "local"):
         raise ValueError("Choose a valid package name; base and local are built in")
     source = source_url(source)
+    relative = Path(subdir or ".")
+    if relative.is_absolute() or ".." in relative.parts:
+        raise ValueError("Package subdirectory must stay inside the source repository")
+    subdir = str(relative)
     with locked() as base:
         file = base / "registry.json"
         data = json.loads(file.read_text()) if file.exists() else {}
@@ -212,7 +233,7 @@ def add(kind, name, source, ref=None, *, replace=False):
             raise ValueError("Package already registered; use update")
         with tempfile.TemporaryDirectory(prefix=".install-", dir=base) as temp:
             path = Path(temp) / "package"
-            revision = export(source, path, ref)
+            revision = export(source, path, ref, subdir=subdir)
             info = manifest(kind, path)
             dependencies = {}
             if info.get("git_source"):
@@ -236,6 +257,7 @@ def add(kind, name, source, ref=None, *, replace=False):
                 "package_name": info["name"],
                 "description": info.get("description", ""),
                 "source": source,
+                "subdir": subdir,
                 "ref": ref,
                 "commit": revision,
                 "dependencies": dependencies,
@@ -251,7 +273,9 @@ def update(kind, name):
     row = installed(kind).get(name)
     if not row:
         raise ValueError("Package is not registered: " + name)
-    return add(kind, name, row["source"], row.get("ref"), replace=True)
+    return add(
+        kind, name, row["source"], row.get("ref"), subdir=row.get("subdir", "."), replace=True
+    )
 
 
 def remove(kind, name):

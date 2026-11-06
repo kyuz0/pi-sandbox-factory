@@ -10,7 +10,7 @@ node --test tests/test_provider_runtime.mjs
 ```
 
 The Python suite covers lifecycle, ownership, rollback, package revisions,
-provider selection and terminal interactions, including 80×24 layouts. Node tests
+subfolder exports, provider selection and terminal interactions, including 80×24 layouts. Node tests
 cover the adapter contract, preview, credential handling and refresh locking.
 These tests use fixtures and no account credentials.
 

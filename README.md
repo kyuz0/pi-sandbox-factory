@@ -11,8 +11,8 @@ You need Linux, Python 3.10+, Git, rootless Podman and desktop VS Code with `cod
 on your PATH. The launcher installs the Dev Containers extension if needed.
 Docker also works, but forwarding a host-loopback model requires rootless Podman.
 
-The distribution and command are both named `vscode-pi-sandbox`. This version
-has not been published to PyPI. Install from this checkout:
+The distribution and command are both named `vscode-pi-sandbox`. Install from
+this checkout:
 
 ```sh
 python3 -m venv .venv
@@ -36,6 +36,9 @@ Use **Packages** or install a profile from a Git URL:
 vscode-pi-sandbox profile add reporting git@git.example.com:team/reporting.git
 vscode-pi-sandbox provider add company git@git.example.com:team/company-models.git
 ```
+
+For repositories containing several plugins, add `--subdir FOLDER` to select one.
+The same folder is used by subsequent updates.
 
 Select the profile during creation. Choose providers in **Configuration** and
 enter credentials through **Settings → Models**. Git authentication uses your

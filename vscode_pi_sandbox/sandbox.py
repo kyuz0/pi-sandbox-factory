@@ -895,6 +895,7 @@ def main():
         operations=package.add_subparsers(dest='package_action',required=True)
         operations.add_parser('list')
         add=operations.add_parser('add');add.add_argument('package_name');add.add_argument('source');add.add_argument('--ref')
+        add.add_argument('--subdir', default='.', help='Plugin folder inside the source repository')
         for operation in ('update','remove','show'):
             item=operations.add_parser(operation);item.add_argument('package_name')
     listing = sub.add_parser('list', help='List saved sandboxes, container states, and workspace paths')
@@ -972,7 +973,7 @@ def main():
             path=registry.resolve(kind,args.package_name)
             print(json.dumps(registry.installed(kind).get(args.package_name) or registry.manifest(kind,path),indent=2))
         elif action=='add':
-            row=registry.add(kind,args.package_name,args.source,args.ref);print(f'Installed {row["name"]} at {row["commit"] or row["digest"]}')
+            row=registry.add(kind,args.package_name,args.source,args.ref,subdir=args.subdir);print(f'Installed {row["name"]} at {row["commit"] or row["digest"]}')
         elif action=='update':
             row=registry.update(kind,args.package_name);print(f'Updated {row["name"]}. Existing sandboxes keep their saved snapshot until recreated.')
         else:

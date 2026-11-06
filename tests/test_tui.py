@@ -320,10 +320,11 @@ class TUITests(unittest.TestCase):
             await self.ready(app,pilot);await pilot.click('#packages');await pilot.pause()
             app.screen.query_one('#package-name',Input).value='reporting'
             app.screen.query_one('#package-source',Input).value='/tmp/profile-example'
+            app.screen.query_one('#package-subdir',Input).value='profiles/reporting'
             button=app.screen.query_one('#package-add',Button)
             button.scroll_visible();await pilot.pause();await pilot.click('#package-add')
             await self.ready(app,pilot)
-            self.assertEqual(service.calls[-1],['profile','add','reporting','/tmp/profile-example'])
+            self.assertEqual(service.calls[-1],['profile','add','reporting','/tmp/profile-example','--subdir','profiles/reporting'])
             self.assertIsInstance(app.screen,Operation)
 
     async def test_saved_unregistered_provider_remains_in_configuration(self):
