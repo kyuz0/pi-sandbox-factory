@@ -40,7 +40,9 @@ to Pi without a human dialog; assisted mode enables human fallback.
 
 Search defaults and sandbox copies must keep credentials separate from options.
 Match keys to both provider and endpoint; a copy without keys must not inherit
-workstation defaults. Exercise fallback and Only-provider behavior in both clients.
+workstation defaults. Full configuration copies reuse package snapshots, with fresh
+workspace selection and private state; never copy credential paths or seed homes.
+Exercise fallback and Only-provider behavior in both clients.
 
 Preserve workspace files, ownership checks and private home state. Model discovery
 must work before a Pi session exists and allow opening the editor while offline.

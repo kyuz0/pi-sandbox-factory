@@ -12,6 +12,8 @@ node --test tests/test_provider_runtime.mjs tests/test_web_search_policy.mjs
 The Python suite covers lifecycle, ownership, rollback, package revisions,
 subfolder exports, provider selection and terminal interactions, including 80×24 layouts. Node tests
 cover the adapter contract, preview, credential handling and refresh locking.
+Creation tests cover **Create from existing…**, optional search keys, independent
+package snapshots after source deletion, and unchanged source settings.
 These tests use fixtures and no account credentials.
 
 ## Package installation

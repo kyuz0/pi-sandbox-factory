@@ -223,6 +223,85 @@ class TUITests(unittest.TestCase):
             self.assertEqual([r['name'] for r in app.records],['alpha'])
             await pilot.press('q')
 
+    async def test_create_from_is_visible_and_copies_settings_without_credentials(self):
+        from pi_sandbox_factory.sandbox_tui import CreateFromSandbox, WebAccessForm
+        from textual.widgets import Select
+        record = self.records[0]
+        record['config'].update(
+            memory='16g', subagents=True, env_file='/private/keys.env', pi_config='/private/pi',
+            options={'browser': True, 'goals': False, 'website_groups': ['dev-python'],
+                     'web_access': {'enabled': True, 'providers': {'exa': {'has_key': True}}}},
+            advisors={'providers': ['claude'], 'claude_model': 'opus', 'claude_effort': 'high'})
+        original = copy.deepcopy(record)
+        service = FakeService(self.records)
+        service.search_keys = lambda name: self.fail('Keys must require explicit selection')
+        workspace = self.root / 'new-project'
+        workspace.mkdir()
+        app = Cockpit(self.root, service)
+        with patch('pi_sandbox_factory.web_access.saved_keys', return_value={'exa': 'workstation-key'}) as defaults:
+            async with app.run_test(size=(80,24)) as pilot:
+                await self.ready(app,pilot)
+                button = app.query_one('#create-from', Button)
+                self.assertFalse(button.disabled)
+                self.assertLessEqual(button.region.right,80)
+                self.assertTrue(await pilot.click('#create-from'))
+                await pilot.pause()
+                self.assertIsInstance(app.screen,CreateFromSandbox)
+                self.assertEqual(app.screen.query_one('#copy-source',Select).value,'alpha')
+                self.assertFalse(app.screen.query_one('#copy-keys',Checkbox).value)
+                self.assertTrue(await pilot.click('#copy-continue'))
+                await pilot.pause()
+                self.assertIsInstance(app.screen,NewSandbox)
+                self.assertEqual(app.screen.query_one('#workspace',Input).value,'')
+                self.assertEqual(app.screen.query_one('#name',Input).value,'')
+                app.screen.query_one('#workspace',Input).value=str(workspace)
+                await pilot.pause()
+                app.screen.query_one('#name',Input).value='copied-agent'
+                await pilot.click('#continue'); await pilot.pause()
+                self.assertIsInstance(app.screen,SettingsForm, str(app.screen.query_one('#new-error').render()) if isinstance(app.screen,NewSandbox) else '')
+                self.assertEqual(app.screen.query_one(WebAccessForm).keys,{})
+                defaults.assert_not_called()
+                self.assertTrue(app.screen.query_one('#browser',Checkbox).value)
+                self.assertEqual(app.screen.query_one('#env-file',Input).value,'')
+                self.assertEqual(app.screen.query_one('#pi-config',Input).value,'')
+                with patch('pi_sandbox_factory.sandbox.choose_engine',return_value='podman'):
+                    await pilot.click('#apply'); await self.ready(app,pilot)
+                draft = service.calls[0][1]
+                self.assertEqual(draft['reuse_from'],'alpha')
+                self.assertEqual(draft['name'],'copied-agent')
+                self.assertEqual(draft['memory'],'16g')
+                self.assertEqual(draft['advisors']['claude_model'],'opus')
+                self.assertEqual(draft['options']['website_groups'],['dev-python'])
+                self.assertEqual(record,original)
+
+    async def test_create_from_copies_keys_only_when_selected_and_handles_stopped_source(self):
+        from pi_sandbox_factory.sandbox_tui import WebAccessForm
+        from textual.widgets import Select
+        self.records[0]['config']['options']={'web_access':{'enabled':True,'providers':{'exa':{'has_key':True}}}}
+        self.records[1]['dev']='exited'
+        service=FakeService(self.records)
+        from unittest.mock import Mock
+        service.search_keys=Mock(return_value={'exa':{'endpoint':'','key':'synthetic'}})
+        app=Cockpit(self.root,service)
+        async with app.run_test(size=(100,36)) as pilot:
+            await self.ready(app,pilot)
+            await pilot.click('#create-from');await pilot.pause()
+            app.screen.query_one('#copy-source',Select).value='beta';await pilot.pause()
+            self.assertTrue(app.screen.query_one('#copy-keys',Checkbox).disabled)
+            app.screen.query_one('#copy-source',Select).value='alpha';await pilot.pause()
+            app.screen.query_one('#copy-keys',Checkbox).value=True
+            await pilot.click('#copy-continue');await pilot.pause()
+            service.search_keys.assert_called_once_with('alpha')
+            self.assertEqual(app.screen.search_keys,{'exa':'synthetic'})
+            await pilot.press('escape');await pilot.pause()
+            self.assertFalse(service.calls)
+
+    async def test_create_from_disabled_for_empty_inventory(self):
+        app=Cockpit(self.root,FakeService([]))
+        async with app.run_test(size=(80,24)) as pilot:
+            await self.ready(app,pilot)
+            self.assertTrue(app.query_one('#create-from',Button).disabled)
+
     async def test_create_uses_user_name_workspace_and_ports(self):
         service=FakeService([]);app=Cockpit(self.root,service)
         workspace=self.root/'my-files';workspace.mkdir()
@@ -274,10 +353,10 @@ class TUITests(unittest.TestCase):
         app=Cockpit(self.root,FakeService(self.records))
         async with app.run_test(size=(80,24)) as pilot:
             await self.ready(app,pilot);self.assertEqual(app.theme,'cockpit-gold')
-            for name in ['open','settings','new','more','packages']:
+            for name in ['open','settings','new','create-from','more','packages']:
                 b=app.query_one('#'+name,Button)
                 self.assertLessEqual(b.region.right,80,name);self.assertLessEqual(b.region.bottom,23,name)
-            self.assertEqual(len(app.query('#home Button')),5)
+            self.assertEqual(len(app.query('#home Button')),6)
             app.save_screenshot(filename='sandbox-home-declutter.svg',path='/tmp')
             await self.settings_page(app,pilot,index=0)
             self.assertLessEqual(app.screen.query_one('#apply-network',Button).region.bottom,23)

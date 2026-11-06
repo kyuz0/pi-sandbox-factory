@@ -1,5 +1,6 @@
 """Terminal interface for Pi Sandbox Factory."""
 import json
+import copy
 import asyncio
 import os
 from pathlib import Path
@@ -100,6 +101,23 @@ def preset(profile, defaults):
     return value
 
 
+def copy_draft(record, state_root):
+    """Copy declarative settings, never private state or credential file paths."""
+    config = copy.deepcopy(record['config'])
+    value = copy.deepcopy(DEFAULT_SETTINGS)
+    for field in ('engine', 'network', 'memory', 'subagents', 'local_model_ports',
+                  'model_providers', 'advisors', 'extra_skills'):
+        if field in config:
+            value[field] = copy.deepcopy(config[field])
+    value.update(profile=config['profile']['path'], options=options(config.get('options')),
+                 name='', workspace='', workspace_parent='', env_file='', pi_config='',
+                 reuse_from=record['name'], reused_profile=copy.deepcopy(config['profile']))
+    value['allowlist'] = (Path(state_root) / record['name'] / 'allowlist.txt').read_text()
+    for row in value['options']['web_access']['providers'].values():
+        row['has_key'] = False
+    return value
+
+
 class Service:
     """Subprocess argument lists only; keys are sent to the container over stdin."""
     def __init__(self, state):
@@ -157,6 +175,10 @@ class Service:
             write_json(selected, draft['options'])
             args = ['create', name, '--profile', draft['profile'], '--workspace', draft['workspace'],
                     '--engine', draft['engine'], '--options-file', str(selected)]
+            if draft.get('reuse_from'):
+                args += ['--reuse-from', draft['reuse_from']]
+                for skill in draft.get('remove_skills', []):
+                    args += ['--omit-skill', skill]
             if draft['network'] == 'allowlist':
                 rules = Path(temp) / 'allowlist.txt'
                 rules.write_text(draft['allowlist'])
@@ -471,7 +493,8 @@ class WebAccessForm(Vertical):
 
     async def on_mount(self):
         if not getattr(self.screen, 'editing', False):
-            self.keys = web_access.saved_keys(search_keys_path(), self.value)
+            supplied = getattr(self.screen, 'search_keys', None)
+            self.keys = dict(supplied) if supplied is not None else web_access.saved_keys(search_keys_path(), self.value)
             for name, row in self.providers.items():
                 row['has_key'] = bool(self.keys.get(name))
         await self.refresh_providers()
@@ -1104,31 +1127,109 @@ class FolderPicker(ModalScreen[Optional[str]]):
                 self.refresh_folders()
 
 
+class CreateFromSandbox(ModalScreen):
+    BINDINGS = [('escape', 'cancel', 'Cancel')]
+    DEFAULT_CSS = """
+    CreateFromSandbox { align: center middle; background: #000000 70%; }
+    #copy-sandbox-dialog { width: 72; max-width: 95%; height: 95%; max-height: 28; padding: 1 2; background: #34383d; border: solid #f2b544; }
+    #copy-sandbox-dialog Static { height: auto; margin-bottom: 1; }
+    #copy-sandbox-fields { height: 1fr; }
+    """
+
+    def __init__(self, records, selected=None):
+        super().__init__()
+        self.records = {r['name']: r for r in records}
+        self.selected = selected if selected in self.records else next(iter(self.records))
+
+    def compose(self):
+        with Vertical(id='copy-sandbox-dialog'):
+            yield Label('Create from existing sandbox', classes='title')
+            with VerticalScroll(id='copy-sandbox-fields'):
+                yield Label('Copy settings from')
+                yield Select([(name, name) for name in self.records], value=self.selected,
+                             allow_blank=False, id='copy-source')
+                yield Static('Copy its configuration, then choose a new name and workspace. Review the settings before creating.')
+                yield Checkbox('Include search API keys', value=False, id='copy-keys')
+                yield Static('', id='copy-keys-help', markup=False)
+                yield Static('Sign in to models and advisors again; SSH keys, browser sessions and chat history are not copied.')
+            yield Static('', id='copy-error', classes='error', markup=False)
+            with Horizontal(classes='buttons'):
+                yield Button('Cancel', id='copy-cancel')
+                yield Button('Continue', id='copy-continue', variant='primary')
+
+    def on_mount(self):
+        self.source_changed()
+
+    @on(Select.Changed, '#copy-source')
+    def source_changed(self):
+        record = self.records[self.query_one('#copy-source', Select).value]
+        checkbox = self.query_one('#copy-keys', Checkbox)
+        checkbox.value = False
+        checkbox.disabled = record['dev'] != 'running'
+        help_text = self.query_one('#copy-keys-help', Static)
+        help_text.display = checkbox.disabled
+        help_text.update('Start the source sandbox to copy search API keys.' if checkbox.disabled else '')
+
+    def action_cancel(self):
+        self.dismiss(None)
+
+    @on(Button.Pressed)
+    async def pressed(self, event):
+        event.stop()
+        if event.button.id == 'copy-cancel':
+            self.action_cancel()
+            return
+        button = self.query_one('#copy-continue', Button)
+        button.disabled = True
+        try:
+            record = self.records[self.query_one('#copy-source', Select).value]
+            draft = copy_draft(record, self.app.state_root)
+            keys = {}
+            if self.query_one('#copy-keys', Checkbox).value:
+                stored = await asyncio.to_thread(self.app.service.search_keys, record['name'])
+                keys = web_access.matching_keys(stored, options(record['config'].get('options'))['web_access'])
+            for name, row in draft['options']['web_access']['providers'].items():
+                row['has_key'] = bool(keys.get(name))
+            self.dismiss((draft, keys))
+        except (OSError, ValueError, KeyError) as error:
+            self.query_one('#copy-error', Static).update(safe_text(error))
+            button.disabled = False
+
+
 class NewSandbox(Screen):
+    def __init__(self, draft=None, search_keys=None):
+        super().__init__()
+        self.copied_draft = draft
+        self.search_keys = search_keys
+
     BINDINGS = [Binding('escape', 'back', 'Back')]
 
     def compose(self):
+        settings = self.copied_draft or self.app.defaults
+        profiles = profile_titles()
+        if self.copied_draft:
+            profiles[settings['profile']] = profiles.get(settings['reused_profile'].get('registry_name'), settings['reused_profile']['name']) + ' (from ' + settings['reuse_from'] + ')'
         yield Header()
         with VerticalScroll(classes='form'):
-            yield Label('New sandbox · 1 of 2', classes='title')
+            yield Label('New sandbox · 1 of 2' + (' · from ' + settings['reuse_from'] if self.copied_draft else ''), classes='title', id='new-title')
             yield Label('Profile')
-            yield Select([(v, k) for k, v in profile_titles().items()] + [('Custom profile…', 'custom')],
-                         value=self.app.defaults['profile'] if self.app.defaults['profile'] in profile_titles() else 'custom',
+            yield Select([(v, k) for k, v in profiles.items()] + [('Custom profile…', 'custom')],
+                         value=settings['profile'] if settings['profile'] in profiles else 'custom',
                          allow_blank=False, id='profile')
             with Vertical(id='custom-profile-fields'):
                 yield Label('Custom profile folder')
                 yield Input(id='custom-profile', placeholder='Folder containing profile.json, Dockerfile and profile.md')
             yield Label('Workspace')
             with Horizontal(classes='path-row'):
-                yield Input(self.app.defaults['workspace_parent'], id='workspace')
+                yield Input(settings['workspace_parent'], id='workspace')
                 yield Button('Browse', id='browse')
             yield Checkbox('Create this workspace folder if it does not exist', id='mkdir')
             yield Label('Sandbox name')
             yield Input(id='name')
             yield Static('', id='new-error', classes='error', markup=False)
-            with Horizontal(classes='buttons'):
-                yield Button('Cancel', id='cancel')
-                yield Button('Continue', id='continue', variant='primary')
+        with Horizontal(classes='wizard-actions'):
+            yield Button('Cancel', id='cancel')
+            yield Button('Continue', id='continue', variant='primary')
         yield Footer()
 
     def on_mount(self):
@@ -1157,13 +1258,17 @@ class NewSandbox(Screen):
                 profile = self.query_one('#profile', Select).value
                 if profile == 'custom':
                     profile = self.query_one('#custom-profile', Input).value
-                metadata = sandbox.load_profile(profile)
+                metadata = (self.copied_draft['reused_profile'] if self.copied_draft and profile == self.copied_draft['reused_profile']['path']
+                            else sandbox.load_profile(profile))
                 name = self.query_one('#name', Input).value.strip()
                 if not re.fullmatch('[a-z0-9][a-z0-9-]{0,39}', name):
                     raise ValueError('Name: use 1–40 lowercase letters, digits or hyphens.')
                 if (self.app.state_root / name).exists():
                     raise ValueError('That name already exists. Choose another name.')
-                workspace = Path(self.query_one('#workspace', Input).value).expanduser().resolve()
+                workspace_text = self.query_one('#workspace', Input).value.strip()
+                if not workspace_text:
+                    raise ValueError('Choose a workspace folder.')
+                workspace = Path(workspace_text).expanduser().resolve()
                 if workspace in (Path('/'), Path.home()):
                     raise ValueError('Choose a project folder, not your home folder or filesystem root.')
                 if not workspace.exists():
@@ -1171,10 +1276,10 @@ class NewSandbox(Screen):
                         raise ValueError('Choose an existing workspace or enable folder creation.')
                 elif not workspace.is_dir():
                     raise ValueError('Workspace is not a directory.')
-                draft = preset(metadata['name'], self.app.defaults)
+                draft = copy.deepcopy(self.copied_draft) if self.copied_draft else preset(metadata['name'], self.app.defaults)
                 draft.update(profile=profile, name=name, workspace=str(workspace),
                              mkdir=self.query_one('#mkdir', Checkbox).value)
-                self.app.push_screen(SettingsForm(draft))
+                self.app.push_screen(SettingsForm(draft, search_keys=self.search_keys))
             except (OSError, ValueError) as error:
                 self.query_one('#new-error', Static).update(str(error))
 
@@ -1189,10 +1294,12 @@ class NewSandbox(Screen):
 class SettingsForm(Screen):
     BINDINGS = [Binding('escape', 'back', 'Back')]
 
-    def __init__(self, draft, editing=False, defaults=False):
+    def __init__(self, draft, editing=False, defaults=False, search_keys=None):
         super().__init__()
         self.draft, self.editing, self.defaults_mode = draft, editing, defaults
-        self.profile_name = sandbox.load_profile(draft['profile'])['name']
+        self.search_keys = search_keys
+        self.profile_name = (draft['reused_profile']['name'] if draft.get('reused_profile') and draft['profile'] == draft['reused_profile']['path']
+                             else sandbox.load_profile(draft['profile'])['name'])
 
     def compose(self):
         value, selected = self.draft, options(self.draft.get('options'))
@@ -1360,7 +1467,7 @@ class SettingsForm(Screen):
                      skill_repo=inp('skill-repo'), skill_path=inp('skill-path'))
         if not self.editing and not self.defaults_mode:
             from . import sandbox_advisors
-            draft['advisors'] = sandbox_advisors.validate({'providers': [
+            draft['advisors'] = sandbox_advisors.validate({**draft.get('advisors', {}), 'providers': [
                 provider for provider in ('codex', 'agy', 'claude') if check('new-advisor-' + provider)]})
         draft['allowlist'] = self.query_one('#allowlist', TextArea).text if draft['network'] == 'allowlist' else ''
         # Local model ports are controlled by their labelled field; other rules stay intact.
@@ -1458,6 +1565,9 @@ class Cockpit(App):
     .title { color: #f2b544; text-style: bold; margin: 0 0 1 0; }
     Label { margin: 0; height: auto; }
     .form { padding: 1 3; }
+    NewSandbox .form { padding: 0 3; }
+    NewSandbox #new-title { margin-bottom: 0; }
+    CreateFromSandbox .title, CreateFromSandbox #copy-source { margin-bottom: 0; }
     .form > Static { height: auto; margin-bottom: 1; }
     .setting { height: auto; margin-bottom: 1; }
     .setting > Checkbox, .setting > Input { margin-bottom: 0; }
@@ -1533,6 +1643,7 @@ class Cockpit(App):
             with Horizontal(classes='buttons'):
                 yield Label('Sandboxes', classes='title')
                 yield Button('New sandbox', id='new')
+                yield Button('Create from existing…', id='create-from', disabled=True)
                 yield Button('Packages', id='packages')
             yield Label('Search sandboxes')
             yield Input(id='search')
@@ -1604,6 +1715,7 @@ class Cockpit(App):
 
     def receive_inventory(self, records):
         self.records = records
+        self.query_one('#create-from', Button).disabled = not records
         self.query_one('#home-error', Static).update('')
         self.render_records()
 
@@ -1694,7 +1806,16 @@ class Cockpit(App):
         except (OSError, ValueError, KeyError, subprocess.SubprocessError) as error:
             self.notify(safe_text(error), severity='error')
 
+    def copied_sandbox(self, result):
+        if result is not None:
+            draft, keys = result
+            self.push_screen(NewSandbox(draft, keys))
+
     def perform_action(self, action):
+        if action == 'create-from':
+            if self.records:
+                self.push_screen(CreateFromSandbox(self.records, self.selected_name()), self.copied_sandbox)
+            return
         if action == 'packages':
             self.push_screen(PackagesScreen())
             return

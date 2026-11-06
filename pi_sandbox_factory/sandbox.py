@@ -662,7 +662,17 @@ def configure_local_gateway(config, value, rules):
 
 
 def create(args, state):
-    profile = load_profile(args.profile)
+    reuse = {}
+    if getattr(args, 'reuse_from', None):
+        if not re.fullmatch(r'[a-z0-9][a-z0-9-]{0,39}', args.reuse_from):
+            raise ValueError('Invalid source sandbox name')
+        reuse = json.loads((state.parent / args.reuse_from / 'config.json').read_text())
+    if reuse and args.profile == reuse['profile']['path']:
+        profile = reuse['profile']
+        if tree_digest(Path(profile['path'])) != profile['digest']:
+            raise ValueError('Source profile snapshot was modified')
+    else:
+        profile = load_profile(args.profile)
     mode = getattr(args, 'network', 'allowlist')
     if mode == 'unrestricted' and (args.allowlist or args.allow_domain):
         raise ValueError('--network unrestricted cannot be combined with an allowlist')
@@ -705,16 +715,28 @@ def create(args, state):
     if getattr(args, 'browser', False):
         config['options'] = options({**config.get('options', {}), 'browser': True})
     config['website_groups'] = network_groups.snapshots(options(config.get('options'))['website_groups'])
-    config['advisors'] = sandbox_advisors.validate({'providers': getattr(args, 'advisor', [])})
+    config['advisors'] = sandbox_advisors.validate({**reuse.get('advisors', {}), 'providers': getattr(args, 'advisor', [])})
     state.mkdir(parents=True, mode=0o700)
     try:
         values = json.loads(Path(args.providers_file).read_text()) if getattr(args,'providers_file',None) else {name:{} for name in (getattr(args,'model_provider',None) or ['local'])}
-        config['model_providers'] = model_providers.prepare(values, state)
+        config['model_providers'] = model_providers.prepare(values, state, saved=reuse.get('model_providers', []))
         model_providers.validate_network(config, rules)
         config['profile'] = snapshot_profile(profile, state)
         config['common'] = snapshot_profile(common_profile(), state)
+        config['extra_skills'] = []
+        for skill in reuse.get('extra_skills', []):
+            if skill['name'] in getattr(args, 'omit_skill', []):
+                continue
+            source = Path(skill['path'])
+            if tree_digest(source) != skill['digest']:
+                raise ValueError('Source skill snapshot was modified: ' + skill['name'])
+            target = state / 'skills' / skill['digest']
+            if not target.exists():
+                shutil.copytree(source, target)
+            config['extra_skills'].append(dict(skill, path=str(target)))
         if getattr(args, 'skill_source', None):
-            config['extra_skills'] = [sandbox_skills.snapshot(args.skill_source, args.skill_path, state, SimpleNamespace(run=run, tree_digest=tree_digest))]
+            added = sandbox_skills.snapshot(args.skill_source, args.skill_path, state, SimpleNamespace(run=run, tree_digest=tree_digest))
+            config['extra_skills'] = [s for s in config['extra_skills'] if s['name'] != added['name']] + [added]
     except (Exception, KeyboardInterrupt):
         shutil.rmtree(state)  # This create owns the newly created, incomplete state.
         raise
@@ -949,6 +971,8 @@ def main():
     new.add_argument('name')
     new.add_argument('--profile', default='base', help='Installed profile name or custom profile directory (default: base)')
     new.add_argument('--workspace', required=True)
+    new.add_argument('--reuse-from', help='Reuse saved provider and skill packages and advisor settings from NAME; other settings use the supplied flags')
+    new.add_argument('--omit-skill', action='append', default=[], help='Omit an added skill when using --reuse-from')
     new.add_argument('--model-provider', action='append', help='Installed provider name; repeat for multiple sources (default: local)')
     new.add_argument('--providers-file', help='JSON object mapping provider names to non-secret settings')
     new.add_argument('--pi-config',

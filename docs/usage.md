@@ -12,6 +12,16 @@ checkouts use their usual Git and package-install workflow.
 
 Select **New sandbox**, choose a name and workspace, review settings, then create the sandbox. The base profile includes Pi, Pendant with built-in goals, and document tools. Install additional profiles through **Packages**, or select a custom profile folder.
 
+**Create from existing…**, beside **New sandbox**, lets you reuse a saved setup.
+Choose the source, enter a new name and workspace, then review its profile, model
+providers, network rules, features and advisor settings before creating. Added
+skills are included; you can deselect them in **Skills and features**.
+
+Select **Include search API keys** to copy those keys from a running source.
+Model and advisor logins, SSH credentials, browser sessions and conversations
+start fresh. Environment files and Pi seed directories must be selected again.
+The new sandbox keeps independent copies of its packages.
+
 Use **Open in VS Code** for the selected sandbox, **Settings** for its configuration and **Actions** for start/stop, Pi, shell, logs, rebuild and deletion. Press **D** on the home screen to configure defaults for new sandboxes.
 
 Deleting a sandbox removes its containers, private home and editor state while preserving the workspace. Closing the manager or editor leaves containers running.
