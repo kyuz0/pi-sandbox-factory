@@ -118,5 +118,7 @@ confirmation, upgrade failure, relaunch and the update notice at 80Ã—24 and 120Ã
 Use an isolated `PIPX_HOME` and `PIPX_BIN_DIR` to check installation from GitHub and
 `pipx upgrade pi-sandbox-factory` without changing your normal installation.
 The GitHub workflow runs Python and provider tests, installs the built wheel,
-then versions and tags successful pushes to `main`. Full container checks remain
-in the disposable integration recipe above.
+then versions and tags successful pushes to `main` only when package code,
+bundled assets or packaging configuration changes. Documentation, tests and
+workflow changes alone do not create a release. Full container checks remain in
+the disposable integration recipe above.

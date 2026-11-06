@@ -12,8 +12,29 @@ concurrency:
 jobs:
   test:
     runs-on: ubuntu-latest
+    outputs:
+      package_changed: ${{ steps.package.outputs.changed }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Check for package changes
+        id: package
+        if: github.event_name == 'push'
+        env:
+          BEFORE: ${{ github.event.before }}
+          AFTER: ${{ github.sha }}
+        run: |
+          if [[ "$BEFORE" =~ ^0+$ ]]; then
+            BEFORE=$(git hash-object -t tree /dev/null)
+          fi
+          status=0
+          git diff --quiet "$BEFORE" "$AFTER" -- pi_sandbox_factory/ pyproject.toml MANIFEST.in || status=$?
+          case "$status" in
+            0) echo 'changed=false' >> "$GITHUB_OUTPUT" ;;
+            1) echo 'changed=true' >> "$GITHUB_OUTPUT" ;;
+            *) exit "$status" ;;
+          esac
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
@@ -32,7 +53,7 @@ jobs:
           /tmp/factory-package/bin/pi-sandbox-factory profile list
           /tmp/factory-package/bin/pi-sandbox-factory provider list
   release:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.test.outputs.package_changed == 'true'
     needs: test
     runs-on: ubuntu-latest
     permissions:
@@ -40,7 +61,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: main
+          ref: ${{ github.sha }}
       - name: Version and tag
         run: |
           python - <<'PYTHON'

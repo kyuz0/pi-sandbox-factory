@@ -55,6 +55,7 @@ Keep private names, credentials, conversation history and investigation logs out
 this public project. Add an example or test when it explains a contract better
 than another paragraph.
 
-Release versions use UTC CalVer. The GitHub workflow tests changes on `main`, then
-bumps `pyproject.toml` and tags the commit. Keep update checks off the UI thread;
+Release versions use UTC CalVer. After tests pass, the GitHub workflow versions
+and tags pushes that change `pi_sandbox_factory/`, `pyproject.toml` or `MANIFEST.in`.
+Documentation, tests and workflow changes alone do not create a release. Keep update checks off the UI thread;
 upgrades require confirmation and must not recreate running sandboxes.
