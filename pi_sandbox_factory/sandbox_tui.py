@@ -501,7 +501,7 @@ class AdvisorsScreen(Screen):
                 yield Button('Open Antigravity', id='advisor-login-agy', disabled='agy' not in providers)
             with Horizontal(classes='buttons'):
                 yield Button('Sign in to Claude', id='advisor-login-claude', disabled='claude' not in providers)
-                yield Button('Check providers', id='advisor-check', disabled=not providers)
+                yield Button('Check advisors', id='advisor-check', disabled=not providers)
             with Collapsible(title='Antigravity model', collapsed=True):
                 yield Label('Exact Gemini model ID · leave blank to sign in first')
                 yield Input(settings.get('agy_model', ''), id='advisor-model')
@@ -605,7 +605,7 @@ class ModelsScreen(Screen):
         service=self.app.service
         def task(log):
             service.provider(self.record['name'], selected, action.removeprefix('provider-'), key, log)
-        self.app.pop_screen();self.app.push_screen(Operation('Model provider · '+selected,task))
+        self.app.pop_screen();self.app.push_screen(Operation('Provider · '+selected,task))
     def action_back(self):self.app.pop_screen()
 
 
@@ -614,9 +614,9 @@ class PackagesScreen(Screen):
     def compose(self):
         yield Header()
         with VerticalScroll(classes='form'):
-            yield Label('Profiles and model providers',classes='title')
-            yield Static('Install trusted packages from Git or a local folder. Profiles contain build code; provider adapters run inside the sandbox.')
-            yield Select([('Tool profile','profile'),('Model provider','provider')],value='profile',allow_blank=False,id='package-kind')
+            yield Label('Profiles and Providers',classes='title')
+            yield Static('Profiles set up the tools, skills and instructions for your work. Providers configure the models Pi can use. Install only packages you trust.')
+            yield Select([('Profile','profile'),('Provider','provider')],value='profile',allow_blank=False,id='package-kind')
             yield Static('',id='package-list',markup=False)
             yield Input(placeholder='Local name, e.g. reporting',id='package-name')
             yield Input(placeholder='Git HTTPS/SSH URL or local folder',id='package-source')
@@ -883,7 +883,7 @@ class SettingsForm(Screen):
             available=registry.choices('provider')
             available.update({name:row['manifest'].get('description',name) for name,row in saved_rows.items() if name not in available})
             self.provider_forms={}
-            with Collapsible(title='Additional model providers',collapsed=True):
+            with Collapsible(title='Additional providers',collapsed=True):
                 for name,label in available.items():
                     if name=='local':continue
                     info=saved_rows[name]['manifest'] if name in saved_rows else registry.manifest('provider',registry.resolve('provider',name))
@@ -894,7 +894,7 @@ class SettingsForm(Screen):
                         yield Label(spec.get('label',key))
                         yield Input(configured.get(name,{}).get(key,spec.get('default','')),id='source-'+name+'-'+key)
                     if info.get('network'):yield Static('Required network access: '+', '.join(info['network']))
-                yield Static('Install additional sources from the home screen’s Packages button. Enter credentials after creation in Settings → Models.')
+                yield Static('Install additional providers from the home screen’s Packages button. Enter credentials after creation in Settings → Models.')
             yield Checkbox('Open VS Code after creation' if not self.editing else 'Open VS Code after applying',
                            value=value.get('open_editor', True), id='open-editor')
             if not self.editing and not self.defaults_mode:

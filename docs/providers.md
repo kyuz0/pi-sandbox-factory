@@ -1,9 +1,12 @@
-# Model providers
+# Providers
 
-A provider package configures Pi's shared model catalogue and may supply a Pi
-extension for refreshing it within a conversation. It is independent of the tool
-profile. The built-in `local` provider scans selected host ports using Pi Local
-Model Manager.
+A provider connects Pi to a model service and configures the models it can use.
+You choose providers independently of the profile, so the same working environment
+can use local models or a hosted service. The built-in `local` provider discovers
+models on selected host ports using Pi Local Model Manager.
+
+Provider packages can also include a Pi extension to refresh the model list during
+a conversation.
 
 ## Install and select
 
@@ -17,7 +20,7 @@ For a provider in a shared plugin repository, add `--subdir FOLDER` when
 installing. Updates retain the selected folder and ref. The TUI's **Packages**
 screen exposes the same setting.
 
-In **Configuration → Additional model providers**, enable the package and fill in
+In **Configuration → Additional providers**, enable the package and fill in
 its non-secret settings. Required destinations are shown and added to the form's
 allowlist. Apply rebuilds the sandbox; it preserves the workspace and private home.
 Then use **Settings → Models** to check, preview, refresh or enter a credential.

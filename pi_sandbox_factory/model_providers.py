@@ -15,7 +15,7 @@ def prepare(values, state, *, saved=(), refresh=False):
     from . import sandbox
 
     if not isinstance(values, dict):
-        raise ValueError("Model providers must map names to settings")
+        raise ValueError("Providers must map names to settings")
     result = []
     for name, settings in values.items():
         previous = next((row for row in saved if row["name"] == name), None)
@@ -127,7 +127,7 @@ def configure(config, action="refresh", provider=None, secret=None):
     if provider:
         rows = [r for r in rows if r["name"] == provider]
     if not rows:
-        raise ValueError("No matching model provider is enabled")
+        raise ValueError("No matching provider is enabled")
     for row in rows:
         if row["name"] == "local" and not config.get("local_model_ports"):
             print("Local models: select host ports in Configuration first.")
@@ -151,7 +151,7 @@ def configure(config, action="refresh", provider=None, secret=None):
         )
         if result.returncode:
             raise ValueError(
-                "Model provider operation failed: "
+                "Provider operation failed: "
                 + row["name"]
                 + "; check the provider configuration"
             )

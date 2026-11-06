@@ -938,7 +938,7 @@ def main():
         'update': 'Validate, build and apply saved settings by recreating containers',
         'up': 'Resume containers and recover stale runtime or gateway state',
         'delete': 'Remove both containers, private volumes, and saved state; keep the host workspace',
-        'configure': 'Check or refresh enabled model providers',
+        'configure': 'Check or refresh enabled providers',
     }
     for command in ('update', 'build', 'up', 'down', 'delete', 'recreate', 'open', 'configure', 'shell', 'pi', 'exec', 'check', 'policy', 'network', 'advisor-login', 'advisor-check', 'ssh-import-key', 'ssh-unlock'):
         cmd = sub.add_parser(command, **({'help': descriptions[command]} if command in descriptions else {}))

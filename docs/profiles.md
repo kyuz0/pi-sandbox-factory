@@ -1,7 +1,8 @@
 # Profiles
 
-A profile defines the tools and instructions inside a sandbox. Model providers
-are chosen separately, so the same profile can use local or hosted models.
+A profile sets up a sandbox for a particular kind of work, with the tools, skills,
+extensions and instructions the agent needs. Providers are chosen separately,
+so the same profile can use local or hosted models.
 
 ## Install and update
 

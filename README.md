@@ -10,7 +10,7 @@ Approved commands still run inside the container.
 You manage sandboxes through a terminal interface and open them in VS Code with
 Pendant, the extension that provides Pi’s chat interface. Each sandbox keeps its
 own tools, model settings and conversations. Local model discovery is included;
-you can add other model providers and reusable profiles for different projects.
+you can add other providers and reusable profiles for different projects.
 
 ![Pi Sandbox Factory terminal interface](docs/sandboxes.png)
 
@@ -43,9 +43,11 @@ Refresh**. [CLI and everyday use](docs/usage.md).
 
 ## Add your own environment
 
-A profile defines the tools and skills installed in a sandbox. A model provider
-connects Pi to a model service and configures the available models. You can install
-both from separate repositories, so a team can share its setup.
+A **Profile** sets up the working environment for a task: its tools, skills,
+extensions and agent instructions. A **Provider** connects Pi to a model service
+and configures the available models. You choose them separately, so the same
+profile can work with local models or a hosted service. Both can be installed
+from Git repositories to share a setup with your team.
 
 Use **Packages** or install a profile from a Git URL:
 
@@ -66,6 +68,6 @@ Profiles do not grant network access: allowed destinations remain explicit.
 Existing sandboxes retain their saved package versions until you update them.
 
 - [Create a profile](docs/profiles.md), with a runnable reporting example.
-- [Create a model provider](docs/providers.md), including the adapter contract.
+- [Create a provider](docs/providers.md), including the adapter contract.
 - [Isolation and architecture](docs/architecture.md), [approvals](docs/approvals.md), [SSH](docs/ssh.md), [advisors](docs/advisors.md).
 - [Development and tests](TESTING.md), [agent guide](AGENTS.md).
