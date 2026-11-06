@@ -39,7 +39,10 @@ class TUITests(unittest.TestCase):
                    profile=sandbox.load_profile('base'),local_model_ports='8000',memory='8g',subagents=False)
             self.records.append(dict(name=name,profile='base',engine='podman',dev='running',proxy='running',workspace=c['workspace'],config=c))
     def tearDown(self):self.update_check.stop();self.defaults.stop();self.tmp.cleanup()
-    async def ready(self,app,pilot):await app.workers.wait_for_complete();await pilot.pause()
+    async def ready(self,app,pilot):
+        await pilot.pause()
+        await app.workers.wait_for_complete()
+        await pilot.pause()
 
     async def settings_page(self, app, pilot, index=2):
         await pilot.click('#settings');await pilot.pause()
@@ -405,7 +408,8 @@ class TUITests(unittest.TestCase):
             app.screen.query_one('#package-source',Input).value='/tmp/profile-example'
             app.screen.query_one('#package-subdir',Input).value='profiles/reporting'
             button=app.screen.query_one('#package-add',Button)
-            button.scroll_visible();await pilot.pause();await pilot.click('#package-add')
+            button.scroll_visible(animate=False);await pilot.pause()
+            self.assertTrue(await pilot.click('#package-add'))
             await self.ready(app,pilot)
             self.assertEqual(service.calls[-1],['profile','add','reporting','/tmp/profile-example','--subdir','profiles/reporting'])
             self.assertIsInstance(app.screen,Operation)
