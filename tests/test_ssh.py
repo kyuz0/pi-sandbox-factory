@@ -7,7 +7,6 @@ import unittest
 from unittest.mock import patch
 from pi_sandbox_factory import sandbox
 from pi_sandbox_factory import sandbox_ssh as ssh
-from pi_sandbox_factory.sandbox_tui import GITHUB_HOSTS, PIP_HOSTS, preset_rules, preset_allowed
 
 HOST={'alias':'build','hostname':'192.0.2.10','port':22,'user':'demo','host_keys':['ssh-ed25519 AAAA']}
 
@@ -61,19 +60,3 @@ class SSHTests(unittest.TestCase):
         with patch.object(sandbox,'inspect',return_value=None),patch.object(sandbox,'run',side_effect=run):
             with self.assertRaisesRegex(ValueError,'unrelated'):ssh.down({'name':'test','engine':'podman'},remove=True)
         self.assertTrue(all('inspect' in call for call in calls))
-
-    def test_github_preset_preserves_other_destinations_and_has_no_wildcards(self):
-        original='local-model.internal:8000\npypi.org:443\n'
-        enabled=preset_rules(original,True,GITHUB_HOSTS)
-        self.assertTrue(preset_allowed(enabled,GITHUB_HOSTS))
-        self.assertEqual(preset_rules(enabled,True,GITHUB_HOSTS),enabled)
-        disabled=preset_rules(enabled,False,GITHUB_HOSTS)
-        self.assertIn('local-model.internal:8000',disabled)
-        self.assertIn('pypi.org:443',disabled)
-        self.assertFalse(preset_allowed(disabled,GITHUB_HOSTS))
-        self.assertFalse(any('*' in h for h,p in GITHUB_HOSTS))
-
-    def test_github_does_not_enable_ssh_or_private_credentials(self):
-        self.assertTrue(all(port==443 for _,port in GITHUB_HOSTS))
-        self.assertNotIn(('ssh.github.com',443),GITHUB_HOSTS)
-        self.assertFalse(GITHUB_HOSTS & PIP_HOSTS)

@@ -36,39 +36,6 @@ DEFAULT_SETTINGS = {'profile': 'base', 'model_providers': {'local':{}}, 'workspa
                     'local_model_ports': '8000', 'options': DEFAULTS}
 
 
-GITHUB_HOSTS = {(h, 443) for h in ('github.com', 'api.github.com', 'raw.githubusercontent.com', 'codeload.github.com', 'objects.githubusercontent.com', 'release-assets.githubusercontent.com')}
-
-
-PIP_HOSTS = {('pypi.org', 443), ('files.pythonhosted.org', 443)}
-NPM_HOSTS = {('registry.npmjs.org', 443)}
-
-
-def line_rules(line):
-    try:
-        return set(sandbox.parse_rules(line))
-    except ValueError:
-        return set()
-
-
-def preset_allowed(text, hosts):
-    return hosts <= set().union(*(line_rules(line) for line in text.splitlines()))
-
-
-def preset_rules(text, enabled, hosts):
-    lines = text.splitlines()
-    if enabled:
-        existing = set().union(*(line_rules(line) for line in lines))
-        lines.extend(f'{host}:{port}' for host, port in sorted(hosts - existing))
-    else:
-        lines = [line for line in lines if not line_rules(line) & hosts]
-    return '\n'.join(lines)
-
-
-def pip_allowed(text): return preset_allowed(text, PIP_HOSTS)
-
-def pip_rules(text, enabled): return preset_rules(text, enabled, PIP_HOSTS)
-
-
 class Checkbox(TextualCheckbox):
     """Distinguish both states by shape, including in monochrome terminals."""
     @property
@@ -326,9 +293,6 @@ class NetworkForm(Screen):
         with VerticalScroll(classes='form'):
             yield Label('Network · ' + self.sandbox_name)
             yield Static('Applying network changes restarts the gateway; active requests may need to reconnect. Development processes keep running.')
-            yield Checkbox('pip · Python packages from PyPI', value=pip_allowed(self.rules), id='pip-preset')
-            yield Checkbox('npm · JavaScript packages', value=preset_allowed(self.rules, NPM_HOSTS), id='npm-preset')
-            yield Checkbox('GitHub · repositories, API and release downloads', value=preset_allowed(self.rules, GITHUB_HOSTS), id='github-preset')
             yield WebsiteGroups(options(self.config.get('options'))['website_groups'])
             search = web_access.destinations(options(self.config.get('options'))['web_access'])
             if search:
@@ -345,33 +309,6 @@ class NetworkForm(Screen):
             yield Button('Cancel', id='cancel-network')
             yield Button('Apply network', id='apply-network', variant='primary')
         yield Footer()
-
-    @on(Checkbox.Changed, '#npm-preset')
-    def toggle_npm(self, event):
-        field = self.query_one('#allowlist', TextArea)
-        field.load_text(preset_rules(field.text, event.value, NPM_HOSTS))
-
-    @on(Checkbox.Changed, '#github-preset')
-    def toggle_github(self, event):
-        field = self.query_one('#allowlist', TextArea)
-        field.load_text(preset_rules(field.text, event.value, GITHUB_HOSTS))
-
-    @on(Checkbox.Changed, '#pip-preset')
-    def toggle_pip(self, event):
-        field = self.query_one('#allowlist', TextArea)
-        field.load_text(pip_rules(field.text, event.value))
-
-    @on(TextArea.Changed, '#allowlist')
-    def sync_pip(self):
-        checkbox = self.query_one('#pip-preset', Checkbox)
-        with checkbox.prevent(TextualCheckbox.Changed):
-            checkbox.value = pip_allowed(self.query_one('#allowlist', TextArea).text)
-        npm = self.query_one('#npm-preset', Checkbox)
-        with npm.prevent(TextualCheckbox.Changed):
-            npm.value = preset_allowed(self.query_one('#allowlist', TextArea).text, NPM_HOSTS)
-        github = self.query_one('#github-preset', Checkbox)
-        with github.prevent(TextualCheckbox.Changed):
-            github.value = preset_allowed(self.query_one('#allowlist', TextArea).text, GITHUB_HOSTS)
 
     @on(Button.Pressed)
     def pressed(self, event):
@@ -467,7 +404,7 @@ class MoreActions(ModalScreen[Optional[str]]):
 
 class SettingsMenu(ModalScreen[Optional[str]]):
     BINDINGS = [('escape', 'cancel', 'Back')]
-    ACTIONS = [('Network · allowed destinations and package presets', 'network-settings'),
+    ACTIONS = [('Network · website categories and allowed destinations', 'network-settings'),
                ('Models · endpoints and discovery', 'models'),
                ('Configuration · resources, tools and network mode', 'configuration'),
                ('Advisors · Codex, Antigravity and Claude', 'advisors'),
@@ -1009,11 +946,7 @@ class SettingsForm(Screen):
                 if self.editing:
                     yield Static('Allowed destinations: Settings → Network. Changes there preserve the development container.')
                 with Vertical(id='network-rules-fields'):
-                    yield Checkbox('pip · Python packages from PyPI', value=pip_allowed(value.get('allowlist', '')), id='pip-preset')
-                    yield Checkbox('npm · JavaScript packages', value=preset_allowed(value.get('allowlist', ''), NPM_HOSTS), id='npm-preset')
-                    yield Checkbox('GitHub · repositories, API and release downloads', value=preset_allowed(value.get('allowlist', ''), GITHUB_HOSTS), id='github-preset')
                     yield WebsiteGroups(selected['website_groups'])
-                    yield Static('Select the package registries you need. Git URLs, private registries and additional download hosts need their own entries.')
                     yield Label('Edit allowed destinations in Settings → Network.' if self.editing else 'Allowed destinations · one hostname:port per line; comments allowed')
                     yield TextArea(value.get('allowlist', ''), id='allowlist')
                     with Horizontal(classes='buttons'):
@@ -1090,33 +1023,6 @@ class SettingsForm(Screen):
     @on(Checkbox.Changed, '#inner-sandbox')
     def approval_changed(self):
         self.approval_description()
-
-    @on(Checkbox.Changed, '#npm-preset')
-    def toggle_npm(self, event):
-        field = self.query_one('#allowlist', TextArea)
-        field.load_text(preset_rules(field.text, event.value, NPM_HOSTS))
-
-    @on(Checkbox.Changed, '#github-preset')
-    def toggle_github(self, event):
-        field = self.query_one('#allowlist', TextArea)
-        field.load_text(preset_rules(field.text, event.value, GITHUB_HOSTS))
-
-    @on(Checkbox.Changed, '#pip-preset')
-    def pip_preset_changed(self, event):
-        field = self.query_one('#allowlist', TextArea)
-        field.load_text(pip_rules(field.text, event.value))
-
-    @on(TextArea.Changed, '#allowlist')
-    def allowlist_changed(self):
-        checkbox = self.query_one('#pip-preset', Checkbox)
-        with checkbox.prevent(TextualCheckbox.Changed):
-            checkbox.value = pip_allowed(self.query_one('#allowlist', TextArea).text)
-        npm = self.query_one('#npm-preset', Checkbox)
-        with npm.prevent(TextualCheckbox.Changed):
-            npm.value = preset_allowed(self.query_one('#allowlist', TextArea).text, NPM_HOSTS)
-        github = self.query_one('#github-preset', Checkbox)
-        with github.prevent(TextualCheckbox.Changed):
-            github.value = preset_allowed(self.query_one('#allowlist', TextArea).text, GITHUB_HOSTS)
 
     @on(Select.Changed, '#network')
     def network_changed(self):

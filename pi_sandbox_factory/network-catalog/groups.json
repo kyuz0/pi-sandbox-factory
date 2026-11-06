@@ -11968,7 +11968,7 @@
     },
     "ut1-liste_bu": {
       "title": "Library resources",
-      "description": "Library, academic and government resources selected by UT1, oriented towards its French university library.",
+      "description": "Academic and library resources worldwide, including Nature, Springer, JSTOR and university websites.",
       "source": "Universit\u00e9 Toulouse Capitole (UT1)",
       "url": "https://dsi.ut-capitole.fr/blacklists/",
       "revision": "03501c64d230df9d84124176558d758351027be1",

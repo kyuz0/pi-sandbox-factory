@@ -52,19 +52,30 @@ CLI `delete` is an explicit destructive command; the TUI adds a confirmation dia
 
 Saved state defaults to `~/.local/state/pi-sandbox-factory`. Use `--state-dir PATH` before the command for an independent inventory. TUI defaults live in `~/.config/pi-sandbox-factory/cockpit.json` (or under `XDG_CONFIG_HOME`). Workspaces are user-selected folders outside source/state. Container names and ownership labels are specific to this application.
 
-### Package download presets
+### Package downloads and website categories
 
-In Settings → Network, check **pip · Python packages from PyPI** and apply the settings. This adds `pypi.org:443` (package index) and `files.pythonhosted.org:443` (downloads) to the restricted allowlist.
+In **Configuration → Network → Website categories**, select **Python** for PyPI,
+**npm** for JavaScript packages or **GitHub** for repositories and release downloads.
+For an existing sandbox, use **Settings → Network → Website categories**.
+[Web access](web-access.md) describes the category sources and automatic updates.
 
-For JavaScript packages, check **npm · JavaScript packages**. This adds `registry.npmjs.org:443`, the [default npm registry](https://docs.npmjs.com/cli/v11/using-npm/registry/). Node.js and npm are already installed in the development image. The preset also covers Yarn or pnpm when configured to use this registry. Packages with install scripts that fetch binaries elsewhere need those destinations added separately.
+Node.js and npm are already installed. Yarn and pnpm can use the same npm registry.
+Packages whose install scripts fetch binaries elsewhere may need additional
+`hostname:port` entries, as may private registries.
 
-The **GitHub** preset covers repositories and release downloads. Presets are available during creation and in **Settings → Network**.
+Choose **Apply network** to update an existing sandbox. The gateway restarts;
+active requests may need to reconnect. Use **Settings → Configuration** for
+network mode or host model port changes.
 
-To update an existing restricted sandbox, select it and choose **Settings → Network**. Edit destinations or check the pip preset, then **Apply network**. Only the gateway restarts; development processes, terminals and files remain in place. Active network requests may need to reconnect. A stopped gateway stays stopped and uses the new rules at its next start. Use **Settings → Configuration** for network mode or host model port changes.
+CLI equivalent:
 
-CLI equivalent: `pi-sandbox-factory network NAME --allowlist /path/to/allowlist.txt`.
+```sh
+pi-sandbox-factory network NAME --allowlist /path/to/allowlist.txt \
+  --website-groups dev-python dev-npmjs dev-github
+```
 
-The **GitHub** preset allows HTTPS repository and release access. For SSH hosts or authenticated Git access with an isolated key, see [SSH and GitHub](ssh.md). [Advisors](advisors.md) covers Codex, Antigravity and Claude setup.
+For SSH hosts or authenticated Git access with an isolated key, see
+[SSH and GitHub](ssh.md).
 
 ### Included command-line tools
 

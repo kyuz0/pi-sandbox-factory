@@ -49,7 +49,7 @@ for name, title, description in [
     ('press', 'News and press', 'News publishers in the UT1 press category.'),
     ('financial', 'Financial information', 'Financial news and information sites in the UT1 financial category.'),
     ('bank', 'Banking', 'Online banking domains in the UT1 bank category.'),
-    ('liste_bu', 'Library resources', 'Library, academic and government resources selected by UT1, oriented towards its French university library.'),
+    ('liste_bu', 'Library resources', 'Academic and library resources worldwide, including Nature, Springer, JSTOR and university websites.'),
 ]:
     domains, skipped = checked('.' + s.strip() for s in (args.ut1 / name).read_text().splitlines() if s.strip())
     groups['ut1-' + name] = {'title': title, 'description': description,

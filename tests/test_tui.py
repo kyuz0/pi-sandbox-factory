@@ -194,17 +194,6 @@ class TUITests(unittest.TestCase):
             self.assertEqual(service.calls[0][2]['claude_effort'],'high')
             await pilot.press('q')
 
-    async def test_github_preset_in_network_editor(self):
-        from pi_sandbox_factory.sandbox_tui import GITHUB_HOSTS, preset_allowed
-        app=Cockpit(self.root,FakeService(self.records))
-        async with app.run_test(size=(100,36)) as pilot:
-            await self.ready(app,pilot);await self.settings_page(app,pilot,index=0)
-            await pilot.click('#github-preset');await pilot.pause()
-            text=app.screen.query_one('#allowlist',TextArea).text
-            self.assertTrue(preset_allowed(text,GITHUB_HOSTS))
-            self.assertIn('local-model.internal:8000',text)
-            await pilot.press('q')
-
     async def test_ssh_settings_keep_key_import_separate(self):
         from pi_sandbox_factory.sandbox_tui import SSHScreen
         service=FakeService(self.records);app=Cockpit(self.root,service)
@@ -243,6 +232,9 @@ class TUITests(unittest.TestCase):
             app.screen.query_one('#name',Input).value='my-agent'
             await pilot.click('#continue');await pilot.pause()
             self.assertIsInstance(app.screen,SettingsForm)
+            self.assertFalse(app.screen.query('#pip-preset, #npm-preset, #github-preset'))
+            for category in ('dev-python', 'dev-npmjs', 'dev-github'):
+                app.screen.query_one('#category-'+category,Checkbox).value=True
             app.screen.query_one('#model-ports',Input).value='8002-8003'
             app.screen.query_one('#new-advisor-codex',Checkbox).value=True
             app.screen.query_one('#new-advisor-agy',Checkbox).value=True
@@ -254,6 +246,7 @@ class TUITests(unittest.TestCase):
             self.assertEqual(draft['name'],'my-agent');self.assertEqual(draft['workspace'],str(workspace))
             self.assertEqual(draft['allowlist'],'local-model.internal:8002\nlocal-model.internal:8003')
             self.assertEqual(draft['local_model_ports'],'8002-8003')
+            self.assertEqual(draft['options']['website_groups'],['dev-python','dev-npmjs','dev-github'])
             self.assertEqual(draft['advisors']['providers'], ['codex', 'agy', 'claude'])
             await pilot.press('q')
 
@@ -306,67 +299,23 @@ class TUITests(unittest.TestCase):
             await pilot.press('q')
 
 
-    async def test_pip_preset_and_manual_rules_stay_in_sync(self):
-        service=FakeService(self.records);app=Cockpit(self.root,service)
-        async with app.run_test(size=(100,42)) as pilot:
-            await self.ready(app,pilot);await self.settings_page(app,pilot)
-            field=app.screen.query_one('#allowlist',TextArea)
-            checkbox=app.screen.query_one('#pip-preset',Checkbox)
-            self.assertFalse(checkbox.value)
-            checkbox.value=True;await pilot.pause()
-            self.assertIn('pypi.org:443',field.text)
-            self.assertIn('files.pythonhosted.org:443',field.text)
-            self.assertIn('local-model.internal:8000',field.text)
-            field.load_text('pypi.org:443 # index\nfiles.pythonhosted.org:443\nexample.com:443');await pilot.pause()
-            self.assertTrue(checkbox.value)
-            checkbox.value=False;await pilot.pause()
-            self.assertEqual(field.text,'example.com:443')
-            field.load_text('pypi.org:443\nexample.com:443');await pilot.pause()
-            self.assertFalse(checkbox.value)
-            checkbox.value=True;await pilot.pause()
-            self.assertEqual(field.text.count('pypi.org:443'),1)
-            with patch('pi_sandbox_factory.sandbox.choose_engine',return_value='podman'):
-                draft, key=app.screen.collect()
-            self.assertIn('files.pythonhosted.org:443',draft['allowlist'])
-            self.assertIn('example.com:443',draft['allowlist'])
-
-    async def test_npm_preset_preserves_other_rules_and_tracks_manual_edits(self):
-        service=FakeService(self.records);app=Cockpit(self.root,service)
-        async with app.run_test(size=(100,42)) as pilot:
-            await self.ready(app,pilot);await self.settings_page(app,pilot)
-            field=app.screen.query_one('#allowlist',TextArea)
-            checkbox=app.screen.query_one('#npm-preset',Checkbox)
-            self.assertFalse(checkbox.value)
-            checkbox.value=True;await pilot.pause()
-            self.assertIn('registry.npmjs.org:443',field.text)
-            self.assertIn('local-model.internal:8000',field.text)
-            field.load_text('registry.npmjs.org:443 # packages\npypi.org:443\nexample.com:443');await pilot.pause()
-            self.assertTrue(checkbox.value)
-            checkbox.value=False;await pilot.pause()
-            self.assertEqual(field.text,'pypi.org:443\nexample.com:443')
-            field.load_text('registry.npmjs.org:443\npypi.org:443');await pilot.pause()
-            self.assertTrue(checkbox.value)
-            with patch('pi_sandbox_factory.sandbox.choose_engine',return_value='podman'):
-                draft, key=app.screen.collect()
-            self.assertIn('registry.npmjs.org:443',draft['allowlist'])
-
     async def test_network_action_applies_to_selected_sandbox(self):
         service=FakeService(self.records);app=Cockpit(self.root,service)
         async with app.run_test(size=(100,42)) as pilot:
             await self.ready(app,pilot)
             app.query_one(DataTable).move_cursor(row=1)
             await self.settings_page(app,pilot,index=0)
-            app.screen.query_one('#pip-preset',Checkbox).value=True
-            app.screen.query_one('#npm-preset',Checkbox).value=True
-            await pilot.pause()
             field=app.screen.query_one('#allowlist',TextArea)
-            self.assertIn('registry.npmjs.org:443',field.text)
-            field.load_text(field.text.replace('registry.npmjs.org:443',''));await pilot.pause()
-            self.assertFalse(app.screen.query_one('#npm-preset',Checkbox).value)
-            app.screen.query_one('#npm-preset',Checkbox).value=True
+            legacy='local-model.internal:8000\npypi.org:443\nregistry.npmjs.org:443\ngithub.com:443'
+            field.load_text(legacy)
+            for category in ('dev-python', 'dev-npmjs', 'dev-github'):
+                app.screen.query_one('#category-'+category,Checkbox).value=True
             await pilot.pause()
+            self.assertEqual(field.text,legacy)
+            self.assertFalse(app.screen.query('#pip-preset, #npm-preset, #github-preset'))
             await pilot.click('#apply-network');await self.ready(app,pilot)
             self.assertEqual(service.calls[0][:2],['network','beta'])
+            self.assertEqual(service.calls[0][-4:],['--website-groups','dev-python','dev-npmjs','dev-github'])
             self.assertIsInstance(app.screen,Operation)
 
     async def test_contextual_actions_and_empty_selection(self):
