@@ -52,6 +52,32 @@ class TUITests(unittest.TestCase):
         menu.highlighted=6;menu.focus()
         await pilot.press('enter');await pilot.pause()
 
+    async def test_new_shortcut_works_while_search_has_focus(self):
+        for records in ([], self.records):
+            with self.subTest(empty=not records):
+                app = Cockpit(self.root, FakeService(records))
+                async with app.run_test(size=(80,24)) as pilot:
+                    await self.ready(app, pilot)
+                    search = app.query_one('#search', Input)
+                    search.focus()
+                    await pilot.press('n')
+                    self.assertEqual(search.value, 'n')
+                    details = str(app.query_one('#details').render())
+                    self.assertIn('F2', details)
+                    self.assertIn('No matching' if records else 'No sandboxes yet', details)
+                    await pilot.press('f2')
+                    await pilot.pause()
+                    self.assertIsInstance(app.screen, NewSandbox)
+                    screen = app.screen
+                    await pilot.press('f2')
+                    self.assertIs(app.screen, screen)
+                    await pilot.press('escape')
+                    await pilot.pause()
+                    self.assertEqual(app.query_one('#search', Input).value, 'n')
+                    await pilot.click('#new')
+                    await pilot.pause()
+                    self.assertIsInstance(app.screen, NewSandbox)
+
     async def test_advisors_live_in_settings_and_allow_initial_setup(self):
         from vscode_pi_sandbox.sandbox_tui import AdvisorsScreen
         service=FakeService(self.records)

@@ -1136,7 +1136,8 @@ class SettingsForm(Screen):
 
 class Cockpit(App):
     TITLE = 'VS Code Pi Sandbox'
-    BINDINGS = [Binding('n', 'new', 'New'), Binding('r', 'refresh_inventory', 'Refresh'),
+    BINDINGS = [Binding('f2', 'new', 'New sandbox', priority=True),
+                Binding('n', 'new', 'New', show=False), Binding('r', 'refresh_inventory', 'Refresh'),
                 Binding('slash', 'search', 'Search'), Binding('d', 'defaults', 'Defaults'), Binding('q', 'quit', 'Quit')]
     CSS = '''
     Screen { background: #171a1d; }
@@ -1272,7 +1273,8 @@ class Cockpit(App):
 
     def update_details(self):
         record = self.selected()
-        text = 'No matching sandboxes. Press N to create one.'
+        text = ('No matching sandboxes. Clear the search or use New sandbox (F2).'
+                if self.records else 'No sandboxes yet. Use New sandbox (F2) to create one.')
         if record:
             text = 'Workspace: ' + str(record.get('workspace') or 'Unavailable')
             text += '\nEngine: ' + str(record.get('engine') or 'Unknown')

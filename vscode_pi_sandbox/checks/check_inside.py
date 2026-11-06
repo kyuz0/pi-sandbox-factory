@@ -3,6 +3,7 @@ import json
 import os
 from pathlib import Path
 import socket
+import shutil
 import subprocess
 import sys
 
@@ -18,6 +19,11 @@ def require(condition, message):
         raise AssertionError(message)
     print('PASS ' + message, flush=True)
 
+
+for command in ('curl', 'ping', 'ip', 'ss', 'getent'):
+    require(shutil.which(command) is not None, command + ' is installed')
+
+subprocess.run(['ping', '-V'], check=True, capture_output=True)
 
 require(os.getuid() != 0, 'development process is not root')
 status = Path('/proc/self/status').read_text()

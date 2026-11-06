@@ -67,3 +67,10 @@ To update an existing restricted sandbox, select it and choose **Settings → Ne
 CLI equivalent: `vscode-pi-sandbox network NAME --allowlist /path/to/allowlist.txt`.
 
 The **GitHub** preset allows HTTPS repository and release access. For SSH hosts or authenticated Git access with an isolated key, see [SSH and GitHub](ssh.md). [Advisors](advisors.md) covers Codex, Antigravity and Claude setup.
+
+### Network diagnostics
+
+Development containers include `curl`, `ping`, `ip`, `ss` and `getent`.
+Restricted mode forwards allowed HTTP/HTTPS destinations through the gateway;
+external ICMP (`ping`) and direct DNS queries remain blocked. Use `curl` against
+an allowed endpoint to check connectivity in that mode.

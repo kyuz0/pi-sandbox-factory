@@ -3,8 +3,11 @@ ARG PI_VERSION=1.4.0
 ARG PENDANT_VERSION=0.94.2
 ARG USER_UID=1000
 ARG USER_GID=1000
+# Strip ping privileges so the executable can start with all container capabilities dropped.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    ca-certificates curl git python3 socat tini procps ripgrep iproute2 unzip tmux \
+    ca-certificates curl git python3 socat tini procps ripgrep iproute2 iputils-ping unzip tmux \
+    && python3 -c 'import os; p="/usr/bin/ping"; os.removexattr(p, "security.capability") if "security.capability" in os.listxattr(p) else None' \
+    && chmod u-s /usr/bin/ping \
     && rm -rf /var/lib/apt/lists/* \
     && if [ "$USER_GID" != 1000 ]; then groupmod -g "$USER_GID" node; fi \
     && if [ "$USER_UID" != 1000 ]; then usermod -u "$USER_UID" node; fi \
