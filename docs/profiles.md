@@ -4,6 +4,20 @@ A profile sets up a sandbox for a particular kind of work, with the tools, skill
 extensions and instructions the agent needs. Providers are chosen separately,
 so the same profile can use local or hosted models.
 
+## What profiles inherit
+
+**Default Developer Sandbox** is the built-in profile (`base`). It includes Pi,
+Pendant, Node.js, Python, Git, document tools and the sandbox security components.
+
+Every profile extends the same shared base image. A custom profile only needs to
+add its own dependencies, skills and instructions; it does not need to reinstall
+Pi or Pendant. The container builder reuses cached base layers when they match.
+Profiles do not inherit another profile’s additions.
+
+The profile’s Dockerfile starts with `ARG BASE_IMAGE` and `FROM ${BASE_IMAGE}`.
+The launcher supplies that image, then adds the selected browser support,
+providers and extra skills after building the profile.
+
 ## Install and update
 
 ```sh
