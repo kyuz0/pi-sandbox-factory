@@ -1137,7 +1137,7 @@ class SettingsForm(Screen):
 
 
 def banner(version, compact=False):
-    title = 'Pi Sandbox Factory' if compact else pyfiglet.figlet_format('Pi Sandbox Factory', font='small', width=120).rstrip()
+    title = 'Pi Sandbox Factory' if compact else pyfiglet.figlet_format('Pi Sandbox Factory', font='standard', width=120).rstrip()
     return f'[bold #f2b544]{title}[/]  [dim]v{version}[/]' if compact else f'[bold #f2b544]{title}[/]\n[dim]Pi and Pendant development environments · v{version}[/]'
 
 

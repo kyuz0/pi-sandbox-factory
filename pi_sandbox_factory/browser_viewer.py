@@ -254,7 +254,7 @@ def ensure_viewer(engine, container):
     """Start once per immutable container id; its lifetime follows the container."""
     if engine not in ('podman', 'docker') or not re.fullmatch(r'[a-f0-9]{64}', container):
         raise ValueError('Invalid viewer container')
-    runtime = Path(tempfile.gettempdir()) / f'vscode-pi-viewers-{os.getuid()}'
+    runtime = Path(tempfile.gettempdir()) / f'pi-sandbox-factory-viewers-{os.getuid()}'
     runtime.mkdir(mode=0o700, exist_ok=True)
     info = runtime.lstat()
     if not runtime.is_dir() or runtime.is_symlink() or info.st_uid != os.getuid() or info.st_mode & 0o077:
