@@ -62,7 +62,7 @@ class TUITests(unittest.TestCase):
                     app.show_update('2099.1.1.1')
                 await pilot.pause()
                 title=app.query_one('#title-banner')
-                self.assertEqual(title.region.height,1 if size[0]==80 else 7)
+                self.assertEqual(title.region.height,1 if size[0]==80 else 9)
                 self.assertFalse(app.query_one('#application-update-run',Button).disabled)
                 self.assertLess(app.query_one('#new').region.bottom,size[1])
                 self.assertLess(app.query_one('#more').region.bottom,size[1])
