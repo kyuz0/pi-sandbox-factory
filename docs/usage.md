@@ -68,9 +68,16 @@ CLI equivalent: `vscode-pi-sandbox network NAME --allowlist /path/to/allowlist.t
 
 The **GitHub** preset allows HTTPS repository and release access. For SSH hosts or authenticated Git access with an isolated key, see [SSH and GitHub](ssh.md). [Advisors](advisors.md) covers Codex, Antigravity and Claude setup.
 
-### Network diagnostics
+### Included command-line tools
 
-Development containers include `curl`, `ping`, `ip`, `ss` and `getent`.
+Alongside Git, SSH, Python and Node.js, development containers include:
+
+- Downloads and networking: `curl`, `wget`, `ping`, `ip`, `ss`, `getent`, `dig`, `nslookup`, `nc`.
+- Text and files: `jq`, `less`, `nano`, `vi`, `file`, `ripgrep`, `rsync` and the standard shell utilities.
+- Archives: `tar`, `gzip`, `zip`, `unzip`, `bzip2`, `xz`.
+
+Existing sandboxes receive image changes through **Actions → Update sources and recreate…**.
+
 Restricted mode forwards allowed HTTP/HTTPS destinations through the gateway;
 external ICMP (`ping`) and direct DNS queries remain blocked. Use `curl` against
 an allowed endpoint to check connectivity in that mode.

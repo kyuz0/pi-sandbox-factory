@@ -20,7 +20,9 @@ def require(condition, message):
     print('PASS ' + message, flush=True)
 
 
-for command in ('curl', 'ping', 'ip', 'ss', 'getent'):
+for command in ('curl', 'wget', 'ping', 'ip', 'ss', 'getent', 'dig', 'nslookup', 'nc',
+                'jq', 'less', 'nano', 'vi', 'file', 'zip', 'unzip', 'tar', 'gzip',
+                'bzip2', 'xz', 'rsync'):
     require(shutil.which(command) is not None, command + ' is installed')
 
 subprocess.run(['ping', '-V'], check=True, capture_output=True)

@@ -5,7 +5,8 @@ ARG USER_UID=1000
 ARG USER_GID=1000
 # Strip ping privileges so the executable can start with all container capabilities dropped.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    ca-certificates curl git python3 socat tini procps ripgrep iproute2 iputils-ping unzip tmux \
+    ca-certificates curl wget git python3 socat tini procps ripgrep iproute2 iputils-ping \
+    dnsutils netcat-openbsd jq less nano vim-tiny file zip unzip bzip2 xz-utils rsync tmux \
     && python3 -c 'import os; p="/usr/bin/ping"; os.removexattr(p, "security.capability") if "security.capability" in os.listxattr(p) else None' \
     && chmod u-s /usr/bin/ping \
     && rm -rf /var/lib/apt/lists/* \
