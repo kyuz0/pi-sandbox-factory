@@ -1145,7 +1145,7 @@ def main():
         try:
             statuses = json.loads(result.stdout)
         except json.JSONDecodeError:
-            raise ValueError('Update sources and recreate this sandbox before managing search keys with this version') from None
+            raise ValueError('Could not read the sandbox search key storage') from None
         if args.status or args.export_keys:
             print(json.dumps(statuses))
         else:

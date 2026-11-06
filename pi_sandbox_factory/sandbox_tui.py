@@ -144,7 +144,7 @@ class Service:
     def search_keys(self, name):
         result = subprocess.run(self.command('web-key', name, '--export-keys'), text=True, capture_output=True)
         if result.returncode:
-            raise ValueError('Could not read saved search keys. Start the sandbox; for an older container, use Actions → Update sources and recreate first.')
+            raise ValueError('Could not read saved search keys. Make sure the sandbox is running.')
         return json.loads(result.stdout)
 
     def create(self, draft, key, log):
