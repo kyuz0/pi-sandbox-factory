@@ -9,6 +9,7 @@ Read `README.md` and `TESTING.md`. For package work, use `docs/profiles.md`,
 Implementation and shipped assets live in `pi_sandbox_factory/`:
 
 - `sandbox.py`: lifecycle, ownership, immutable snapshots and image identities.
+- `folders.py` and `folders_ui.py`: validated host mounts, starting directory and shared folder controls.
 - `sandbox_tui.py`: terminal forms; `sandbox_options.py`: shared validation.
 - `web_access.py`: search modes, provider settings and reusable private keys; `network_groups.py`: trusted category updates and gateway rules.
 - `updates.py`: GitHub tags, installed version and pipx upgrade detection.
@@ -46,6 +47,11 @@ Exercise fallback and Only-provider behavior in both clients.
 
 Preserve workspace files, ownership checks and private home state. Model discovery
 must work before a Pi session exists and allow opening the editor while offline.
+Extra folders use `/mnt/<name>` and default to read-only. The starting directory
+is relative to `/workspace` and applies at launch. Keep mount validation, inner
+write roots, native tool permissions and agent context derived from the same
+folder configuration. The managed global `AGENTS.md` block adds context without
+replacing project instructions. Folder grants never become workstation defaults.
 Keep the UI usable at 80×24. Test actual shipped Pendant workers for bootstrap or
 extension changes, not just mocked APIs. Never restart a user's sandbox to test.
 

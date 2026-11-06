@@ -8,8 +8,9 @@ const extension = fs.readdirSync('/opt/pendant').find(name => name.startsWith('c
 const directory = path.join('/opt/pendant', extension);
 const version = JSON.parse(fs.readFileSync(path.join(directory, 'package.json'))).version;
 const sdkVersion = require(path.join(directory, 'dist/pi-sdk.cjs'))['@earendil-works/pi-coding-agent']().VERSION;
+const sessionCwd = process.argv.includes('--folders') ? '/workspace/app' : '/workspace';
 const worker = fork(path.join(directory, 'dist/pi-sdk-worker.cjs'), [], {
-  cwd: '/workspace', env: process.env, silent: true, serialization: 'advanced',
+  cwd: sessionCwd, env: process.env, silent: true, serialization: 'advanced',
 });
 const pending = new Map();
 const sessions = new Map();
@@ -79,7 +80,7 @@ worker.on('message', message => {
 worker.on('error', fail);
 worker.on('exit', code => { if (pending.size) fail(new Error('Pendant worker exited: ' + code + '\n' + errors)); });
 worker.send({ type: 'sdk_worker_bootstrap', protocolVersion: 3, hostVersion: version,
-  workspaceId: 'sandbox-integration', workspaceCwd: '/workspace', workspaceGeneration: 1,
+  workspaceId: 'sandbox-integration', workspaceCwd: sessionCwd, workspaceGeneration: 1,
   runtimeOwnerGeneration: 1, agentDirectory: '/home/node/.pi/agent', agentDirectorySource: 'explicit',
   offline: false, extensionMode: 'rpc' });
 worker.send({ type: 'sdk_bridge_hello', protocolVersion: 3, hostKind: 'vscode', hostVersion: version,
@@ -89,7 +90,7 @@ worker.send({ type: 'sdk_bridge_hello', protocolVersion: 3, hostKind: 'vscode', 
 
 async function create(key, allowDialog = false) {
   sessions.set(key, { events: [], dialogs: 0, allowDialog });
-  return request({ type: 'session_create', target: { kind: 'new', cwd: '/workspace' } }, key);
+  return request({ type: 'session_create', target: { kind: 'new', cwd: sessionCwd } }, key);
 }
 async function waitForReply(key, marker) {
   const deadline = Date.now() + 180000;
@@ -118,6 +119,19 @@ async function main() {
   assert.deepEqual(inventory.diagnostics.filter(d => d.level === 'error'), [], 'Extension errors');
   assert(!fs.existsSync('/opt/pi-security/node_modules/pi-goal'), 'Legacy Goal package installed');
   assert(inventory.tools.some(t => t.name === 'ask_user_question'), 'ask_user_question tool missing');
+  if (process.argv.includes('--folders')) {
+    await request({type:'session_set_model',provider:'fixture',modelId:'fixture-model',persist:false}, 'inventory');
+    await request({type:'session_prompt',text:'RUN_FOLDERS',images:[],source:'interactive'}, 'inventory');
+    const state = await waitForReply('inventory', 'FOLDERS_DONE');
+    const results = state.messages.filter(m => m.role === 'toolResult');
+    assert.equal(results.length, 10, JSON.stringify(results));
+    assert(results.slice(0, 4).every(r => !r.isError), JSON.stringify(results));
+    assert(JSON.stringify(results[0]).includes('/workspace/app'), JSON.stringify(results[0]));
+    assert(results.slice(4).every(r => r.isError), JSON.stringify(results));
+    assert.equal(sessions.get('inventory').dialogs, 0);
+    console.log('PASS actual Pendant: subfolder cwd, shared read/write tools, shell and escalation boundaries');
+    return;
+  }
   if (process.argv.includes('--web-access')) {
     assert(inventory.tools.some(t => t.name === 'web_search'), 'Web search missing');
     assert(inventory.tools.some(t => t.name === 'fetch_content'), 'Page reader missing');
@@ -216,7 +230,7 @@ async function main() {
   if (process.argv.includes('--initialized')) {
     const expected = process.env.TEST_INITIAL_MODEL;
     assert(expected, 'Set TEST_INITIAL_MODEL');
-    const models = await request({ type: 'models_list', cwd: '/workspace' });
+    const models = await request({ type: 'models_list', cwd: sessionCwd });
     assert(JSON.stringify(models).includes(expected), 'Initial model absent from fresh Pendant catalogue');
     assert(inventory.model?.id === expected, 'Fresh session did not select the initial model: '+JSON.stringify(inventory.model));
     console.log('PASS fresh actual Pendant startup: initial model available and selected before any slash command');
@@ -230,7 +244,7 @@ async function main() {
     await request({ type: 'session_prompt', text: '/local-models refresh', images: [], source: 'interactive' }, 'inventory');
     const state = await request({ type: 'session_get_state' }, 'inventory');
     assert(JSON.stringify(state.messages).includes('Local models'), JSON.stringify(state));
-    const models = await request({ type: 'models_list', cwd: '/workspace' });
+    const models = await request({ type: 'models_list', cwd: sessionCwd });
     assert(JSON.stringify(models).includes('Qwen3.8-27B-UD-Q4_K_XL'), JSON.stringify(models));
     assert(Object.values(JSON.parse(fs.readFileSync(file)).providers).some(p => p.baseUrl === 'http://local-model.internal:8000/v1'));
     console.log('PASS actual Pendant discovery preview, refresh and model catalogue');
@@ -300,7 +314,7 @@ async function main() {
       if (file.endsWith('.md')) assert(commands.has(file.slice(0, -3)), 'Missing websec phase prompt: ' + file);
   assert(inventory.tools.some(t => t.name === 'bash' && t.source.path.includes('/opt/pi-security/')),
     'Pendant must load sandboxed Bash, not its built-in Bash');
-  const models = await request({ type: 'models_list', cwd: '/workspace' });
+  const models = await request({ type: 'models_list', cwd: sessionCwd });
   if (process.argv.includes('--fresh')) {
     assert.equal(inventory.model, undefined, 'Fresh configuration unexpectedly has a model');
   } else {

@@ -493,7 +493,7 @@ class ListTests(unittest.TestCase):
 class RecoveryTests(LifecycleTestCase):
     def setUp(self):
         super().setUp()
-        self.config = {'name': 'demo', 'engine': 'podman'}
+        self.config = {'name': 'demo', 'engine': 'podman', 'workspace': '/tmp'}
         self.dev, self.proxy, _, _ = sandbox.names(self.config)
 
     def container(self, running=True):
@@ -661,7 +661,7 @@ class EditorTests(unittest.TestCase):
                  patch.object(sandbox.shutil, 'which', return_value='/usr/bin/code'), \
                  patch.object(sandbox, 'run') as run, \
                  patch.dict(os.environ, {'SSH_AUTH_SOCK': '/host/agent', 'VSCODE_IPC_HOOK_CLI': '/host/editor'}):
-                sandbox.open_editor({'name': 'editor-demo', 'engine': 'podman'}, state)
+                sandbox.open_editor({'name': 'editor-demo', 'engine': 'podman', 'workspace': str(state)}, state)
             command = run.call_args.args[0]
             self.assertIn('--reuse-window', command)
             self.assertIn('--skip-welcome', command)
@@ -697,7 +697,7 @@ class EditorTests(unittest.TestCase):
             with patch.object(sandbox, 'inspect', return_value={'State': {'Running': True}}), \
                  patch.object(sandbox.shutil, 'which', return_value='/usr/bin/code'), \
                  patch.object(sandbox, 'run'):
-                sandbox.open_editor({'name': 'editor-demo', 'engine': 'podman'}, state)
+                sandbox.open_editor({'name': 'editor-demo', 'engine': 'podman', 'workspace': str(state)}, state)
             with closing(sqlite3.connect(storage)) as database, database:
                 self.assertEqual(json.loads(database.execute("SELECT value FROM ItemTable WHERE key='views.customizations'").fetchone()[0]), layout)
                 self.assertEqual(json.loads(database.execute('SELECT value FROM ItemTable WHERE key=?', (extension_key,)).fetchone()[0]), existing_state)
@@ -796,7 +796,7 @@ class BootstrapTests(unittest.TestCase):
             self.assertNotIn(str(extension), settings['extensions'])
             self.assertIn('/custom/extension.ts', settings['extensions'])
             self.assertEqual(settings['packages'], ['npm:custom-package'])
-            self.assertNotIn('Browser guidance', (root / 'home/.pi/agent/APPEND_SYSTEM.md').read_text())
+            self.assertNotIn('Browser guidance', (root / 'home/.pi/agent/AGENTS.md').read_text())
 
     def test_subagents_are_opt_in_and_can_be_disabled_without_losing_user_settings(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -871,7 +871,8 @@ class BootstrapTests(unittest.TestCase):
             settings['defaultProvider'] = 'custom'
             settings['skills'].append('/custom/skills')
             settings_file.write_text(json.dumps(settings))
-            (agent / 'APPEND_SYSTEM.md').write_text('User instructions\n' + (agent / 'APPEND_SYSTEM.md').read_text())
+            (agent / 'AGENTS.md').write_text('User instructions\n' + (agent / 'AGENTS.md').read_text())
+            (agent / 'APPEND_SYSTEM.md').write_text('User append\n<!-- sandbox-profile -->\nOld managed guidance\n<!-- /sandbox-profile -->\n')
             models.write_text('{"providers":{"custom":{}}}')
             self.bootstrap(root)
             self.assertIn('custom', json.loads(models.read_text())['providers'])
@@ -879,9 +880,10 @@ class BootstrapTests(unittest.TestCase):
             self.assertEqual(settings['defaultProvider'], 'custom')
             self.assertEqual(settings['skills'], ['/custom/skills'])
             self.assertIn('/custom/skills', settings['skills'])
-            prompt = (agent / 'APPEND_SYSTEM.md').read_text()
+            prompt = (agent / 'AGENTS.md').read_text()
             self.assertIn('User instructions', prompt)
             self.assertEqual(prompt.count('Profile guidance'), 1)
+            self.assertEqual((agent / 'APPEND_SYSTEM.md').read_text().strip(), 'User append')
 
     def test_seed_and_legacy_models_links_become_private_without_host_transactions(self):
         with tempfile.TemporaryDirectory() as tmp:

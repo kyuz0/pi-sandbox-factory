@@ -155,3 +155,29 @@ When changing category rules, verify an allowed domain, a misleading suffix such
 as `python.org.example.net`, an unselected site, a redirect to an unselected site,
 and a category hostname resolving to loopback. Existing explicit local-model
 ports must still work. Category refresh must not restart the development container.
+
+## Folder mounts and starting directory
+
+Create a disposable workspace with an `app` subfolder and two separate host
+folders. Mount them as `reference` (read-only) and `output` (writable), using
+`--folders-file` as shown in [Usage](docs/usage.md#workspace-and-additional-folders).
+Set `--working-directory app` and allow fixture model port 18085. Put
+`REFERENCE_OK` in `reference/readme.txt`, `PROJECT_FOLDER_CONTEXT` in
+`workspace/app/AGENTS.md`, and `PROJECT_FOLDER_OVERRIDE` in
+`workspace/app/.pi/APPEND_SYSTEM.md`. Create `workspace/.pi` and a symlink
+`output/private-link` pointing to `/home/node/.pi/agent/auth.json`.
+
+```sh
+.venv/bin/python tests/integration.py --state-dir "$test_root/state" \
+  --name folders-check --port 18085 --folders
+.venv/bin/python tests/folders_lifecycle.py --state-dir "$test_root/state" \
+  --name folders-check
+```
+
+The fixture checks the actual model-request context in Pi and Pendant, their cwd,
+file tools, ordinary shell writes and read-only enforcement after escalation.
+The lifecycle check changes and removes mounts, checks host ownership and SELinux
+labels, and confirms that starting-folder edits preserve the running container.
+It leaves the disposable sandbox with only `output`, mounted read-only. Delete it
+afterward. `test_folders.py` covers path validation, permissions, copies and folder
+controls at 80×24; it needs no container or account.

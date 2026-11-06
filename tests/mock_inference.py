@@ -75,6 +75,32 @@ class Handler(BaseHTTPRequestHandler):
             outcome = 'deny' if ('DENY_BY_FIXTURE' in content or 'ALLOW_EXECUTED' in content) else 'defer' if 'DEFER_BY_FIXTURE' in content else 'allow'
             delta['content'] = json.dumps({'outcome': outcome, 'risk_level': 'medium',
                                           'user_authorization': 'high', 'rationale': 'Synthetic integration review: ' + outcome})
+        elif 'RUN_FOLDERS' in content:
+            system = '\n'.join(strings([m.get('content') for m in messages if m.get('role') in ('system', 'developer')]))
+            assert all(text in system for text in ('Mounted folders', '/mnt/reference', '/mnt/output', 'PROJECT_FOLDER_OVERRIDE', 'PROJECT_FOLDER_CONTEXT')), system
+            with Path('/fixture/folder-prompts.jsonl').open('a') as log:
+                log.write(json.dumps({'system': system}) + '\n')
+            actions = [
+                ('bash', {'command': 'pwd; printf PARENT_WRITE_OK > /workspace/parent-write.txt'}),
+                ('read', {'path': '/mnt/reference/readme.txt'}),
+                ('write', {'path': '/mnt/output/tool.txt', 'content': 'TOOL_WRITE_OK'}),
+                ('bash', {'command': 'cat /mnt/reference/readme.txt; printf SHELL_WRITE_OK > /mnt/output/shell.txt'}),
+                ('bash', {'command': 'printf NO > /mnt/reference/shell-denied.txt'}),
+                ('write', {'path': '/mnt/reference/tool-denied.txt', 'content': 'NO'}),
+                ('bash', {'command': 'printf NO > /workspace/.pi/pi-auto-review.json'}),
+                ('bash', {'command': 'printf NO > /home/node/.pi/agent/extensions/denied.txt'}),
+                ('bash_escalate', {'command': 'printf NO > /mnt/reference/escalated-denied.txt', 'justification': 'Test that container read-only mounts remain enforced after approval.'}),
+                ('read', {'path': '/mnt/output/private-link'}),
+            ]
+            outputs = [m for m in messages if m.get('role') == 'tool']
+            step = len(outputs)
+            if step < len(actions):
+                name, arguments = actions[step]
+                delta = {'role': 'assistant', 'tool_calls': [{'index': 0, 'id': 'folder-call-' + str(step),
+                    'type': 'function', 'function': {'name': name, 'arguments': json.dumps(arguments)}}]}
+                finish = 'tool_calls'
+            else:
+                delta['content'] = 'FOLDERS_DONE'
         elif 'RUN_WEB_ONLY' in content:
             outputs = [m for m in messages if m.get('role') == 'tool']
             actions = [{'query': 'Python documentation'}, {'query': 'Python documentation', 'provider': 'exa'}]

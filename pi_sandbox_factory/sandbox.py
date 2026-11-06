@@ -5,7 +5,7 @@ from . import sandbox_skills
 from . import sandbox_extensions
 from . import sandbox_advisors
 from . import sandbox_ssh
-from . import registry, model_providers, browser_viewer
+from . import registry, model_providers, browser_viewer, folders
 from contextlib import closing
 import hashlib
 import ipaddress
@@ -20,7 +20,7 @@ import subprocess
 import sys
 import tempfile
 import time
-from urllib.parse import urlsplit
+from urllib.parse import urlsplit, quote
 from types import SimpleNamespace
 from .sandbox_options import options, memory_limit, permissions, write_json, guidance
 
@@ -464,6 +464,7 @@ def upgrade_gateway_config(state):
 
 
 def up(config, state):
+    folders.validate_config(config, state.parent, saved=True)
     engine = config['engine']
     dev, proxy, socket_volume, home_volume = names(config)
     restricted = network_mode(config) == 'allowlist'
@@ -524,6 +525,7 @@ def up(config, state):
                     '--user', f'{config["uid"]}:{config["gid"]}',
                     '-v', f'{config["workspace"]}:/workspace:rw',
                     '-v', f'{home_volume}:/home/node']
+            args += folders.mounts(config)
             args += sandbox_advisors.mounts(config)
             args += sandbox_ssh.mounts(config, state)
             if config.get('memory'):
@@ -709,6 +711,10 @@ def create(args, state):
     config = dict(name=args.name, engine=engine, uid=uid, gid=gid, workspace=str(workspace),
                   pi_config=str(shared) if shared else None, env_file=env_file, memory=memory_limit(args.memory),
                   network=mode, subagents=getattr(args, 'subagents', False))
+    config['working_directory'] = folders.working_directory(workspace, getattr(args, 'working_directory', '.'))
+    config['extra_folders'] = folders.validate(
+        json.loads(Path(args.folders_file).read_text()) if getattr(args, 'folders_file', None) else [],
+        workspace, state.parent, private_paths=[shared])
     model_ports = getattr(args, 'local_model_ports', None)
     configure_local_gateway(config, model_ports, rules)
     config['options'] = selected_options
@@ -743,14 +749,18 @@ def create(args, state):
     (state / 'config.json').write_text(json.dumps(config, indent=2) + '\n')
     (state / 'allowlist.txt').write_text(policy_text)
     (state / 'squid.conf').write_text(network_policy(config, rules))
-    attach = {'workspaceFolder': '/workspace', 'remoteUser': 'node',
+    write_attach(config, state)
+    print(f'Created {state}\nProfile: {profile["name"]}. Network: {mode}; {len(rules)} hostname/port rules. Run build, then up.')
+
+
+
+def write_attach(config, state):
+    attach = {'workspaceFolder': folders.container_cwd(config), 'remoteUser': 'node',
               'extensions': ['cdervis.vscode-pi'],
               'settings': {'pendant.agentDir': '/home/node/.pi/agent'},
               'remoteEnv': {'SSH_AUTH_SOCK': '', 'GIT_ASKPASS': '',
                             'SSH_ASKPASS': ''}}
     (state / 'attached-container.json').write_text(json.dumps(attach, indent=2) + '\n')
-    print(f'Created {state}\nProfile: {profile["name"]}. Network: {mode}; {len(rules)} hostname/port rules. Run build, then up.')
-
 
 
 def prepare_options(config, state):
@@ -766,19 +776,28 @@ def prepare_options(config, state):
         if path.name == 'auto-review.json':
             value['interactionMode'] = 'interactive' if selected['approval'] == 'assisted' else 'automatic'
         if path.name == 'permissions.json':
-            value = permissions(value, selected)
+            value = folders.permissions(permissions(value, selected), config)
+        if path.name == 'sandbox.json':
+            value.setdefault('filesystem', {})['additionalWriteRoots'] = [p for p, ro in folders.roots(config) if not ro]
         write_json(target / path.name, value)
     guide = target / 'security.md'
-    guide.write_text(guidance(selected, config.get('subagents', False)))
+    guide.write_text(guidance(selected, config.get('subagents', False)) + folders.guidance(config))
     guide.chmod(0o600)
 
 
 def apply_settings(config, state, changes):
-    allowed = {'ssh', 'advisors', 'network', 'allowlist', 'memory', 'subagents', 'env_file', 'options', 'skill_source', 'skill_path', 'remove_skills', 'local_model_ports', 'model_providers'}
+    allowed = {'working_directory', 'extra_folders', 'ssh', 'advisors', 'network', 'allowlist', 'memory', 'subagents', 'env_file', 'options', 'skill_source', 'skill_path', 'remove_skills', 'local_model_ports', 'model_providers'}
     if not isinstance(changes, dict) or set(changes) - allowed:
         raise ValueError('Unknown editable sandbox setting')
     updated = dict(config)
     updated.update({k: v for k, v in changes.items() if k not in ('allowlist', 'skill_source', 'skill_path', 'remove_skills')})
+    updated['working_directory'] = folders.working_directory(updated['workspace'], updated.get('working_directory', '.'))
+    updated['extra_folders'] = folders.validate_config(updated, state.parent)
+    if set(changes) <= {'working_directory', 'extra_folders'} and updated['extra_folders'] == config.get('extra_folders', []):
+        write_json(state / 'config.json', updated)
+        write_attach(updated, state)
+        print('Starting folder saved. Open a new Pi session or reopen VS Code to use it.')
+        return
     updated['extra_skills'] = [s for s in config.get('extra_skills', []) if s['name'] not in changes.get('remove_skills', [])]
     if 'ssh' in updated:
         updated['ssh'] = sandbox_ssh.validate(updated['ssh'])
@@ -808,6 +827,7 @@ def apply_settings(config, state, changes):
     print('Applying settings: recreating containers; saved workspace and home are preserved.')
     down(config, remove=True)
     write_json(state / 'config.json', updated)
+    write_attach(updated, state)
     (state / 'allowlist.txt').write_text(text)
     (state / 'squid.conf').write_text(network_policy(updated, rules))
     up(updated, state)
@@ -935,6 +955,7 @@ def open_editor(config, state):
                              })))
     attached = profile / 'User/globalStorage/ms-vscode-remote.remote-containers/nameConfigs' / (dev + '.json')
     attached.parent.mkdir(parents=True, exist_ok=True)
+    write_attach(config, state)
     shutil.copyfile(state / 'attached-container.json', attached)
     env = os.environ.copy()
     for key in ('SSH_AUTH_SOCK', 'GIT_ASKPASS', 'SSH_ASKPASS', 'VSCODE_IPC_HOOK_CLI'):
@@ -945,7 +966,7 @@ def open_editor(config, state):
     # Podman requires the actual name without Docker's inspect-output slash.
     authority = json.dumps({'containerName': dev}, separators=(',', ':')).encode().hex()
     run(cmd + ['--reuse-window', '--skip-welcome', '--folder-uri',
-               f'vscode-remote://attached-container+{authority}/workspace'], env=env)
+               f'vscode-remote://attached-container+{authority}{quote(folders.container_cwd(config), safe="/")}'], env=env)
 
 
 def main():
@@ -971,6 +992,8 @@ def main():
     new.add_argument('name')
     new.add_argument('--profile', default='base', help='Installed profile name or custom profile directory (default: base)')
     new.add_argument('--workspace', required=True)
+    new.add_argument('--working-directory', default='.', help='Starting folder relative to the workspace')
+    new.add_argument('--folders-file', help='JSON list of additional host folders: source, name, read_only')
     new.add_argument('--reuse-from', help='Reuse saved provider and skill packages and advisor settings from NAME; other settings use the supplied flags')
     new.add_argument('--omit-skill', action='append', default=[], help='Omit an added skill when using --reuse-from')
     new.add_argument('--model-provider', action='append', help='Installed provider name; repeat for multiple sources (default: local)')
@@ -1217,7 +1240,7 @@ def main():
             if not command:
                 parser.error('exec requires a command after the sandbox name')
             tty = ['-it'] if sys.stdin.isatty() else ['-i']
-            run([config['engine'], 'exec'] + tty + [dev] + command)
+            run([config['engine'], 'exec', '--workdir', folders.container_cwd(config)] + tty + [dev] + command)
 
 
 if __name__ == '__main__':

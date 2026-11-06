@@ -13,6 +13,7 @@ import shutil
 from typing import Optional
 
 from . import sandbox
+from .folders_ui import FolderFields
 from . import sandbox_skills
 from . import registry, model_providers, updates, web_access, network_groups
 from .sandbox_options import DEFAULTS, SKILLS, PROFILE_SKILLS, options, endpoint_rule, memory_limit, write_json
@@ -106,11 +107,11 @@ def copy_draft(record, state_root):
     config = copy.deepcopy(record['config'])
     value = copy.deepcopy(DEFAULT_SETTINGS)
     for field in ('engine', 'network', 'memory', 'subagents', 'local_model_ports',
-                  'model_providers', 'advisors', 'extra_skills'):
+                  'model_providers', 'advisors', 'extra_skills', 'extra_folders'):
         if field in config:
             value[field] = copy.deepcopy(config[field])
     value.update(profile=config['profile']['path'], options=options(config.get('options')),
-                 name='', workspace='', workspace_parent='', env_file='', pi_config='',
+                 name='', workspace='', workspace_parent='', env_file='', pi_config='', working_directory='.',
                  reuse_from=record['name'], reused_profile=copy.deepcopy(config['profile']))
     value['allowlist'] = (Path(state_root) / record['name'] / 'allowlist.txt').read_text()
     for row in value['options']['web_access']['providers'].values():
@@ -175,6 +176,9 @@ class Service:
             write_json(selected, draft['options'])
             args = ['create', name, '--profile', draft['profile'], '--workspace', draft['workspace'],
                     '--engine', draft['engine'], '--options-file', str(selected)]
+            folder_file = Path(temp) / 'folders.json'
+            write_json(folder_file, draft.get('extra_folders', []))
+            args += ['--folders-file', str(folder_file), '--working-directory', draft.get('working_directory', '.')]
             if draft.get('reuse_from'):
                 args += ['--reuse-from', draft['reuse_from']]
                 for skill in draft.get('remove_skills', []):
@@ -236,6 +240,12 @@ class Service:
             write_json(path, changes)
             self.run(['update', name, '--settings-file', str(path)], log)
         self.setup(name, draft, key, log)
+
+    def folders(self, name, settings, log):
+        with tempfile.TemporaryDirectory(prefix='sandbox-folders-') as temp:
+            path = Path(temp) / 'settings.json'
+            write_json(path, settings)
+            self.run(['update', name, '--settings-file', str(path)], log)
 
     def ssh_settings(self, name, settings, log):
         with tempfile.TemporaryDirectory(prefix='sandbox-ssh-') as temp:
@@ -733,7 +743,8 @@ class SettingsMenu(ModalScreen[Optional[str]]):
                ('Models · endpoints and discovery', 'models'),
                ('Configuration · resources, tools and network mode', 'configuration'),
                ('Advisors · Codex, Antigravity and Claude', 'advisors'),
-               ('SSH · hosts and private key access', 'ssh-settings')]
+               ('SSH · hosts and private key access', 'ssh-settings'),
+               ('Folders · starting folder and host mounts', 'folders')]
 
     def __init__(self, name):
         super().__init__()
@@ -757,6 +768,47 @@ class SettingsMenu(ModalScreen[Optional[str]]):
 
     def action_cancel(self):
         self.dismiss(None)
+
+
+class FoldersScreen(Screen):
+    BINDINGS = [('escape', 'back', 'Back')]
+
+    def __init__(self, record):
+        super().__init__()
+        self.record = record
+
+    def compose(self):
+        yield Header()
+        with VerticalScroll(classes='form'):
+            yield Label('Folders · ' + self.record['name'], classes='title')
+            yield FolderFields(self.record['config'], self.app.state_root)
+            yield Static('Changing host mounts recreates the sandbox. Changing only the starting folder takes effect when you reopen Pi or VS Code.')
+            yield Static('', id='folders-error', classes='error', markup=False)
+        with Horizontal(classes='wizard-actions'):
+            yield Button('Apply', id='folders-apply', variant='primary')
+            yield Button('Back', id='folders-back')
+        yield Footer()
+
+    @on(Button.Pressed)
+    def pressed(self, event):
+        event.stop()
+        if event.button.id == 'folders-back':
+            self.action_back()
+        elif event.button.id == 'folders-apply':
+            try:
+                selected = self.query_one(FolderFields).collect()
+                def apply():
+                    self.app.pop_screen()
+                    self.app.push_screen(Operation('Updating folders', lambda log: self.app.service.folders(self.record['name'], selected, log)))
+                if selected['extra_folders'] != self.record['config'].get('extra_folders', []):
+                    self.app.push_screen(Confirm('Apply folder mounts? This recreates the sandbox and interrupts running processes.', 'Apply and recreate'), lambda yes: apply() if yes else None)
+                else:
+                    apply()
+            except (ValueError, OSError) as error:
+                self.query_one('#folders-error', Static).update(str(error))
+
+    def action_back(self):
+        self.app.pop_screen()
 
 
 class SSHScreen(Screen):
@@ -1335,6 +1387,9 @@ class SettingsForm(Screen):
             yield Checkbox('Open VS Code after creation' if not self.editing else 'Open VS Code after applying',
                            value=value.get('open_editor', True), id='open-editor')
             if not self.editing and not self.defaults_mode:
+                with Collapsible(title='Folders · starting folder and host mounts', collapsed=not bool(value.get('extra_folders')), id='folders-section'):
+                    yield FolderFields(value, self.app.state_root)
+            if not self.editing and not self.defaults_mode:
                 with Collapsible(title='Advisors · optional Codex / Antigravity / Claude', collapsed=True, id='new-advisors-section'):
                     providers = value.get('advisors', {}).get('providers', [])
                     yield Checkbox('Add Codex advisor', value='codex' in providers, id='new-advisor-codex')
@@ -1452,6 +1507,8 @@ class SettingsForm(Screen):
                 provider_rules+=model_providers.required_rules([{'manifest':info,'settings':settings}])
         if draft['local_model_ports']:
             sandbox.local_model_ports(draft['local_model_ports'])
+        if not self.editing and not self.defaults_mode:
+            draft.update(self.query_one(FolderFields).collect(private_paths=[inp('pi-config')]))
         selected = options(draft.get('options'))
         selected['web_access'], key = self.query_one(WebAccessForm).collect()
         selected['website_groups'] = self.query_one(WebsiteGroups).selected()
@@ -1834,6 +1891,8 @@ class Cockpit(App):
             self.push_screen(MoreActions(record), lambda choice: self.perform(choice) if choice else None)
         elif action == 'settings':
             self.push_screen(SettingsMenu(name), lambda choice: self.perform(choice) if choice else None)
+        elif action == 'folders':
+            self.push_screen(FoldersScreen(record))
         elif action == 'ssh-settings':
             self.push_screen(SSHScreen(record))
         elif action == 'advisors':

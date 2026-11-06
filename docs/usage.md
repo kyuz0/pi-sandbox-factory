@@ -26,6 +26,47 @@ Use **Open in VS Code** for the selected sandbox, **Settings** for its configura
 
 Deleting a sandbox removes its containers, private home and editor state while preserving the workspace. Closing the manager or editor leaves containers running.
 
+## Workspace and additional folders
+
+The project you select is available at `/workspace`. In **Folders**, you can
+choose a starting subfolder, such as `apps/api`, for Pi and VS Code. Leave `.`
+to open the whole project. The rest of `/workspace` remains accessible.
+
+Use **Add folder…** to share another host directory. It appears at
+`/mnt/<folder-name>`, with a name you can edit. Folders start read-only; clear
+**Read-only** to allow changes to the host files. The form shows both paths and
+the access mode before you save. Choose specific data folders; system folders,
+private sandbox state and overlapping mounts are rejected.
+
+For an existing sandbox, open **Settings → Folders**. Changing mounts recreates
+the container and interrupts running processes; its private home and host files
+are retained. Changing only the starting folder takes effect the next time you
+open Pi or VS Code. Removing a folder disconnects it without deleting its files.
+**Create from existing…** includes the extra folders for review and resets the
+starting folder to the new workspace root.
+
+Pi and Pendant receive the container paths and access modes through managed
+context in their private `~/.pi/agent/AGENTS.md`. Project instructions remain in
+place. Read-only access is enforced by the container, including for approved
+commands; writable folders also receive the inner sandbox’s usual protections
+for configuration and secret files.
+
+For CLI creation, use `--working-directory apps/api` and optionally
+`--folders-file folders.json`:
+
+```json
+[
+  {"source": "/home/user/Documents/reference", "name": "reference", "read_only": true},
+  {"source": "/home/user/Documents/reports", "name": "reports", "read_only": false}
+]
+```
+
+To edit these later, pass an object containing `working_directory` and/or
+`extra_folders` to `pi-sandbox-factory update NAME --settings-file settings.json`.
+Additional folders require Docker Engine 25+ when using Docker.
+Separately mounted filesystems nested inside an added host folder are excluded;
+add each filesystem as its own folder if needed.
+
 ## Local models
 
 You can start your inference server before or after creating the sandbox. During creation or in Settings, enable host-local models and enter its ports, such as `8000` or `8000-8002`. The launcher adds those exact destinations to the restricted gateway policy. The development container keeps its isolated network; only the gateway maps `local-model.internal` to host loopback.

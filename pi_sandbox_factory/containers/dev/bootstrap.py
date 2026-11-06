@@ -166,8 +166,15 @@ temporary.replace(goal_file)
 
 # Pi natively reads this file; preserve user instructions around the managed block.
 profile = Path('/opt/sandbox/profile.md')
-append_file = agent / 'APPEND_SYSTEM.md'
+append_file = agent / 'AGENTS.md'
 begin, end = '<!-- sandbox-profile -->', '<!-- /sandbox-profile -->'
+previous_append = agent / 'APPEND_SYSTEM.md'
+if previous_append.exists():
+    previous = previous_append.read_text()
+    if begin in previous and end in previous:
+        start = previous.index(begin)
+        finish = previous.index(end, start) + len(end)
+        previous_append.write_text(previous[:start] + previous[finish:])
 contents = append_file.read_text() if append_file.exists() else ''
 if begin in contents and end in contents:
     start = contents.index(begin)
