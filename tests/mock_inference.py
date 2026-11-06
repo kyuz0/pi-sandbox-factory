@@ -81,6 +81,32 @@ class Handler(BaseHTTPRequestHandler):
                 delta = {'role': 'assistant', 'tool_calls': [{'index': 0, 'id': 'question-call',
                     'type': 'function', 'function': {'name': 'ask_user_question', 'arguments': json.dumps(params)}}]}
                 finish = 'tool_calls'
+        elif 'RUN_VIEWER_' in content:
+            names = {t['function']['name'] for t in request.get('tools', [])}
+            assert {'browser', 'browser_viewer', 'ask_user_question'} <= names
+            assert 'PROJECT_VIEWER_GUIDANCE' in content, 'Project guidance missing'
+            assert 'When user interaction is needed' in content, 'Viewer tool guidance missing from system prompt'
+            outputs = [m for m in messages if m.get('role') == 'tool']
+            marker = 'VIEWER_ONE' if 'RUN_VIEWER_ONE' in content else 'VIEWER_TWO'
+            if len(outputs) == 0:
+                name = 'browser'
+                params = {'code': "await page.setContent('<title>" + marker + "</title><h1>" + marker + "</h1><input aria-label=Name><button>Continue</button>'); state.marker='" + marker + "'; return await page.title()"}
+            elif len(outputs) == 1:
+                name, params = 'browser_viewer', {}
+            elif len(outputs) == 2:
+                name = 'ask_user_question'
+                params = {'questions': [{'header': 'Browser', 'question': 'Open the live browser: ' + str(outputs[-1]['content']),
+                                        'options': [{'label':'Done','description':'Continue in the same browser'}, {'label':'Cancel','description':'Stop this interaction'}]}]}
+            elif len(outputs) == 3:
+                name = 'browser'
+                params = {'code': 'return {marker:state.marker,title:await page.title()};'}
+            else:
+                name = None
+                delta['content'] = 'VIEWER_DONE'
+            if name:
+                delta = {'role':'assistant','tool_calls':[{'index':0,'id':'viewer-' + str(len(outputs)),
+                         'type':'function','function':{'name':name,'arguments':json.dumps(params)}}]}
+                finish = 'tool_calls'
         elif 'RUN_BROWSER_' in content:
             names = {t['function']['name'] for t in request.get('tools', [])}
             assert 'browser' in names, 'Betterwright tool is not loaded'

@@ -9,7 +9,7 @@
     "write": "allow", "edit": "allow", "skill": "allow",
     "bash": "allow", "bash_escalate": "allow", "subagent": "allow",
     "advisor_status": "allow", "advisor_ask": "ask",
-    "ask_user_question": "allow",
+    "ask_user_question": "allow", "browser_viewer": "allow",
     "external_directory": "ask",
     "path": {
       "*": "allow",

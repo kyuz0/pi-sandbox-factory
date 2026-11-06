@@ -17,6 +17,7 @@ p.add_argument('--name',required=True)
 p.add_argument('--artifacts',type=Path)
 p.add_argument('--port',type=int,default=8000,help='Unused host port allowed in the disposable sandbox')
 p.add_argument('--pendant-questions-only', action='store_true', help='Check Pendant startup and question choices, free text and cancellation')
+p.add_argument('--browser-viewer', action='store_true', help='Check viewer tool and guidance in actual Pendant sessions')
 a=p.parse_args()
 RUNTIME=a.artifacts or Path(tempfile.mkdtemp(prefix='vscode-pi-sandbox-check-'))
 RUNTIME.mkdir(parents=True,exist_ok=True)
@@ -24,7 +25,7 @@ DEV='vscode-pi-sandbox-'+a.name
 fixture=RUNTIME/'fixture';fixture.mkdir(exist_ok=True)
 (fixture/'expected-subagents.json').write_text('false')
 saved_config=json.loads((a.state_dir/a.name/'config.json').read_text())
-(fixture/'expected-profile.txt').write_text((Path(saved_config['profile']['path'])/'profile.md').read_text())
+(fixture/'expected-profile.txt').write_text('PROJECT_VIEWER_GUIDANCE' if a.browser_viewer else (Path(saved_config['profile']['path'])/'profile.md').read_text())
 source=(ROOT/'tests/mock_inference.py').read_text()
 # Each run creates its own completed jobs; preserve existing workspace history.
 source=source.replace("'automation-' +", repr('automation-'+uuid.uuid4().hex[:12]+'-')+' +')
@@ -49,17 +50,45 @@ try:
  config={'providers':{'fixture':{'baseUrl':f'http://local-model.internal:{a.port}/v1','api':'openai-completions','apiKey':'fixture-key','models':[{'id':'fixture-model','contextWindow':32000,'maxTokens':4096}]}}}
  code="from pathlib import Path;import sys;p=Path('/home/node/.pi/agent/models.json');p.write_text(sys.stdin.read());p.chmod(0o600)"
  subprocess.run(['podman','exec','-i',DEV,'python3','-c',code],input=json.dumps(config),text=True,check=True)
- subprocess.run([sys.executable,str(ROOT/'sandbox.py'),'--state-dir',str(a.state_dir),'check',a.name,'--allowed-url',f'http://local-model.internal:{a.port}/v1/models'],check=True)
+ if a.browser_viewer:
+  subprocess.run(['podman','exec',DEV,'node','/opt/betterwright/check.mjs'],check=True)
+ else:
+  subprocess.run([sys.executable,str(ROOT/'sandbox.py'),'--state-dir',str(a.state_dir),'check',a.name,'--allowed-url',f'http://local-model.internal:{a.port}/v1/models'],check=True)
  checks = [('check_security_rpc.py',['python3','-']),('check_automation_rpc.py',['python3','-']),('check_pendant_worker.cjs',['node','-'])]
- if a.pendant_questions_only:
+ if a.browser_viewer:
+  checks = [('check_browser_rpc.py', ['python3', '-']), ('check_pendant_worker.cjs', ['node', '-', '--viewer'])]
+ elif a.pendant_questions_only:
   checks = [('check_pendant_worker.cjs', ['node', '-', '--questions-only'])]
  for file,command in checks:
   print('RUN',file,flush=True)
-  subprocess.run(['podman','exec','-i',DEV,*command],input=(ROOT/'tests'/file).read_text(),text=True,check=True)
+  if a.browser_viewer and file == 'check_pendant_worker.cjs':
+   import urllib.request
+   subprocess.run(['podman','exec',DEV,'rm','-f','/tmp/viewer-worker-links.json','/tmp/viewer-worker-finish'],check=True)
+   worker = subprocess.Popen(['podman','exec','-i','-e','VIEWER_HOLD=1',DEV,*command],stdin=subprocess.PIPE,text=True)
+   worker.stdin.write((ROOT/'tests'/file).read_text());worker.stdin.close()
+   try:
+    deadline=time.monotonic()+180
+    while time.monotonic()<deadline:
+     if worker.poll() is not None: raise RuntimeError('Pendant worker ended before viewer check')
+     links=subprocess.run(['podman','exec',DEV,'cat','/tmp/viewer-worker-links.json'],capture_output=True,text=True)
+     if links.returncode==0: break
+     time.sleep(.25)
+    else: raise RuntimeError('Pendant viewer links were not produced')
+    http=urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    for index,url in enumerate(json.loads(links.stdout)):
+     with http.open(url,timeout=30) as response: page=response.read().decode()
+     own,other=('ONE','TWO') if index==0 else ('TWO','ONE')
+     assert 'VIEWER_'+own in page and 'VIEWER_'+other not in page, 'Viewer listed another session'
+    print('PASS each Pendant viewer lists only its own session',flush=True)
+   finally:
+    subprocess.run(['podman','exec',DEV,'touch','/tmp/viewer-worker-finish'],check=True)
+    assert worker.wait(timeout=30)==0, 'Pendant worker failed'
+  else:
+   subprocess.run(['podman','exec','-i',DEV,*command],input=(ROOT/'tests'/file).read_text(),text=True,check=True)
  reviews = fixture/'reviews.jsonl'
  if reviews.exists():
   assert not any(json.loads(line)['question'] for line in reviews.read_text().splitlines()), 'Question tool unexpectedly invoked the reviewer'
- print('PASS Pendant startup and questions; no question review calls' if a.pendant_questions_only else 'PASS real Pi/Pendant security, Goal, scheduling and transport using fixture replies',flush=True)
+ print('PASS Pi/Pendant browser viewer integration' if a.browser_viewer else 'PASS Pendant startup and questions; no question review calls' if a.pendant_questions_only else 'PASS real Pi/Pendant security, Goal, scheduling and transport using fixture replies',flush=True)
 finally:
  server.terminate();server.wait(timeout=20)
  if saved_models is None:

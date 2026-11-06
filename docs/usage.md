@@ -81,3 +81,20 @@ Existing sandboxes receive image changes through **Actions → Update sources an
 Restricted mode forwards allowed HTTP/HTTPS destinations through the gateway;
 external ICMP (`ping`) and direct DNS queries remain blocked. Use `curl` against
 an allowed endpoint to check connectivity in that mode.
+
+## See and interact with the agent’s browser
+
+Enable **Browser** when creating the sandbox, then open it normally. Ask Pi or
+Pendant to show its browser. It returns a local link to the current session’s tab
+list. Select a tab to open its live DevTools screencast; use **Toggle screencast**
+in the top-left toolbar if the page is hidden. You can type, click and navigate.
+When you have finished, tell the agent to continue. It keeps the same tabs and state.
+
+The viewer starts automatically and stops with the container. It listens only on
+host loopback and requires a session-specific link. Keep that link private: it
+allows browser control and appears in the conversation. Website traffic still
+passes through the sandbox’s configured network policy.
+
+If a link stops loading, use **Open in VS Code** in the launcher again, then ask
+for a fresh link. This repairs the viewer without restarting the browser. Stopping
+the sandbox ends its running browser sessions.

@@ -5,7 +5,7 @@ from . import sandbox_skills
 from . import sandbox_extensions
 from . import sandbox_advisors
 from . import sandbox_ssh
-from . import registry, model_providers
+from . import registry, model_providers, browser_viewer
 from contextlib import closing
 import hashlib
 import ipaddress
@@ -537,6 +537,8 @@ def up(config, state):
         result = run([engine, 'exec', dev, 'bash', '-c', ready], capture=True, check=False,
                      stderr=subprocess.DEVNULL)
         if result.returncode == 0:
+            if options(config.get('options'))['browser']:
+                browser_viewer.ensure_viewer(engine, inspect(config, dev)['Id'])
             print(f'Ready: {dev}; workspace /workspace; engine {engine}; network {network_mode(config)}')
             return
         time.sleep(0.25)
@@ -822,6 +824,8 @@ def open_editor(config, state):
     current = inspect(config, dev)
     if not current or not current['State']['Running']:
         raise ValueError('Start the sandbox with up first')
+    if options(config.get('options'))['browser']:
+        browser_viewer.ensure_viewer(config['engine'], current['Id'])
     if not shutil.which('code'):
         raise ValueError('Install desktop VS Code and its code command first')
     # A separate user-data directory avoids inheriting host dotfiles extensions,

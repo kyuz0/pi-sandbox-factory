@@ -116,6 +116,35 @@ async function main() {
   assert.deepEqual(inventory.diagnostics.filter(d => d.level === 'error'), [], 'Extension errors');
   assert(!fs.existsSync('/opt/pi-security/node_modules/pi-goal'), 'Legacy Goal package installed');
   assert(inventory.tools.some(t => t.name === 'ask_user_question'), 'ask_user_question tool missing');
+  if (process.argv.includes('--viewer')) {
+    assert(inventory.tools.some(t => t.name === 'browser_viewer'), 'Viewer tool missing');
+    await request({type:'session_dispose',reason:'replacement'}, 'inventory');
+    const links = [];
+    for (const marker of ['ONE', 'TWO']) {
+      const key = 'viewer-' + marker;
+      await create(key, true);
+      sessions.get(key).questionScenario = 'CHOICE';
+      await request({type:'session_set_model',provider:'fixture',modelId:'fixture-model',persist:false},key);
+      await request({type:'session_prompt',text:'RUN_VIEWER_' + marker,images:[],source:'interactive'},key);
+      const state = await waitForReply(key, 'VIEWER_DONE');
+      const results = state.messages.filter(m => m.role === 'toolResult');
+      assert(!results.some(r => r.isError), JSON.stringify(results));
+      assert(results.some(r => r.toolName === 'browser' && JSON.stringify(r.content).includes('VIEWER_' + marker)));
+      const link = results.find(r => r.toolName === 'browser_viewer').details.url;
+      links.push(link);
+      assert.equal(sessions.get(key).dialogs, 1);
+      console.log('VIEWER_LINK ' + marker + ' ' + link);
+    }
+    assert.notEqual(new URL(links[0]).pathname.split('/')[2], new URL(links[1]).pathname.split('/')[2]);
+    // Both sessions remain alive: verify each link lists only its own page.
+    fs.writeFileSync('/tmp/viewer-worker-links.json', JSON.stringify(links));
+    if (process.env.VIEWER_HOLD === '1') {
+      while (!fs.existsSync('/tmp/viewer-worker-finish')) await new Promise(r => setTimeout(r, 250));
+    }
+    for (const marker of ['ONE','TWO']) await request({type:'session_dispose',reason:'replacement'}, 'viewer-' + marker);
+    console.log('PASS actual Pendant: viewer tool, project override guidance, question UI, state continuity, separate browser sessions');
+    return;
+  }
   if (process.argv.includes('--ssh-live')) {
     const alias = process.env.TEST_SSH_ALIAS;
     assert(/^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,63}$/.test(alias ?? ''), 'Set TEST_SSH_ALIAS to an explicitly assigned host');

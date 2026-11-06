@@ -55,6 +55,10 @@ class TUITests(unittest.TestCase):
     async def test_new_shortcut_works_while_search_has_focus(self):
         for records in ([], self.records):
             with self.subTest(empty=not records):
+                # Search includes workspace paths; random temporary names can contain 'n'.
+                records = copy.deepcopy(records)
+                for record in records:
+                    record['workspace'] = '/work/' + record['name']
                 app = Cockpit(self.root, FakeService(records))
                 async with app.run_test(size=(80,24)) as pilot:
                     await self.ready(app, pilot)

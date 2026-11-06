@@ -82,3 +82,31 @@ Actual account login and authorized SSH access are separate checks.
 
 Use disposable state throughout. Never restart a user's sandbox or copy credentials
 for testing. Record commands and results; distinguish fixtures from live services.
+
+## Browser viewer
+
+Create the disposable sandbox above with `--browser`. Put this synthetic project
+override in its workspace before testing:
+
+```sh
+mkdir -p "$test_root/workspace/.pi"
+printf '%s\n' 'PROJECT_VIEWER_GUIDANCE' > "$test_root/workspace/.pi/APPEND_SYSTEM.md"
+.venv/bin/python tests/integration.py --state-dir "$test_root/state" \
+  --name pendant-check --port 18081 --browser-viewer
+.venv/bin/python tests/browser_lifecycle.py --state-dir "$test_root/state" \
+  --name pendant-check
+```
+
+The first command checks the installed Pi CLI and Pendant worker, tool guidance
+with the project override, question handoff, retained state, two simultaneous
+browser sessions and their authenticated tab lists. Replies come from a synthetic
+model. The second stops and restarts this disposable sandbox: it checks repeated
+opens, rejected URLs and origins, shutdown with an active WebSocket, viewer repair,
+key rotation and stale descriptors after a container restart.
+
+For the rendered check, ask the agent to open a synthetic form and show its browser.
+Open the returned link, select the tab, type and click in the screencast, then tell
+the agent to continue. Confirm the browser tool reads the change. Reopen the sandbox
+from the launcher after stopping only its viewer; the new link must show the same
+page state. Verify that ordinary application port forwarding still works in VS Code.
+Delete the disposable sandbox when finished.

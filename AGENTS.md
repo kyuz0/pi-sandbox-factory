@@ -10,6 +10,7 @@ Implementation and shipped assets live in `vscode_pi_sandbox/`:
 
 - `sandbox.py`: lifecycle, ownership, immutable snapshots and image identities.
 - `sandbox_tui.py`: terminal forms; `sandbox_options.py`: shared validation.
+- `browser_viewer.py`: authenticated loopback viewer and container-bound lifetime.
 - `registry.py`: Git/local packages, revisions and installation.
 - `model_providers.py` and `providers/`: provider image layer and container runner.
 - `sandbox_advisors.py`, `sandbox_ssh.py`: credential companions.

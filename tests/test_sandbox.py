@@ -721,6 +721,22 @@ class BootstrapTests(unittest.TestCase):
         subprocess.run(['python3', '-c', script], check=True,
                        env=dict(os.environ, SANDBOX_SUBAGENTS='1' if subagents else '0'))
 
+    def test_browser_uses_viewer_without_forwarding_its_debug_port(self):
+        import re
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            for name in ('shared', 'pendant', 'sandbox', 'betterwright'):
+                (root / name).mkdir()
+            (root / 'sandbox/options.json').write_text('{"browser":true}')
+            (root / 'betterwright/extension.mjs').touch()
+            (root / 'betterwright/browser.md').write_text('Browser guidance')
+            self.bootstrap(root)
+            settings = json.loads((root / 'home/.vscode-server/data/Machine/settings.json').read_text())
+            pattern, value = next(iter(settings['remote.portsAttributes'].items()))
+            self.assertEqual(value['onAutoForward'], 'ignore')
+            self.assertIsNotNone(re.search(pattern, '/opt/betterwright/chromium/betterchromium --headless=new'))
+            self.assertIsNone(re.search(pattern, 'node /workspace/server.js'))
+
     def test_ask_loads_by_default_and_preserves_existing_configuration(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

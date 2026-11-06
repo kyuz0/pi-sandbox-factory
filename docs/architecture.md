@@ -44,3 +44,18 @@ A profile adds tools and Pi resources. A provider adds a small adapter run insid
 the development container, plus optional Pi extensions and skills. Both Pi and
 Pendant use the private home catalogue. A shared lock serializes model updates;
 credentials enter through stdin and are never included in image layers.
+
+Browser support uses one headless Chromium per Pi session inside the development
+container. A host Python process relays authenticated viewer requests through a
+fixed container helper; it has no arbitrary destination or command interface.
+The helper checks the session endpoint format and browser identifier before connecting. The viewer
+serves a tab list and Chromium’s existing DevTools frontend, with page WebSockets
+for interaction. It rebuilds response headers and restricts frontend network requests to the viewer.
+Each viewer uses its own loopback address. Host cookies and authorization headers
+are never forwarded.
+Opening the sandbox repairs a stopped viewer; stopping the container ends it.
+The viewer key rotates on restart. Session links are capabilities, visible in
+chat history. Sessions share the container Unix user, so their identifiers prevent
+accidental mix-ups rather than providing isolation against malicious container code.
+The DevTools frontend comes from the installed browser image. As with profiles and
+extensions, the viewer assumes that installed container software is trusted.

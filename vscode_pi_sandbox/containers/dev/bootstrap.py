@@ -205,6 +205,11 @@ for server in ('.vscode-server', '.vscode-server-insiders'):
         'http.proxySupport': ('override' if os.environ.get('SANDBOX_NETWORK_MODE') != 'unrestricted' else 'off'),
         'git.terminalAuthentication': False,
     })
+    if browser_enabled:
+        # Match the Chromium process, leaving application port forwarding intact.
+        settings.setdefault('remote.portsAttributes', {})[r'(^|/)betterchromium(?:\s|$)'] = {
+            'onAutoForward': 'ignore', 'label': 'Sandbox browser (use viewer)',
+        }
     machine.write_text(json.dumps(settings, indent=2) + '\n')
 
 # The launcher owns the approved host and port selection; preserve other discovery preferences.
