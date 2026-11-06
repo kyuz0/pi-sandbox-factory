@@ -939,21 +939,25 @@ class SettingsForm(Screen):
                              value=selected['approval'], allow_blank=False, id='approval')
                 yield Static('', id='approval-help', markup=False)
                 yield Checkbox('Enable optional subagents', value=value['subagents'], id='subagents')
-            with Collapsible(title='Skills and features', collapsed=True):
-                yield Checkbox('Browser · Betterwright', value=selected['browser'], id='browser')
-                yield Static('Installs a headless browser and its dependencies. Uses the selected network policy; no extra destinations are allowed.')
+            with Collapsible(title='Skills and features', collapsed=True, id='skills-section'):
+                with Vertical(classes='setting'):
+                    yield Checkbox('Browser · Betterwright', value=selected['browser'], id='browser')
+                    yield Static('Installs a headless browser and its dependencies. Uses the selected network policy; no extra destinations are allowed.', classes='setting-help checkbox-help')
                 for skill in PROFILE_SKILLS.get(self.profile_name, []):
                     yield Checkbox(SKILLS[skill][0], value=skill not in selected['disabled_skills'], id='skill-' + skill)
                 for skill in value.get('extra_skills', []):
-                    yield Checkbox(skill['name'] + ' — remote skill', value=True, id='extra-' + skill['name'])
-                    yield Static(skill['repo'] + ' · ' + skill['commit'][:12], markup=False)
+                    with Vertical(classes='setting'):
+                        yield Checkbox(skill['name'] + ' — remote skill', value=True, id='extra-' + skill['name'])
+                        yield Static(skill['repo'] + ' · ' + skill['commit'][:12], markup=False, classes='setting-help checkbox-help')
                 yield Checkbox('Pendant goals', value=selected['goals'], id='goals')
                 yield Checkbox('Scheduled prompts in the current chat', value=selected['scheduling'], id='scheduling')
-                yield Static('Installed profile skills can be enabled or disabled. Add a remote skill below.')
-                yield Label('Additional skill Git repository URL')
-                yield Input(value.get('skill_repo', ''), id='skill-repo')
-                yield Label('Skill folder in that repository (must contain SKILL.md)')
-                yield Input(value.get('skill_path', ''), id='skill-path')
+                yield Static('Installed profile skills can be enabled or disabled. Add a remote skill below.', classes='section-intro')
+                with Vertical(classes='setting'):
+                    yield Label('Additional skill Git repository URL')
+                    yield Input(value.get('skill_repo', ''), id='skill-repo')
+                with Vertical(classes='setting'):
+                    yield Label('Skill folder in that repository (must contain SKILL.md)')
+                    yield Input(value.get('skill_path', ''), id='skill-path')
             with Collapsible(title='Advanced settings', collapsed=True):
                 yield Label('Container engine')
                 yield Select([('Automatic — prefer rootless Podman', 'auto'), ('Podman', 'podman'), ('Docker', 'docker')],
@@ -1154,6 +1158,11 @@ class Cockpit(App):
     Label { margin: 0; height: auto; }
     .form { padding: 1 3; }
     .form > Static { height: auto; margin-bottom: 1; }
+    .setting { height: auto; margin-bottom: 1; }
+    .setting > Checkbox, .setting > Input { margin-bottom: 0; }
+    .setting-help { height: auto; color: #b8bdc3; }
+    .checkbox-help { padding-left: 4; }
+    .section-intro { height: auto; margin-bottom: 1; }
     Input, Select { margin-bottom: 1; }
     TextArea { height: 9; }
     Checkbox { height: 1; border: none; padding: 0; margin: 0 0 1 0; }
