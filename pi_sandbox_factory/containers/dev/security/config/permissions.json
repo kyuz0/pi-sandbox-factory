@@ -9,7 +9,10 @@
     "write": "allow", "edit": "allow", "skill": "allow",
     "bash": "allow", "bash_escalate": "allow", "subagent": "allow",
     "advisor_status": "allow", "advisor_ask": "ask",
-    "ask_user_question": "allow", "browser_viewer": "allow",
+    "ask_user_question": "allow",
+    "history_grep": "allow",
+    "history_expand": "allow",
+    "history_recall": "allow", "browser_viewer": "allow",
     "web_search": "allow", "get_search_content": "allow", "fetch_content": "ask",
     "external_directory": "ask",
     "path": {

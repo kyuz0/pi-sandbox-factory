@@ -1,0 +1,8 @@
+{
+  "name": "sandbox-compaction-recall",
+  "private": true,
+  "dependencies": {
+    "pi-compaction-recall": "0.2.0",
+    "typebox": "1.3.27"
+  }
+}

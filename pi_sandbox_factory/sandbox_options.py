@@ -8,7 +8,7 @@ from . import web_access, network_groups
 SKILLS = {}
 PROFILE_SKILLS = {'base': []}
 DEFAULTS = {'approval': 'automatic', 'inner_sandbox': True, 'goals': True,
-            'scheduling': True, 'browser': False, 'disabled_skills': [], 'web_access': None, 'website_groups': []}
+            'scheduling': True, 'browser': False, 'compaction_recall': 'lite', 'disabled_skills': [], 'web_access': None, 'website_groups': []}
 
 
 def options(value=None):
@@ -21,6 +21,8 @@ def options(value=None):
     for key in ('inner_sandbox', 'goals', 'scheduling', 'browser'):
         if type(result[key]) is not bool:
             raise ValueError(key + ' must be a boolean')
+    if result['compaction_recall'] not in ('lite', 'full', 'off'):
+        raise ValueError('Conversation recall must be lite, full or off')
     disabled = result['disabled_skills']
     if not isinstance(disabled, list) or any(x not in SKILLS for x in disabled):
         raise ValueError('Unknown disabled skill')

@@ -90,7 +90,7 @@ worker.send({ type: 'sdk_bridge_hello', protocolVersion: 3, hostKind: 'vscode', 
 
 async function create(key, allowDialog = false) {
   sessions.set(key, { events: [], dialogs: 0, allowDialog });
-  return request({ type: 'session_create', target: { kind: 'new', cwd: sessionCwd } }, key);
+  return request({ type: 'session_create', target: process.argv.includes('--recall') ? {kind:'file', path:'/tmp/recall-pendant.jsonl'} : { kind: 'new', cwd: sessionCwd } }, key);
 }
 async function waitForReply(key, marker) {
   const deadline = Date.now() + 180000;
@@ -119,6 +119,18 @@ async function main() {
   assert.deepEqual(inventory.diagnostics.filter(d => d.level === 'error'), [], 'Extension errors');
   assert(!fs.existsSync('/opt/pi-security/node_modules/pi-goal'), 'Legacy Goal package installed');
   assert(inventory.tools.some(t => t.name === 'ask_user_question'), 'ask_user_question tool missing');
+  if (process.argv.includes('--recall')) {
+    const mode = JSON.parse(fs.readFileSync('/opt/sandbox/options.json')).compaction_recall;
+    await request({type:'session_set_model',provider:'fixture',modelId:'fixture-model',persist:false}, 'inventory');
+    await request({type:'session_prompt',text:'RUN_RECALL: Which TCP port did we choose for the cobalt reporting service?',images:[],source:'interactive'}, 'inventory');
+    const state = await waitForReply('inventory', 'RECALL_DONE');
+    const results = state.messages.filter(m => m.role === 'toolResult');
+    assert.equal(results.length, mode === 'off' ? 0 : mode === 'full' ? 3 : 2, JSON.stringify(results));
+    assert(results.every(r => !r.isError && JSON.stringify(r).includes('8123')), JSON.stringify(results));
+    assert.equal(sessions.get('inventory').dialogs, 0);
+    console.log('PASS actual Pendant: recall ' + mode + ', compacted history and no approval dialogs');
+    return;
+  }
   if (process.argv.includes('--folders')) {
     await request({type:'session_set_model',provider:'fixture',modelId:'fixture-model',persist:false}, 'inventory');
     await request({type:'session_prompt',text:'RUN_FOLDERS',images:[],source:'interactive'}, 'inventory');

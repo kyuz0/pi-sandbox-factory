@@ -1431,6 +1431,12 @@ class SettingsForm(Screen):
                 yield Checkbox('Enable optional subagents', value=value['subagents'], id='subagents')
             with Collapsible(title='Skills and features', collapsed=True, id='skills-section'):
                 with Vertical(classes='setting'):
+                    yield Label('Conversation recall')
+                    yield Select([('Lite — search history on demand', 'lite'),
+                                  ('Full — automatic history hints', 'full'), ('Off', 'off')],
+                                 value=selected['compaction_recall'], allow_blank=False, id='compaction-recall')
+                    yield Static('Full adds automatic hints and may reduce prefix-cache reuse.', classes='setting-help')
+                with Vertical(classes='setting'):
                     yield Checkbox('Browser · Betterwright', value=selected['browser'], id='browser')
                     yield Static('Adds a headless browser with a live viewer for you to see and interact with its pages.', classes='setting-help checkbox-help')
                 for skill in PROFILE_SKILLS.get(self.profile_name, []):
@@ -1513,7 +1519,8 @@ class SettingsForm(Screen):
         selected['web_access'], key = self.query_one(WebAccessForm).collect()
         selected['website_groups'] = self.query_one(WebsiteGroups).selected()
         selected.update(approval=self.query_one('#approval', Select).value, inner_sandbox=check('inner-sandbox'),
-                        goals=check('goals'), scheduling=check('scheduling'), browser=check('browser'))
+                        goals=check('goals'), scheduling=check('scheduling'), browser=check('browser'),
+                        compaction_recall=self.query_one('#compaction-recall', Select).value)
         selected['disabled_skills'] = [s for s in SKILLS if
             (s in PROFILE_SKILLS.get(self.profile_name, []) and not check('skill-' + s))
             or (s not in PROFILE_SKILLS.get(self.profile_name, []) and s in selected['disabled_skills'])]

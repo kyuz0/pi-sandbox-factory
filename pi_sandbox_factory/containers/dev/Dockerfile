@@ -1,4 +1,4 @@
-FROM docker.io/library/node:22-bookworm-slim
+FROM docker.io/library/node:24-bookworm-slim
 ARG PI_VERSION=1.4.0
 ARG PENDANT_VERSION=0.94.2
 ARG USER_UID=1000
@@ -28,6 +28,8 @@ COPY security/ /opt/pi-security/
 RUN python3 /opt/pi-security/fetch.py \
     && npm ci --omit=dev --prefix /opt/pi-security \
     && python3 /opt/pi-security/scripts/prepare-container.py
+COPY compaction-recall/ /opt/pi-compaction-recall/
+RUN npm ci --omit=dev --ignore-scripts --legacy-peer-deps --prefix /opt/pi-compaction-recall
 ENV PI_SANDBOX_CONTAINER=1
 COPY security/security.md /opt/sandbox/security.md
 # Preload the extension during the trusted image build, before network restrictions.

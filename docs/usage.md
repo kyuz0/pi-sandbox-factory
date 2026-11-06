@@ -171,3 +171,16 @@ passes through the sandbox’s configured network policy.
 If a link stops loading, use **Open in VS Code** in the launcher again, then ask
 for a fresh link. This repairs the viewer without restarting the browser. Stopping
 the sandbox ends its running browser sessions.
+
+## Conversation recall
+
+New sandboxes include [pi-compaction-recall](https://github.com/shttty/compaction-recall)
+in **Lite** mode. Pi can search conversation history removed by compaction with
+`history_grep` and retrieve a passage with `history_expand`.
+Lite adds no automatic history hints.
+
+Choose **Configuration → Skills and features → Conversation recall** when creating
+or editing a sandbox. **Full** adds automatic hints and may reduce prefix-cache
+reuse. **Off** disables recall. The selection applies to both Pi CLI and Pendant.
+For CLI creation, use `"compaction_recall": "lite"`, `"full"` or `"off"` in the
+JSON passed to `--options-file`.

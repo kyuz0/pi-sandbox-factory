@@ -183,3 +183,21 @@ labels, and confirms that starting-folder edits preserve the running container.
 It leaves the disposable sandbox with only `output`, mounted read-only. Delete it
 afterward. `test_folders.py` covers path validation, permissions, copies and folder
 controls at 80×24; it needs no container or account.
+
+## Conversation recall
+
+Create a disposable sandbox with the fixture port as above, then run
+`tests/integration.py` with `--recall` instead of `--pendant-questions-only`.
+Repeat after changing `options.compaction_recall` to `full`, then `off`, through
+`update --settings-file`. Preserve the other saved options in that file.
+
+The test resumes synthetic compacted history in the installed Pi CLI and Pendant
+worker. It checks retrieval of the original message, tool availability, Full's
+hints, no hints in Lite, and no approval-review requests for history tools.
+Lite is the creation default. The Python suite also covers saved selection,
+disabling the extension and keyboard operation at 80×24.
+
+The extension and its runtime dependencies are pinned in
+`pi_sandbox_factory/containers/dev/compaction-recall/package-lock.json`.
+Its Node requirement applies to both the container CLI and VS Code's remote
+Node runtime, which Pendant uses. Check both when updating this package.

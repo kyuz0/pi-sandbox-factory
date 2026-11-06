@@ -234,7 +234,7 @@ def validate_env(path):
             raise ValueError('Env file must contain literal UPPERCASE_NAME=value entries')
         if (key in {'HOME', 'PATH', 'ENV', 'BASH_ENV', 'LD_PRELOAD', 'LD_LIBRARY_PATH',
                     'NODE_OPTIONS', 'NODE_USE_ENV_PROXY', 'SSL_CERT_FILE', 'SSL_CERT_DIR',
-                    'SSH_AUTH_SOCK', 'PI_ADVISOR_SOCKET', 'SANDBOX_NETWORK_MODE', 'SANDBOX_SUBAGENTS', 'SANDBOX_APPROVAL_MODE', 'PI_SANDBOX_CONTAINER', 'PI_AUTO_REVIEW_ALLOW_UNTRUSTED_DEV'}
+                    'SSH_AUTH_SOCK', 'PI_ADVISOR_SOCKET', 'SANDBOX_NETWORK_MODE', 'SANDBOX_SUBAGENTS', 'SANDBOX_APPROVAL_MODE', 'COMPACTION_RECALL_MODE', 'PI_SANDBOX_CONTAINER', 'PI_AUTO_REVIEW_ALLOW_UNTRUSTED_DEV'}
                 or any(x in key for x in ('PROXY', 'PI_CODING_AGENT_DIR'))):
             raise ValueError(f'{key} is controlled by the sandbox, not the credentials file')
 
@@ -548,7 +548,9 @@ def up(config, state):
                 args += ['--env', 'LOCAL_MODEL_PORTS=' + config['local_model_ports']]
             args += ['--env', 'SANDBOX_NETWORK_MODE=' + network_mode(config)]
             args += ['--env', 'SANDBOX_SUBAGENTS=' + ('1' if config.get('subagents', False) else '0')]
-            args += ['--env', 'SANDBOX_APPROVAL_MODE=' + options(config.get('options'))['approval']]
+            selected = options(config.get('options'))
+            args += ['--env', 'SANDBOX_APPROVAL_MODE=' + selected['approval']]
+            args += ['--env', 'COMPACTION_RECALL_MODE=' + ('full' if selected['compaction_recall'] == 'full' else 'lite')]
             for key, value in runtime_env.items():
                 args += ['--env', f'{key}={value}']
             run(base + args + [dev_image])

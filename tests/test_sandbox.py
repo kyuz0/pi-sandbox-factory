@@ -708,18 +708,37 @@ class EditorTests(unittest.TestCase):
 class BootstrapTests(unittest.TestCase):
     def bootstrap(self, root, subagents=False):
         script = (sandbox.ROOT / 'containers/dev/bootstrap.py').read_text()
-        for relative in ('sandbox/profile.md',):
+        for relative in ('sandbox/profile.md', 'recall/node_modules/pi-compaction-recall/src/index.ts'):
             target = root / relative
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_text('Profile guidance' if relative.endswith('profile.md') else '')
         for original, relative in (('/home/node', 'home'), ('/pi-config', 'shared'), ('/opt/pendant', 'pendant'),
                                    ('/opt/pi-security', 'security'),
                                    ('/opt/betterwright', 'betterwright'),
+                                   ('/opt/pi-compaction-recall', 'recall'),
                                    ('/opt/rpiv-ask-user-question', 'ask'),
                                    ('/opt/sandbox', 'sandbox')):
             script = script.replace(original, str(root / relative))
         subprocess.run(['python3', '-c', script], check=True,
                        env=dict(os.environ, SANDBOX_SUBAGENTS='1' if subagents else '0'))
+
+    def test_recall_defaults_to_lite_and_can_be_disabled(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / 'shared').mkdir()
+            (root / 'pendant').mkdir()
+            (root / 'shared/settings.json').write_text(json.dumps({
+                'packages': ['npm:pi-compaction-recall@0.2.0', 'npm:unrelated'],
+                'extensions': ['/custom/extension.ts']}))
+            for mode in (None, 'full', 'off', 'lite'):
+                if mode:
+                    (root / 'sandbox/options.json').write_text(json.dumps({'compaction_recall': mode}))
+                self.bootstrap(root)
+                settings = json.loads((root / 'home/.pi/agent/settings.json').read_text())
+                extension = str(root / 'recall/node_modules/pi-compaction-recall/src/index.ts')
+                self.assertEqual(settings['extensions'].count(extension), 0 if mode == 'off' else 1)
+                self.assertIn('/custom/extension.ts', settings['extensions'])
+                self.assertEqual(settings['packages'], ['npm:unrelated'])
 
     def test_browser_uses_viewer_without_forwarding_its_debug_port(self):
         import re
@@ -866,7 +885,7 @@ class BootstrapTests(unittest.TestCase):
             self.assertEqual(models.stat().st_mode & 0o077, 0)
             settings_file = agent / 'settings.json'
             settings = json.loads(settings_file.read_text())
-            self.assertEqual(settings['extensions'], [])
+            self.assertEqual(settings['extensions'], [str(root / 'recall/node_modules/pi-compaction-recall/src/index.ts')])
             self.assertEqual(settings['skills'], [])
             settings['defaultProvider'] = 'custom'
             settings['skills'].append('/custom/skills')

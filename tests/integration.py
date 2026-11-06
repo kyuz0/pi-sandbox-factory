@@ -21,6 +21,7 @@ p.add_argument('--browser-viewer', action='store_true', help='Check viewer tool 
 p.add_argument('--web-access', action='store_true', help='Live keyless Exa search and category-controlled retrieval in Pi and Pendant')
 p.add_argument('--web-providers', action='store_true', help='Also check native fallback and Only-provider enforcement')
 p.add_argument('--folders', action='store_true', help='Check subfolder cwd and read-only/read-write mounts in both clients')
+p.add_argument('--recall', action='store_true', help='Check conversation recall in Pi and Pendant with compacted fixture history')
 a=p.parse_args()
 if a.web_providers: a.web_access=True
 RUNTIME=a.artifacts or Path(tempfile.mkdtemp(prefix='pi-sandbox-factory-check-'))
@@ -30,6 +31,7 @@ fixture=RUNTIME/'fixture';fixture.mkdir(exist_ok=True)
 (fixture/'expected-subagents.json').write_text('false')
 saved_config=json.loads((a.state_dir/a.name/'config.json').read_text())
 (fixture/'expected-profile.txt').write_text('PROJECT_VIEWER_GUIDANCE' if a.browser_viewer else (Path(saved_config['profile']['path'])/'profile.md').read_text())
+if a.recall: (fixture/'recall-mode.txt').write_text(saved_config['options']['compaction_recall'])
 source=(ROOT/'tests/mock_inference.py').read_text()
 # Each run creates its own completed jobs; preserve existing workspace history.
 source=source.replace("'automation-' +", repr('automation-'+uuid.uuid4().hex[:12]+'-')+' +')
@@ -57,10 +59,12 @@ try:
  subprocess.run(['podman','exec','-i',DEV,'python3','-c',code],input=json.dumps(config),text=True,check=True)
  if a.browser_viewer:
   subprocess.run(['podman','exec',DEV,'node','/opt/betterwright/check.mjs'],check=True)
- elif not a.web_access and not a.folders:
+ elif not a.web_access and not a.folders and not a.recall:
   subprocess.run([sys.executable,str(ROOT/'sandbox.py'),'--state-dir',str(a.state_dir),'check',a.name,'--allowed-url',f'http://local-model.internal:{a.port}/v1/models'],check=True)
  checks = [('check_security_rpc.py',['python3','-']),('check_automation_rpc.py',['python3','-']),('check_pendant_worker.cjs',['node','-'])]
- if a.folders:
+ if a.recall:
+  checks = [('check_recall_rpc.py', ['python3', '-']), ('check_pendant_worker.cjs', ['node', '-', '--recall'])]
+ elif a.folders:
   checks = [('check_folders_rpc.py', ['python3', '-']), ('check_pendant_worker.cjs', ['node', '-', '--folders'])]
  elif a.browser_viewer:
   checks = [('check_browser_rpc.py', ['python3', '-']), ('check_pendant_worker.cjs', ['node', '-', '--viewer'])]
@@ -105,6 +109,10 @@ try:
   for file, command in checks:
    subprocess.run(['podman','exec','-i','-e','WEB_ONLY=1',DEV,*command],input=(ROOT/'tests'/file).read_text(),text=True,check=True)
   assert len(attempts.read_text().splitlines()) == 4, 'Only-provider requests must still reach SearXNG'
+ if a.recall:
+  assert not (fixture/'reviews.jsonl').exists(), 'History tools must not invoke the reviewer'
+  prompts = [json.loads(line) for line in (fixture/'recall-prompts.jsonl').read_text().splitlines()]
+  assert any(p['hints'] for p in prompts) == (saved_config['options']['compaction_recall'] == 'full'), prompts
  reviews = fixture/'reviews.jsonl'
  if reviews.exists():
   if a.web_access: assert len(reviews.read_text().splitlines()) == 6, 'Only the three explicit fetches in each client should invoke the reviewer'
@@ -113,7 +121,7 @@ try:
   prompts = [json.loads(line) for line in (fixture/'folder-prompts.jsonl').read_text().splitlines()]
   assert len(prompts) == 22, len(prompts)
   print('PASS both clients received the mounted-folder map with project prompt overrides', flush=True)
- print('PASS Pi/Pendant folder integration' if a.folders else 'PASS Pi/Pendant browser viewer integration' if a.browser_viewer else 'PASS Pendant startup and questions; no question review calls' if a.pendant_questions_only else 'PASS Pi/Pendant web access integration' if a.web_access else 'PASS real Pi/Pendant security, Goal, scheduling and transport using fixture replies',flush=True)
+ print('PASS Pi/Pendant recall integration' if a.recall else 'PASS Pi/Pendant folder integration' if a.folders else 'PASS Pi/Pendant browser viewer integration' if a.browser_viewer else 'PASS Pendant startup and questions; no question review calls' if a.pendant_questions_only else 'PASS Pi/Pendant web access integration' if a.web_access else 'PASS real Pi/Pendant security, Goal, scheduling and transport using fixture replies',flush=True)
 finally:
  if saved_search is not None:
   subprocess.run(['podman','exec','-i',DEV,'python3','-c',search_writer],input=saved_search,text=True,check=True)

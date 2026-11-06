@@ -62,6 +62,8 @@ belong in the extension repository; this project pins and integrates them.
 Update pins in `pi_sandbox_factory/containers/dev/extensions.lock.json` or the
 security directory’s `sources.json`.
 Pi and Pendant have separate version pins; Pendant embeds its own Pi.
+Conversation recall defaults to Lite in both clients; keep its mode tied to the
+saved sandbox options. Its dependency lock lives in `containers/dev/compaction-recall/`.
 
 Write short, direct documentation explaining supported behavior and actual setup.
 Keep private names, credentials, conversation history and investigation logs out of

@@ -51,7 +51,7 @@ settings = json.loads(settings_file.read_text())
 # Replace legacy registrations with the image-managed versions. Pi rejects
 # duplicate Bash tools; a raw scheduler would expose an independent-agent path.
 managed_packages = ('pi-sandbox', '@erichll/pi-sandbox', '@erichll/pi-auto-review',
-                    '@gotgenes/pi-permission-system', 'pi-goal', 'pi-schedule-prompt', 'betterwright', 'pi-web-access', '@juicesharp/rpiv-ask-user-question')
+                    '@gotgenes/pi-permission-system', 'pi-goal', 'pi-schedule-prompt', 'betterwright', 'pi-web-access', 'pi-compaction-recall', '@juicesharp/rpiv-ask-user-question')
 
 def managed_package(resource):
     source = resource.get('source') if isinstance(resource, dict) else resource
@@ -118,6 +118,8 @@ managed['extensions'].add('/opt/betterwright/extension.mjs')
 managed['extensions'].add('/opt/pi-web-access/node_modules/pi-web-access/dist/index.js')
 web_extension = '/opt/pi-web-access/extension.mjs'
 managed['extensions'].add(web_extension)
+recall_extension = '/opt/pi-compaction-recall/node_modules/pi-compaction-recall/src/index.ts'
+managed['extensions'].add(recall_extension)
 for key, values in managed.items():
     settings[key] = [p for p in settings.get(key, []) if not isinstance(p, str) or p not in values]
 if os.environ.get('PI_ADVISOR_SOCKET'):
@@ -128,6 +130,10 @@ if (selection.get('web_access') or {}).get('enabled'):
         raise ValueError('Web access is enabled but absent from this image; recreate the sandbox')
     image_resources['extensions'].append(web_extension)
     subprocess.run(['python3', '/usr/local/lib/sandbox-web-access.py'], check=True)
+if selection.get('compaction_recall', 'lite') != 'off':
+    if not Path(recall_extension).is_file():
+        raise ValueError('Conversation recall is enabled but absent from this image; recreate the sandbox')
+    image_resources['extensions'].append(recall_extension)
 if browser_enabled:
     if not Path('/opt/betterwright/extension.mjs').is_file():
         raise ValueError('Betterwright is enabled but missing from this image; recreate with --browser')

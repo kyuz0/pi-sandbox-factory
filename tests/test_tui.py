@@ -449,6 +449,26 @@ class TUITests(unittest.TestCase):
             await pilot.press('escape');await pilot.press('q')
 
 
+    async def test_recall_selection_is_saved_at_small_terminal(self):
+        from textual.widgets import Select, Collapsible
+        service=FakeService(self.records);app=Cockpit(self.root,service)
+        async with app.run_test(size=(80,24)) as pilot:
+            await self.ready(app,pilot);await self.settings_page(app,pilot)
+            form=app.screen
+            form.query_one('#skills-section',Collapsible).collapsed=False
+            choice=form.query_one('#compaction-recall',Select)
+            self.assertEqual(choice.value,'lite')
+            await pilot.pause();choice.focus();choice.scroll_visible(animate=False);await pilot.pause()
+            await pilot.press('enter','down','enter');await pilot.pause()
+            self.assertEqual(choice.value,'full')
+            with patch('pi_sandbox_factory.sandbox.choose_engine',return_value='podman'):
+                draft,_=form.collect()
+            self.assertEqual(draft['options']['compaction_recall'],'full')
+            choice.value='off'
+            with patch('pi_sandbox_factory.sandbox.choose_engine',return_value='podman'):
+                draft,_=form.collect()
+            self.assertEqual(draft['options']['compaction_recall'],'off')
+
     async def test_package_install_at_small_terminal(self):
         service=FakeService(self.records);app=Cockpit(self.root,service)
         async with app.run_test(size=(80,24)) as pilot:

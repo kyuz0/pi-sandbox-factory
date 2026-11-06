@@ -75,6 +75,28 @@ class Handler(BaseHTTPRequestHandler):
             outcome = 'deny' if ('DENY_BY_FIXTURE' in content or 'ALLOW_EXECUTED' in content) else 'defer' if 'DEFER_BY_FIXTURE' in content else 'allow'
             delta['content'] = json.dumps({'outcome': outcome, 'risk_level': 'medium',
                                           'user_authorization': 'high', 'rationale': 'Synthetic integration review: ' + outcome})
+        elif 'RUN_RECALL' in content:
+            mode = Path('/fixture/recall-mode.txt').read_text()
+            names = {t['function']['name'] for t in request.get('tools', [])}
+            expected_tools = set() if mode == 'off' else {'history_grep', 'history_expand'}
+            if mode == 'full': expected_tools.add('history_recall')
+            assert {n for n in names if n.startswith('history_')} == expected_tools, names
+            hints = '<compacted-history-hints>' in content
+            if mode != 'full': assert not hints, 'Unexpected automatic hints'
+            with Path('/fixture/recall-prompts.jsonl').open('a') as log:
+                log.write(json.dumps({'mode': mode, 'hints': hints}) + '\n')
+            actions = [] if mode == 'off' else [
+                ('history_grep', {'pattern': 'cobalt'}),
+                ('history_expand', {'id': 'old-recall', 'before': 0, 'after': 0})]
+            if mode == 'full': actions.append(('history_recall', {'concepts': [['cobalt']]}))
+            outputs = [m for m in messages if m.get('role') == 'tool']
+            if len(outputs) < len(actions):
+                name, arguments = actions[len(outputs)]
+                delta = {'role': 'assistant', 'tool_calls': [{'index': 0, 'id': 'recall-' + str(len(outputs)),
+                    'type': 'function', 'function': {'name': name, 'arguments': json.dumps(arguments)}}]}
+                finish = 'tool_calls'
+            else:
+                delta['content'] = 'RECALL_DONE'
         elif 'RUN_FOLDERS' in content:
             system = '\n'.join(strings([m.get('content') for m in messages if m.get('role') in ('system', 'developer')]))
             assert all(text in system for text in ('Mounted folders', '/mnt/reference', '/mnt/output', 'PROJECT_FOLDER_OVERRIDE', 'PROJECT_FOLDER_CONTEXT')), system
