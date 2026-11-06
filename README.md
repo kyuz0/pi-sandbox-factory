@@ -1,9 +1,14 @@
 # Pi Sandbox Factory
 
-Run Pi and Pendant in independent development containers, managed from a terminal.
-Each sandbox works on a folder you choose and keeps its own models, sessions and
-editor state. Profiles add tools and skills; model providers configure the models
-Pi can use. Local model discovery is included by default.
+Pi Sandbox Factory helps you use the Pi coding agent on your projects inside a
+development container. You choose a project folder, create a sandbox from the
+terminal interface, then open it in VS Code. The sandbox comes with Pi and
+Pendant, the VS Code extension that lets you chat with Pi while you work.
+
+Each sandbox has its own tools, model settings and conversation history. Your
+project files stay in the folder you selected. Local model discovery is included,
+and you can add other model connections or customize the development tools as
+your needs change.
 
 ![Pi Sandbox Factory terminal interface](docs/sandboxes.png)
 
@@ -35,6 +40,10 @@ Start the model server separately. If it starts later, use **Settings → Models
 Refresh**. [CLI and everyday use](docs/usage.md).
 
 ## Add your own environment
+
+A profile defines the tools and skills installed in a sandbox. A model provider
+connects Pi to a model service and configures the available models. You can install
+both from separate repositories, so a team can share its setup.
 
 Use **Packages** or install a profile from a Git URL:
 
