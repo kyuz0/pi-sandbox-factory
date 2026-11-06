@@ -206,7 +206,9 @@ Node runtime, which Pendant uses. Check both when updating this package.
 
 `test_tui_layout.py` checks path-control alignment, dependent-option spacing,
 visible actions, Escape cancellation, direct web-access navigation, conditional
-fields and the selected editor launch. Run it with the other TUI tests.
+fields and the selected editor launch. `test_packages_ui.py` checks installation,
+item-specific updates, removal confirmation, list refresh and action placement.
+Run these with the other TUI tests.
 Review new and edited forms at 80×24 and 120×40, including expanded sections,
 validation errors and long paths. Inspect the rendered view as well as geometry;
 use Textual's `App.export_screenshot()` for SVG captures with fixture data.

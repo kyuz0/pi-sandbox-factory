@@ -1035,65 +1035,162 @@ class ModelsScreen(Screen):
     def action_back(self):self.app.pop_screen()
 
 
+class PackageRow(Vertical):
+    def __init__(self, name, description, record=None):
+        super().__init__(classes='package-row')
+        self.package_name, self.description, self.record = name, description, record
+
+    def compose(self):
+        yield Static(self.description or self.package_name, classes='package-title', markup=False)
+        if self.record is None:
+            yield Static('Included with Pi Sandbox Factory', markup=False)
+        else:
+            yield Static('Local name: ' + self.package_name, markup=False)
+            source = self.record['source']
+            if self.record.get('subdir', '.') != '.':
+                source += ' · ' + self.record['subdir']
+            if self.record.get('ref'):
+                source += ' · ' + self.record['ref']
+            yield Static(source, markup=False)
+            with Horizontal(classes='package-actions'):
+                yield Button('Update', name='update')
+                yield Button('Remove', name='remove')
+
+
 class PackagesScreen(Screen):
     BINDINGS=[('escape','back','Back')]
     def compose(self):
         yield Header()
         with VerticalScroll(classes='form'):
             yield Label('Profiles and Providers',classes='title')
-            yield Static('Profiles set up the tools, skills and instructions for your work. Providers configure the models Pi can use. Install only packages you trust.')
-            yield Label('Package type')
-            yield Select([('Profile','profile'),('Provider','provider')],value='profile',allow_blank=False,id='package-kind')
-            yield Label('Installed packages')
-            yield Static('',id='package-list',markup=False)
-            yield Label('Local name')
-            yield Input(placeholder='reporting',id='package-name')
-            yield Label('Git URL or local folder')
-            yield Input(placeholder='',id='package-source')
-            with Collapsible(title='Repository subfolder and revision', collapsed=True):
-                yield Label('Subfolder in the repository · optional')
-                yield Input(placeholder='scribe',id='package-subdir')
-                yield Label('Tag, branch or commit · optional')
-                yield Input(id='package-ref')
-            with Horizontal(classes='buttons'):
-                yield Button('Install',id='package-add')
-                yield Button('Update',id='package-update')
-                yield Button('Remove',id='package-remove')
-            yield Static('Updates apply to new sandboxes. Existing sandboxes keep their saved version until explicitly recreated.')
-        with Horizontal(classes='wizard-actions'):yield Button('Back',id='packages-back')
+            with Vertical(classes='setting'):
+                yield Static('Profiles add tools, skills and instructions. Providers configure the models Pi can use.')
+            with Vertical(classes='setting'):
+                yield Label('Show installed')
+                yield Select([('Profiles','profile'),('Providers','provider')],value='profile',allow_blank=False,id='package-kind')
+            yield Vertical(id='package-list')
+            yield Static('Package updates apply when you create a sandbox or update its sources.', classes='setting-help')
+        with Horizontal(classes='wizard-actions'):
+            yield Button('Back',id='packages-back')
+            yield Button('Install profile…',id='package-install',variant='primary')
         yield Footer()
-    def on_mount(self):self.show_packages()
+
+    async def on_mount(self):
+        await self.show_packages()
+
+    async def on_screen_resume(self):
+        if self.is_mounted:
+            await self.show_packages()
+
     @on(Select.Changed,'#package-kind')
-    def changed(self):self.show_packages()
-    def show_packages(self):
+    async def changed(self):
+        await self.show_packages()
+
+    async def show_packages(self):
         kind=self.query_one('#package-kind',Select).value
         if kind is Select.BLANK:return
-        self.query_one('#package-list',Static).update('\n'.join(f'{name}: {description}' for name,description in registry.choices(kind).items()))
+        self.query_one('#package-install',Button).label='Install '+kind+'…'
+        listing=self.query_one('#package-list',Vertical)
+        await listing.remove_children()
+        installed=registry.installed(kind)
+        await listing.mount(*(PackageRow(name, description, installed.get(name))
+                              for name, description in registry.choices(kind).items()))
+
+    def run_package_action(self, kind, action, name):
+        service=self.app.service
+        self.app.push_screen(Operation(action.capitalize()+' '+kind+' · '+name,
+                                       lambda log:service.run([kind,action,name],log),
+                                       back_label='Back to profiles and providers'))
+
     @on(Button.Pressed)
     def pressed(self,event):
         event.stop()
         if event.button.id=='packages-back':self.action_back();return
-        action=event.button.id.removeprefix('package-')
         kind=self.query_one('#package-kind',Select).value
+        if event.button.id=='package-install':
+            self.app.push_screen(InstallPackage(kind));return
+        row=event.button.parent.parent
+        if not isinstance(row,PackageRow):return
+        name,action=row.package_name,event.button.name
+        if action=='remove':
+            self.app.push_screen(Confirm('Remove '+kind+' “'+name+'”? Existing sandboxes keep their saved copy.', 'Remove'),
+                                 lambda yes:self.run_package_action(kind,action,name) if yes else None)
+        elif action=='update':
+            self.run_package_action(kind,action,name)
+
+    def action_back(self):self.app.pop_screen()
+
+
+class InstallPackage(Screen):
+    BINDINGS=[('escape','back','Cancel')]
+
+    def __init__(self, kind):
+        super().__init__()
+        self.kind=kind
+
+    def compose(self):
+        yield Header()
+        with VerticalScroll(classes='form'):
+            yield Label('Install '+self.kind,classes='title')
+            with Vertical(classes='setting'):
+                yield Label('Git URL or local folder')
+                yield Input(id='package-source')
+            with Vertical(classes='setting'):
+                yield Label('Local name')
+                yield Input(placeholder='reporting' if self.kind=='profile' else 'company',id='package-name')
+            with Collapsible(title='Repository subfolder and revision', collapsed=True):
+                with Vertical(classes='setting'):
+                    yield Label('Subfolder in the repository · optional')
+                    yield Input(placeholder='profiles/reporting',id='package-subdir')
+                with Vertical(classes='setting'):
+                    yield Label('Tag, branch or commit · optional')
+                    yield Input(id='package-ref')
+            yield Static('Install only profiles and providers you trust; they contain executable code.',classes='setting-help')
+            yield Static('',id='package-error',markup=False)
+        with Horizontal(classes='wizard-actions'):
+            yield Button('Cancel',id='package-cancel')
+            yield Button('Install',id='package-add',variant='primary')
+        yield Footer()
+
+    @on(Button.Pressed)
+    def pressed(self,event):
+        event.stop()
+        if event.button.id=='package-cancel':self.action_back();return
         name=self.query_one('#package-name',Input).value.strip()
-        args=[kind,action,name]
-        if action=='add':
-            args.append(self.query_one('#package-source',Input).value.strip())
-            ref=self.query_one('#package-ref',Input).value.strip()
-            if ref:args+=['--ref',ref]
-            subdir=self.query_one('#package-subdir',Input).value.strip()
-            if subdir:args+=['--subdir',subdir]
+        source=self.query_one('#package-source',Input).value.strip()
+        ref=self.query_one('#package-ref',Input).value.strip()
+        subdir=self.query_one('#package-subdir',Input).value.strip()
+        try:
+            if not registry.NAME.fullmatch(name) or name in ('base','local'):
+                raise ValueError('Use a local name of 1–40 lowercase letters, digits or hyphens, starting with a letter. The names base and local are reserved.')
+            if name in registry.choices(self.kind):
+                raise ValueError('That name is already installed. Choose another name or update the existing '+self.kind+'.')
+            source=registry.source_url(source)
+            if Path(subdir).is_absolute() or '..' in Path(subdir).parts:
+                raise ValueError('The subfolder must be inside the repository.')
+            if ref.startswith('-') or any(c.isspace() for c in ref):
+                raise ValueError('Enter a Git tag, branch or commit without spaces.')
+        except ValueError as error:
+            message=self.query_one('#package-error',Static)
+            message.update(str(error));message.scroll_visible();return
+        args=[self.kind,'add',name,source]
+        if ref:args+=['--ref',ref]
+        if subdir:args+=['--subdir',subdir]
         service=self.app.service
-        self.app.pop_screen();self.app.push_screen(Operation('Managing '+kind+' · '+name,lambda log:service.run(args,log)))
+        self.app.pop_screen()
+        self.app.push_screen(Operation('Install '+self.kind+' · '+name,lambda log:service.run(args,log),
+                                       back_label='Back to profiles and providers'))
+
     def action_back(self):self.app.pop_screen()
 
 
 class Operation(Screen):
     BINDINGS = [Binding('escape', 'back', 'Back')]
 
-    def __init__(self, title, task):
+    def __init__(self, title, task, *, back_label='Back to sandboxes'):
         super().__init__()
         self.title, self.operation_task, self.finished = title, task, False
+        self.back_label = back_label
         self.failed = False
         self.model_disconnected = False
 
@@ -1129,7 +1226,7 @@ class Operation(Screen):
     def complete(self):
         self.finished = True
         button = self.query_one('#operation-back', Button)
-        button.disabled, button.label = False, 'Back to sandboxes'
+        button.disabled, button.label = False, self.back_label
         status = self.query_one('#operation-status', Static)
         status.update('●  Failed · see output below' if self.failed else
                       '●  Complete · model not connected' if self.model_disconnected else '●  Complete')
@@ -1689,6 +1786,12 @@ class Cockpit(App):
     NewSandbox #new-title { margin-bottom: 0; }
     CreateFromSandbox .title, CreateFromSandbox #copy-source { margin-bottom: 0; }
     .form > Static { height: auto; margin-bottom: 1; }
+    #package-list { height: auto; }
+    .package-row { height: auto; padding: 1 2; margin-bottom: 1; background: #24292f; }
+    .package-title { text-style: bold; }
+    .package-actions { height: 1; margin-top: 1; }
+    .package-actions Button { background: #34383d; padding: 0 2; }
+    #package-error { color: $error; height: auto; }
     .setting { height: auto; margin-bottom: 1; }
     .setting > Checkbox, .setting > Input, .setting > Select { margin-bottom: 0; }
     .setting-help { height: auto; color: #b8bdc3; }

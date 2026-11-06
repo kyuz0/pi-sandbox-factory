@@ -49,9 +49,11 @@ A **Profile** sets up the working environment for a task: its tools, skills,
 extensions and agent instructions. A **Provider** connects Pi to a model service
 and configures the available models. You choose them separately, so the same
 profile can work with local models or a hosted service. Both can be installed
-from Git repositories to share a setup with your team.
+from Git repositories or local folders.
 
-Use **Packages** or install a profile from a Git URL:
+Open **Packages** to view installed profiles and providers. Choose **Install profile…**
+or **Install provider…** to add one; **Update** and **Remove** appear beside each
+installed item. You can also install from a Git URL:
 
 ```sh
 pi-sandbox-factory profile add reporting git@git.example.com:team/reporting.git
