@@ -9,6 +9,11 @@ import time
 
 class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
+        if self.path.startswith('/search?'):
+            with Path('/fixture/search-attempts.txt').open('a') as log:
+                log.write('searxng\n')
+            self.send_error(503, 'Synthetic search provider unavailable')
+            return
         if self.headers.get('Authorization') != 'Bearer fixture-key':
             self.send_error(401)
             return
@@ -70,6 +75,15 @@ class Handler(BaseHTTPRequestHandler):
             outcome = 'deny' if ('DENY_BY_FIXTURE' in content or 'ALLOW_EXECUTED' in content) else 'defer' if 'DEFER_BY_FIXTURE' in content else 'allow'
             delta['content'] = json.dumps({'outcome': outcome, 'risk_level': 'medium',
                                           'user_authorization': 'high', 'rationale': 'Synthetic integration review: ' + outcome})
+        elif 'RUN_WEB_ONLY' in content:
+            outputs = [m for m in messages if m.get('role') == 'tool']
+            actions = [{'query': 'Python documentation'}, {'query': 'Python documentation', 'provider': 'exa'}]
+            if len(outputs) < len(actions):
+                delta = {'role': 'assistant', 'tool_calls': [{'index': 0, 'id': 'only-' + str(len(outputs)),
+                    'type': 'function', 'function': {'name': 'web_search', 'arguments': json.dumps(actions[len(outputs)])}}]}
+                finish = 'tool_calls'
+            else:
+                delta['content'] = 'WEB_ACCESS_DONE'
         elif 'RUN_WEB_ACCESS' in content:
             names = {t['function']['name'] for t in request.get('tools', [])}
             assert {'web_search', 'fetch_content'} <= names, 'Web tools missing'

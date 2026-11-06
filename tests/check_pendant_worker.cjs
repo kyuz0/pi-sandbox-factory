@@ -122,9 +122,18 @@ async function main() {
     assert(inventory.tools.some(t => t.name === 'web_search'), 'Web search missing');
     assert(inventory.tools.some(t => t.name === 'fetch_content'), 'Page reader missing');
     await request({type:'session_set_model',provider:'fixture',modelId:'fixture-model',persist:false}, 'inventory');
-    await request({type:'session_prompt',text:'RUN_WEB_ACCESS',images:[],source:'interactive'}, 'inventory');
+    await request({type:'session_prompt',text:process.env.WEB_ONLY ? 'RUN_WEB_ONLY' : 'RUN_WEB_ACCESS',images:[],source:'interactive'}, 'inventory');
     const state = await waitForReply('inventory', 'WEB_ACCESS_DONE');
     const results = state.messages.filter(m => m.role === 'toolResult');
+    if (process.env.WEB_ONLY) {
+      assert.equal(results.length, 2, JSON.stringify(results));
+      assert(results.every(r => r.isError), JSON.stringify(results));
+      assert(JSON.stringify(results[0]).includes('503'), JSON.stringify(results[0]));
+      assert(JSON.stringify(results[1]).includes('disabled provider'), JSON.stringify(results[1]));
+      assert.equal(sessions.get('inventory').dialogs, 0);
+      console.log('PASS actual Pendant: Only SearXNG never falls back; explicit Exa override rejected');
+      return;
+    }
     assert.equal(results.length, 7, JSON.stringify(results));
     assert(!results[0].isError, JSON.stringify(results[0]));
     assert(!results[1].isError, JSON.stringify(results[1]));

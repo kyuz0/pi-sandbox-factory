@@ -3,12 +3,22 @@
 Enable **Web access** in **New sandbox → Configuration**, or in an existing
 sandbox’s **Settings → Configuration**. This installs
 [pi-web-access](https://github.com/nicobailon/pi-web-access) and adds `web_search`
-and `fetch_content` to Pi and Pendant. Exa works without an API key. You can also
-choose keyed Exa, OpenAI, Brave, Tavily or your own SearXNG server. Enter a key in
-the same form when needed; a blank field keeps an existing key.
+and `fetch_content` to Pi and Pendant.
 
-The search service’s endpoints are allowed automatically. Exa uses `mcp.exa.ai`
-without a key and `api.exa.ai` with a key; both are included. To let the agent read
+**Search mode** starts with **Automatic fallback** and keyless Exa. Add OpenAI,
+Brave, Tavily or a SearXNG server with **Add provider**. Exa accepts an optional
+API key in its Edit dialog. Automatic mode uses pi-web-access's built-in provider
+selection and fallback among your configured providers; adding a provider does
+not set its priority. Choose **Only Exa**, **Only Brave**, etc. to restrict searches
+to one provider, including requests where the agent names a provider explicitly.
+
+Each row shows whether its key or server URL is configured. Providers missing
+required settings are inactive. In an **Only…** mode, other providers stay saved
+for later use. **Edit** lets you replace or explicitly remove a key; leaving the
+key field empty keeps it. Changing a custom endpoint requires its own key.
+
+Active search providers' endpoints are allowed automatically. Exa includes both
+`mcp.exa.ai` for keyless search and `api.exa.ai` for keyed search. To let the agent read
 websites directly, select **Network → Website categories** or add individual
 `hostname:port` entries. You can change these later in **Settings → Network**
 without recreating the development container.
@@ -55,27 +65,47 @@ Some groups include user-published content, and UT1’s coverage varies between
 topics. Allowed hosts can receive uploads as well as serve downloads. HTTPS rules restrict the
 connection’s hostname and port, not individual pages or what the site returns.
 
+## Reuse your configuration
+
+**Save as default web access** saves the current providers, search mode and API
+keys for new sandboxes. It updates the same defaults used by the main Defaults
+screen. Existing sandboxes keep their settings.
+
+**Copy from sandbox…** loads another sandbox's web settings into the form.
+**Include search API keys** is selected initially when the source is running.
+A stopped sandbox can supply its settings; start it first if you want its keys.
+In an existing target sandbox, leaving this unchecked keeps that target's keys
+for matching providers and endpoints. In a new sandbox, it copies no keys.
+Review the provider rows, then apply the settings normally.
+
+Reusable keys are stored separately in
+`~/.config/pi-sandbox-factory/web-access-keys.json` with owner-only permissions
+(or under `XDG_CONFIG_HOME`). Each new sandbox receives its own copy. Keys are
+matched to the provider and endpoint and are never included in `cockpit.json`,
+profile packages or exported options. Removing a key and saving defaults again
+removes it from the reusable configuration.
+
 ## Pi and Pendant settings
 
 Both use the sandbox’s `~/.pi/agent/web-search.json`. The manager sets the chosen
-service, restricted-network proxy and direct page fetching. It preserves manual
+providers, search mode, restricted-network proxy and direct page fetching. It preserves manual
 advanced settings across ordinary restarts, but changing managed search settings
 replaces the generated configuration. Reload an open Pi/Pendant session after
 changing it. See the extension’s [configuration reference](https://github.com/nicobailon/pi-web-access#configuration)
 for additional providers. Add their endpoints in **Settings → Network**.
 
-API keys are stored in the sandbox’s private home, not launcher defaults or
-command arguments. The coding agent runs as the same user and can read them.
-For CLI use, enter the selected service’s key at a masked prompt:
+Each sandbox keeps its API keys in its private home. Saving reusable defaults
+also stores a private copy on the workstation; keys never appear in command arguments. The coding agent runs as the same user and can read them.
+For CLI use, enter a configured provider’s key at a masked prompt:
 
 ```sh
-pi-sandbox-factory web-key my-project
+pi-sandbox-factory web-key my-project --provider brave
 ```
 
 Use `--key-stdin` to pipe a key from a secret manager.
 
 Sending an empty value removes that service’s saved key. Environment variables
-supported by pi-web-access can also supply keys and may override file settings.
+supported by pi-web-access may override file settings for an allowed provider.
 OpenAI supports an optional Responses endpoint URL and search model; SearXNG
 requires its server URL. The OpenAI search model is selected independently of
 Pi’s coding model.
@@ -90,10 +120,13 @@ Pass an options file during creation or as `options` in an `update` settings fil
 
 ```json
 {
-  "web_access": {"enabled": true, "service": "exa"},
+  "web_access": {"enabled": true, "mode": "auto", "providers": {"exa": {}, "brave": {}}},
   "website_groups": ["dev-python", "dev-npmjs"]
 }
 ```
+
+Save Brave’s key with the command above to activate it. Existing single-provider
+settings retain **Only…** mode when updated.
 
 Category IDs are `dev-python`, `dev-npmjs`, `dev-rust`, `dev-github`,
 `dev-stackexchange`, `dev-readthedocs`, `ut1-press`, `ut1-financial`, `ut1-bank`

@@ -30,6 +30,7 @@ class TUITests(unittest.TestCase):
     def _callTestMethod(self,method):self.runner.run(method())
     def setUp(self):
         self.tmp=tempfile.TemporaryDirectory();self.root=Path(self.tmp.name)
+        self.search_keys=patch('pi_sandbox_factory.sandbox_tui.search_keys_path', return_value=self.root/'web-access-keys.json');self.search_keys.start()
         self.defaults=patch('pi_sandbox_factory.sandbox_tui.load_defaults',side_effect=lambda:copy.deepcopy(DEFAULT_SETTINGS));self.defaults.start()
         self.update_check=patch('pi_sandbox_factory.updates.available_update',return_value=None);self.update_check.start()
         self.records=[]
@@ -38,7 +39,7 @@ class TUITests(unittest.TestCase):
             c=dict(name=name,engine='podman',network='allowlist',workspace=str(self.root/'files'/name),
                    profile=sandbox.load_profile('base'),local_model_ports='8000',memory='8g',subagents=False)
             self.records.append(dict(name=name,profile='base',engine='podman',dev='running',proxy='running',workspace=c['workspace'],config=c))
-    def tearDown(self):self.update_check.stop();self.defaults.stop();self.tmp.cleanup()
+    def tearDown(self):self.update_check.stop();self.defaults.stop();self.search_keys.stop();self.tmp.cleanup()
     async def ready(self,app,pilot):
         await pilot.pause()
         await app.workers.wait_for_complete()
@@ -390,8 +391,8 @@ class WebAccessUITests(unittest.TestCase):
     tearDown = TUITests.tearDown
     ready = TUITests.ready
     async def test_web_settings_keep_key_out_of_saved_options(self):
-        from pi_sandbox_factory.sandbox_tui import WebAccessForm, WebsiteGroups, preset
-        from textual.widgets import Select, Collapsible
+        from pi_sandbox_factory.sandbox_tui import WebAccessForm, SearchProviderDialog, preset
+        from textual.widgets import Select
         app = Cockpit(self.root, FakeService([]))
         async with app.run_test(size=(80,24)) as pilot:
             await self.ready(app, pilot)
@@ -399,27 +400,147 @@ class WebAccessUITests(unittest.TestCase):
             draft.update(name='web', workspace=str(self.root), local_model_ports=None)
             app.push_screen(SettingsForm(draft))
             await pilot.pause()
-            web = app.screen.query_one(WebAccessForm)
+            form = app.screen
+            web = form.query_one(WebAccessForm)
             web.query_one('#web-enabled', Checkbox).value = True
-            web.query_one('#web-service', Select).value = 'brave'
+            web.query_one('#web-add', Button).press()
             await pilot.pause()
-            web.query_one('#web-key', Input).value = 'synthetic-test-key'
-            app.screen.query_one('#category-dev-python', Checkbox).value = True
-            value, key = app.screen.collect()
-            self.assertEqual(key, 'synthetic-test-key')
-            self.assertNotIn(key, json.dumps(value))
-            self.assertEqual(value['options']['web_access']['service'], 'brave')
-            self.assertEqual(value['options']['website_groups'], ['dev-python'])
-            self.assertFalse(web.query_one('#web-endpoint-field').display)
-            web.query_one('#web-service', Select).value = 'searxng'
+            self.assertIsInstance(app.screen, SearchProviderDialog)
+            app.screen.query_one('#search-provider-name', Select).value = 'brave'
             await pilot.pause()
-            self.assertTrue(web.query_one('#web-endpoint-field').display)
-            with self.assertRaises(ValueError):
-                app.screen.collect()
-            web.query_one('#web-endpoint', Input).value = 'https://search.example.net'
-            value, key = app.screen.collect()
-            self.assertEqual(key, '')
-            self.assertEqual(value['options']['web_access']['endpoint'], 'https://search.example.net')
+            app.screen.query_one('#search-key', Input).value = 'synthetic-test-key'
+            app.screen.query_one('#search-save', Button).press()
+            await pilot.pause()
+            value, keys = form.collect()
+            self.assertEqual(keys, {'brave': 'synthetic-test-key'})
+            self.assertNotIn('synthetic-test-key', json.dumps(value))
+            self.assertEqual(value['options']['web_access']['mode'], 'auto')
+            self.assertTrue(value['options']['web_access']['providers']['brave']['has_key'])
+            web.query_one('#web-mode', Select).value = 'brave'
+            await pilot.pause()
+            web.query_one('#web-edit-brave', Button).press()
+            await pilot.pause()
+            app.screen.query_one('#search-remove', Button).press()
+            await pilot.pause()
+            self.assertIsInstance(app.screen, SearchProviderDialog)
+            self.assertIn('Choose another search mode', str(app.screen.query_one('#search-provider-error').render()))
+            # Remove a key explicitly; an inactive selected provider cannot be applied.
+            app.screen.query_one('#search-remove-key', Checkbox).value = True
+            app.screen.query_one('#search-save', Button).press()
+            await pilot.pause()
+            with self.assertRaisesRegex(ValueError, 'Configure a search provider'):
+                form.collect()
+            web.query_one('#web-mode', Select).value = 'auto'
+            await pilot.pause()
+            value, keys = form.collect()
+            self.assertEqual(keys, {'brave': ''})
+            self.assertFalse(value['options']['web_access']['providers']['brave']['has_key'])
+            web.query_one('#web-add', Button).press()
+            await pilot.pause()
+            app.screen.query_one('#search-provider-name', Select).value = 'searxng'
+            await pilot.pause()
+            self.assertFalse(app.screen.query_one('#search-key-field').display)
+            app.screen.query_one('#search-endpoint', Input).value = 'https://search.example.net'
+            app.screen.query_one('#search-save', Button).press()
+            await pilot.pause()
+            value, _ = form.collect()
+            self.assertEqual(value['options']['web_access']['providers']['searxng']['endpoint'], 'https://search.example.net')
+
+    async def test_save_web_defaults_preserves_other_defaults_and_keys_stay_private(self):
+        from pi_sandbox_factory.sandbox_tui import WebAccessForm, preset
+        from textual.widgets import Select
+        app = Cockpit(self.root, FakeService([]))
+        with patch('pi_sandbox_factory.sandbox_tui.defaults_path', return_value=self.root / 'cockpit.json'):
+            async with app.run_test(size=(80,24)) as pilot:
+                await self.ready(app, pilot)
+                draft = preset('base', DEFAULT_SETTINGS)
+                draft.update(name='web', workspace=str(self.root), local_model_ports=None)
+                app.push_screen(SettingsForm(draft))
+                await pilot.pause()
+                web = app.screen.query_one(WebAccessForm)
+                web.query_one('#web-enabled', Checkbox).value = True
+                await web.provider_saved(('brave', {'endpoint': '', 'model': '', 'has_key': True}, 'test-default-brave'))
+                web.query_one('#web-save-defaults', Button).press()
+                await pilot.pause()
+                saved = json.loads((self.root / 'cockpit.json').read_text())
+                self.assertEqual(saved['memory'], DEFAULT_SETTINGS['memory'])
+                self.assertNotIn('test-default-brave', json.dumps(saved))
+                keyfile = self.root / 'web-access-keys.json'
+                self.assertEqual(keyfile.stat().st_mode & 0o777, 0o600)
+                self.assertEqual(json.loads(keyfile.read_text())['brave']['key'], 'test-default-brave')
+                self.assertTrue(app.defaults['options']['web_access']['providers']['brave']['has_key'])
+
+    async def test_copy_search_settings_without_keys_does_not_use_default_keys(self):
+        from pi_sandbox_factory.sandbox_tui import WebAccessForm, CopyWebAccess, preset
+        from pi_sandbox_factory import web_access
+        source = self.records[0]
+        source['config']['options'] = {'web_access': {'enabled': True, 'mode': 'auto',
+            'providers': {'exa': {}, 'brave': {'has_key': True}}}}
+        defaults = web_access.settings(source['config']['options']['web_access'])
+        web_access.save_keys(self.root/'web-access-keys.json', defaults, {'brave': 'default-key'})
+        app = Cockpit(self.root, FakeService(self.records))
+        async with app.run_test(size=(80,24)) as pilot:
+            await self.ready(app, pilot)
+            draft = preset('base', DEFAULT_SETTINGS)
+            draft['options']['web_access'] = defaults
+            draft.update(name='new', workspace=str(self.root), local_model_ports=None)
+            app.push_screen(SettingsForm(draft))
+            await pilot.pause()
+            form = app.screen
+            web = form.query_one(WebAccessForm)
+            self.assertEqual(web.keys['brave'], 'default-key')
+            web.query_one('#web-copy', Button).press()
+            await pilot.pause()
+            self.assertIsInstance(app.screen, CopyWebAccess)
+            app.screen.query_one('#copy-web-keys', Checkbox).value = False
+            app.screen.query_one('#copy-web-apply', Button).press()
+            await pilot.pause()
+            value, keys = form.collect()
+            self.assertEqual(keys['brave'], '')
+            self.assertFalse(value['options']['web_access']['providers']['brave']['has_key'])
+            self.assertNotIn('default-key', str(keys))
+            self.assertTrue(source['config']['options']['web_access']['providers']['brave']['has_key'])
+            source['dev'] = 'exited'
+            web.query_one('#web-copy', Button).press()
+            await pilot.pause()
+            # Inventory is a snapshot; use its displayed state when selecting the source.
+            app.screen.records['alpha']['dev'] = 'exited'
+            app.screen.source_changed()
+            self.assertTrue(app.screen.query_one('#copy-web-keys', Checkbox).disabled)
+            self.assertFalse(app.screen.query_one('#copy-web-keys', Checkbox).value)
+
+    async def test_edit_copy_without_keys_keeps_matching_target_key(self):
+        from pi_sandbox_factory.sandbox_tui import WebAccessForm, preset
+        from pi_sandbox_factory import web_access
+        app = Cockpit(self.root, FakeService(self.records))
+        async with app.run_test(size=(80,24)) as pilot:
+            await self.ready(app, pilot)
+            draft = preset('base', DEFAULT_SETTINGS)
+            draft.update(name='alpha', workspace=str(self.root), local_model_ports=None)
+            draft['options']['web_access'] = {'enabled': True, 'mode': 'auto', 'providers': {'exa': {}, 'brave': {'has_key': True}}}
+            app.push_screen(SettingsForm(draft, editing=True))
+            await pilot.pause()
+            web = app.screen.query_one(WebAccessForm)
+            copied = web_access.settings({'enabled': True, 'providers': {'exa': {}, 'brave': {}}})
+            await web.copied((copied, None))
+            value, keys = app.screen.collect()
+            self.assertTrue(value['options']['web_access']['providers']['brave']['has_key'])
+            self.assertNotIn('brave', keys)  # No key replacement or deletion queued.
+
+    async def test_missing_runtime_key_is_not_displayed_as_configured(self):
+        from pi_sandbox_factory.sandbox_tui import WebAccessForm, preset
+        service = FakeService(self.records)
+        service.search_status = lambda name: {'exa': False, 'brave': False}
+        app = Cockpit(self.root, service)
+        async with app.run_test(size=(80,24)) as pilot:
+            await self.ready(app, pilot)
+            draft = preset('base', DEFAULT_SETTINGS)
+            draft.update(name='alpha', workspace=str(self.root), local_model_ports=None)
+            draft['options']['web_access'] = {'enabled': True, 'providers': {'exa': {}, 'brave': {'has_key': True}}}
+            app.push_screen(SettingsForm(draft, editing=True))
+            await pilot.pause(); await app.workers.wait_for_complete(); await pilot.pause()
+            web = app.screen.query_one(WebAccessForm)
+            self.assertFalse(web.providers['brave']['has_key'])
 
     async def test_network_category_selection_reaches_cli(self):
         app = Cockpit(self.root, FakeService(self.records))

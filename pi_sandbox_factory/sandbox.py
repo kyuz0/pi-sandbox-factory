@@ -736,6 +736,7 @@ def prepare_options(config, state):
     write_json(state / 'options.json', selected)
     target = state / 'runtime-config'
     target.mkdir(exist_ok=True, mode=0o700)
+    write_json(target / 'web-providers.json', selected['web_access'])
     write_json(target / 'web-search.json', web_access.extension_config(selected['web_access'], network_mode(config) == 'allowlist'))
     source = Path(config['common']['path']) / 'security/config'
     for path in source.glob('*.json'):
@@ -986,6 +987,10 @@ def main():
         if command == 'advisor-login':
             cmd.add_argument('provider', choices=['codex', 'agy', 'claude'])
         if command == 'web-key':
+            cmd.add_argument('--provider', choices=list(web_access.SERVICES))
+            cmd.add_argument('--keys-stdin', action='store_true', help=argparse.SUPPRESS)
+            cmd.add_argument('--export-keys', action='store_true', help=argparse.SUPPRESS)
+            cmd.add_argument('--status', action='store_true', help='Show saved-key status without revealing keys')
             cmd.add_argument('--key-stdin', action='store_true', help='Read a key from stdin instead of a masked prompt')
         if command == 'network':
             cmd.add_argument('--allowlist', required=True)
@@ -1112,17 +1117,46 @@ def main():
             up(config,state)
             model_providers.configure(config,'status' if args.status else 'preview' if args.preview else 'refresh',args.provider,secret)
     elif args.command == 'web-key':
-        if not options(config.get('options'))['web_access']['enabled']:
-            raise ValueError('Enable Web access in Configuration first')
         current = inspect(config, names(config)[0])
         if not current or not current['State']['Running']:
             raise ValueError('Start this sandbox before setting its search API key')
-        import getpass
-        key = sys.stdin.read(16385) if args.key_stdin else getpass.getpass('Search API key (empty removes saved key): ')
-        result = subprocess.run([config['engine'], 'exec', '-i', names(config)[0], 'python3',
-            '/usr/local/lib/sandbox-web-access.py', '--key-stdin'], input=key, text=True)
+        selected = options(config.get('options'))
+        search = selected['web_access']
+        command = [config['engine'], 'exec', '-i', names(config)[0], 'python3',
+                   '/usr/local/lib/sandbox-web-access.py']
+        if args.status or args.export_keys:
+            result = subprocess.run(command + ['--export-keys' if args.export_keys else '--status'], text=True, capture_output=True)
+        else:
+            import getpass
+            if args.keys_stdin:
+                payload = sys.stdin.read(100001)
+                if len(payload) > 100000:
+                    raise ValueError('Search credentials too large')
+            else:
+                provider = args.provider or (search['mode'] if search['mode'] != 'auto' else
+                    next(iter(search['providers'])) if len(search['providers']) == 1 else None)
+                if provider not in search['providers'] or provider == 'searxng':
+                    raise ValueError('Choose a configured search provider with --provider')
+                key = sys.stdin.read(16385) if args.key_stdin else getpass.getpass('Search API key (empty removes saved key): ')
+                payload = json.dumps({provider: key.strip()})
+            result = subprocess.run(command + ['--keys-stdin'], input=payload, text=True, capture_output=True)
         if result.returncode:
-            raise ValueError('Could not save the search API key')
+            raise ValueError('Could not read or save search API keys; check the selected provider and key format')
+        statuses = json.loads(result.stdout)
+        if args.status or args.export_keys:
+            print(json.dumps(statuses))
+        else:
+            selected['web_access'] = web_access.update_key_status(search, statuses, json.loads(payload))
+            updated = dict(config, options=selected)
+            if network_mode(config) == 'allowlist':
+                update_network(updated, state, (state / 'allowlist.txt').read_text())
+            else:
+                write_json(state / 'config.json', updated)
+            prepare_options(updated, state)
+            result = subprocess.run(command, text=True, capture_output=True)
+            if result.returncode:
+                raise ValueError('Search key saved, but configuration refresh failed')
+            print('Search keys updated. Reload an open Pi or Pendant session.')
     elif args.command == 'network':
         update_network(config, state, Path(args.allowlist).expanduser().read_text(), args.website_groups)
     elif args.command == 'policy':

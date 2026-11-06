@@ -125,9 +125,10 @@ the disposable integration recipe above.
 
 ## Web access
 
-`test_web_access.py` covers service selection, category expansion, automatic
+`test_web_access.py` covers provider migration, active endpoint selection, private
+keys, reusable defaults, category expansion, automatic
 refresh, offline fallback and gateway rule ordering. TUI tests cover creation,
-editing, keys and category selection. The normal suite makes no search requests.
+editing, defaults, copying without keys, stopped sources and category selection. The normal suite makes no search requests.
 
 For a live check, create the disposable sandbox described above with an options
 file containing `{"web_access":{"enabled":true},"website_groups":["dev-python"]}`.
@@ -139,6 +140,14 @@ results skip review, automatic page retrieval through search is rejected, and ea
 explicit fetch produces one approval notice with its reason, including denials.
 No personal account is needed. Other paid
 services require their own credentials for live checks.
+
+For provider fallback checks, also configure SearXNG with
+`http://local-model.internal:PORT`, where PORT is the fixture port already allowed
+for the test sandbox. Keep search mode `auto` and Exa configured. Run with
+`--web-providers` instead of `--web-access`. The fixture returns a SearXNG error;
+both installed clients must fall back to Exa. The next phase selects only SearXNG
+and verifies that its failure stays a failure and an explicit Exa request is
+rejected. The runner restores the search configuration afterward.
 
 When changing category rules, verify an allowed domain, a misleading suffix such
 as `python.org.example.net`, an unselected site, a redirect to an unselected site,

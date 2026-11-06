@@ -23,6 +23,119 @@ class WebAccessTests(unittest.TestCase):
         self.assertEqual(web_access.destinations({'enabled': False}), [])
         self.assertEqual(web_access.destinations({'enabled': True, 'service': 'searxng', 'endpoint': 'https://search.example.net:8443'}), [('search.example.net', 8443)])
 
+    def test_auto_default_and_legacy_single_provider_migration(self):
+        self.assertEqual(web_access.settings({'enabled': True})['mode'], 'auto')
+        for name in ('exa', 'exa-api', 'openai', 'brave', 'tavily'):
+            value = web_access.settings({'enabled': True, 'service': name})
+            expected = 'exa' if name == 'exa-api' else name
+            self.assertEqual(value['mode'], expected)
+            self.assertEqual(list(value['providers']), [expected])
+        with self.assertRaises(ValueError):
+            web_access.settings({'mode': 'brave', 'providers': {'exa': {}}})
+
+    def test_only_and_auto_project_eligible_providers_and_endpoints(self):
+        value = {'enabled': True, 'mode': 'auto', 'providers': {
+            'exa': {}, 'brave': {'has_key': True}, 'tavily': {},
+            'openai': {'has_key': True, 'endpoint': 'https://search.example.com/v1/responses', 'model': 'search-model'},
+            'searxng': {'endpoint': 'https://searx.example.com'}}}
+        config = web_access.extension_config(value)
+        self.assertEqual(config['provider'], 'auto')
+        self.assertEqual(config['webSearch']['allowedProviders'], ['exa', 'brave', 'openai', 'searxng'])
+        self.assertNotIn('searchRouting', config)
+        self.assertEqual(config['openaiSearchModel'], 'search-model')
+        self.assertNotIn(('api.tavily.com', 443), web_access.destinations(value))
+        value['mode'] = 'brave'
+        config = web_access.extension_config(value)
+        self.assertEqual(config['webSearch']['allowedProviders'], ['brave'])
+        self.assertNotIn('openaiResponsesUrl', config)
+        self.assertEqual(web_access.destinations(value), [('api.search.brave.com', 443)])
+
+    def test_private_keys_migrate_and_project_only_active_credentials(self):
+        import runpy
+        runtime_code = runpy.run_path(str(Path(__file__).resolve().parents[1] / 'pi_sandbox_factory/containers/dev/web-access-config.py'))
+        configure, identity = runtime_code['configure'], runtime_code['identity']
+        with tempfile.TemporaryDirectory() as temp:
+            agent = Path(temp) / 'agent'; agent.mkdir()
+            runtime = Path(temp) / 'runtime'; runtime.mkdir()
+            value = web_access.settings({'enabled': True, 'providers': {'exa': {'has_key': True}, 'brave': {'has_key': True},
+                'openai': {'endpoint': 'https://search.example.com/v1/responses', 'has_key': True}}})
+            def save():
+                (runtime / 'web-providers.json').write_text(json.dumps(value))
+                (runtime / 'web-search.json').write_text(json.dumps(web_access.extension_config(value)))
+            save()
+            # Existing keyed Exa survives the merged Exa option and old marker format.
+            (agent / 'sandbox-web-keys.json').write_text(json.dumps({identity('exa-api', {}): 'old-exa'}))
+            (agent / 'sandbox-web-config.json').write_text('old-fingerprint')
+            statuses = configure(agent, runtime, {'brave': '!literal-key', 'openai': 'openai-test-key'})
+            self.assertTrue(all(statuses.values()))
+            config = json.loads((agent / 'web-search.json').read_text())
+            self.assertEqual(config['exaApiKey'], 'old-exa')
+            self.assertEqual(config['braveApiKey'], '$!literal-key')
+            self.assertEqual(config['webSearch']['allowedProviders'], ['exa', 'brave', 'openai'])
+            self.assertEqual((agent / 'sandbox-web-keys.json').stat().st_mode & 0o777, 0o600)
+            value['mode'] = 'brave'; save(); configure(agent, runtime)
+            config = json.loads((agent / 'web-search.json').read_text())
+            self.assertEqual(config['webSearch']['allowedProviders'], ['brave'])
+            self.assertNotIn('exaApiKey', config)
+            self.assertNotIn('openaiApiKey', config)
+            value['mode'] = 'auto'; save()
+            configure(agent, runtime, {'brave': ''})
+            config = json.loads((agent / 'web-search.json').read_text())
+            self.assertEqual(config['webSearch']['allowedProviders'], ['exa', 'openai'])
+            # A key for one custom endpoint must not be sent to its replacement.
+            value['providers']['openai']['endpoint'] = 'https://other.example.com/v1/responses'
+            save(); configure(agent, runtime)
+            config = json.loads((agent / 'web-search.json').read_text())
+            self.assertEqual(config['webSearch']['allowedProviders'], ['exa'])
+            self.assertNotIn('openaiApiKey', config)
+            value['enabled'] = False; save()
+            configure(agent, runtime, {'brave': 'saved-for-later'})
+            self.assertEqual(json.loads((agent / 'web-search.json').read_text())['webSearch']['allowedProviders'], [])
+            with self.assertRaises(ValueError):
+                configure(agent, runtime, {'unknown': 'key'})
+
+    def test_reusable_keys_are_private_and_bound_to_endpoint(self):
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / 'web-access-keys.json'
+            value = {'enabled': True, 'mode': 'auto', 'providers': {'exa': {}, 'brave': {},
+                'openai': {'endpoint': 'https://search.example.com/responses'}}}
+            value = web_access.save_keys(path, value, {'exa': 'fake-exa', 'brave': 'fake-brave', 'openai': 'fake-openai'})
+            self.assertEqual(path.stat().st_mode & 0o777, 0o600)
+            self.assertNotIn('fake-exa', json.dumps(value))
+            self.assertEqual(web_access.saved_keys(path, value), {'exa': 'fake-exa', 'brave': 'fake-brave', 'openai': 'fake-openai'})
+            value['providers']['openai']['endpoint'] = 'https://different.example.com/responses'
+            self.assertNotIn('openai', web_access.saved_keys(path, value))
+            value = web_access.save_keys(path, value, {'exa': 'replacement-exa'})
+            self.assertFalse(value['providers']['brave']['has_key'])
+            self.assertEqual(web_access.saved_keys(path, value), {'exa': 'replacement-exa'})
+
+    def test_default_settings_failure_restores_saved_keys(self):
+        from pi_sandbox_factory import sandbox_tui
+        from pi_sandbox_factory.sandbox_options import write_json
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp)/'cockpit.json'
+            keyfile = path.with_name('web-access-keys.json')
+            old = web_access.save_keys(keyfile, {'providers': {'exa': {}}}, {'exa': 'old-key'})
+            original = keyfile.read_bytes()
+            def fail_settings(target, value):
+                if target == path:
+                    raise OSError('Settings write failed')
+                write_json(target, value)
+            with patch.object(sandbox_tui, 'defaults_path', return_value=path), patch.object(sandbox_tui, 'write_json', side_effect=fail_settings):
+                with self.assertRaises(OSError):
+                    sandbox_tui.save_defaults_with_search(dict(sandbox_tui.DEFAULT_SETTINGS), old, {'exa': 'new-key'})
+            self.assertEqual(keyfile.read_bytes(), original)
+            keyfile.chmod(0o644)
+            with self.assertRaises(ValueError):
+                web_access.saved_keys(keyfile, old)
+
+    def test_key_update_does_not_reactivate_a_stored_unused_key(self):
+        value = {'enabled': True, 'providers': {'exa': {}, 'brave': {}, 'tavily': {'has_key': True}}}
+        updated = web_access.update_key_status(value, {'exa': True, 'brave': True, 'tavily': False}, {'brave': 'new-key'})
+        self.assertFalse(updated['providers']['exa']['has_key'])
+        self.assertTrue(updated['providers']['brave']['has_key'])
+        self.assertFalse(updated['providers']['tavily']['has_key'])
+
     def test_search_and_fetch_have_separate_permission_rules(self):
         policy = json.loads((Path(__file__).resolve().parents[1] /
             'pi_sandbox_factory/containers/dev/security/config/permissions.json').read_text())['permission']
@@ -32,7 +145,7 @@ class WebAccessTests(unittest.TestCase):
         self.assertEqual(policy['*'], 'ask')
 
     def test_reject_invalid_service_settings(self):
-        for setting in ({'enabled': 'yes'}, {'service': 'invalid'}, {'enabled': True, 'service': 'searxng'},
+        for setting in ({'enabled': 'yes'}, {'service': 'invalid'}, {'providers': {'unknown': {}}},
                         {'endpoint': 'https://u:p@example.com'}, {'endpoint': 'https://example.com?a=1'},
                         {'service': 'openai', 'endpoint': 'https://example.com:99999'}):
             with self.assertRaises(ValueError):

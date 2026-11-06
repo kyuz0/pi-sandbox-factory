@@ -1,5 +1,6 @@
 """Terminal interface for Pi Sandbox Factory."""
 import json
+import asyncio
 import os
 from pathlib import Path
 import re
@@ -49,6 +50,30 @@ def safe_text(value):
 
 def defaults_path():
     return Path(os.environ.get('XDG_CONFIG_HOME', str(Path.home() / '.config'))) / 'pi-sandbox-factory/cockpit.json'
+
+
+def search_keys_path():
+    return defaults_path().with_name('web-access-keys.json')
+
+
+def save_defaults_with_search(defaults, value, keys):
+    path = search_keys_path()
+    previous = json.loads(path.read_text()) if path.exists() and not path.is_symlink() else None
+    defaults['options'] = options(defaults.get('options'))
+    defaults['options']['web_access'] = web_access.save_keys(path, value, keys)
+    try:
+        write_json(defaults_path(), defaults)
+    except OSError:
+        if previous is None:
+            path.unlink(missing_ok=True)
+        else:
+            write_json(path, previous)
+        raise
+    return defaults
+
+
+def save_web_defaults(value, keys):
+    return save_defaults_with_search(load_defaults(), value, keys)
 
 
 def load_defaults():
@@ -112,6 +137,16 @@ class Service:
     def config(self, name):
         return json.loads((self.state / name / 'config.json').read_text())
 
+    def search_status(self, name):
+        result = subprocess.run(self.command('web-key', name, '--status'), text=True, capture_output=True)
+        return json.loads(result.stdout) if result.returncode == 0 else None
+
+    def search_keys(self, name):
+        result = subprocess.run(self.command('web-key', name, '--export-keys'), text=True, capture_output=True)
+        if result.returncode:
+            raise ValueError('Start the sandbox to reuse its saved search keys, or enter replacement keys here.')
+        return json.loads(result.stdout)
+
     def create(self, draft, key, log):
         name = draft['name']
         state = self.state / name
@@ -151,10 +186,10 @@ class Service:
 
     def setup(self, name, draft, key, log):
         if key:
-            result = subprocess.run(self.command('web-key', name, '--key-stdin'), input=key, text=True, capture_output=True)
+            result = subprocess.run(self.command('web-key', name, '--keys-stdin'), input=json.dumps(key), text=True, capture_output=True)
             if result.returncode:
                 raise ValueError('Could not save the search API key. Configure it with the web-key command.')
-            log('Search API key saved in the sandbox.')
+            log('Search API keys saved in the sandbox.')
         if (draft.get('local_model_ports') or draft.get('model_providers')) and not draft['open_editor']:
             self.run(['configure', name], log)
     def provider(self, name, provider, action, key, log):
@@ -223,61 +258,328 @@ class WebsiteGroups(Vertical):
         return [name for name in network_groups.catalog() if self.query_one('#category-' + name, Checkbox).value]
 
 
-class WebAccessForm(Vertical):
-    DEFAULT_CSS = "WebAccessForm, #web-fields { height: auto; }"
+class SearchProviderDialog(ModalScreen):
+    BINDINGS = [('escape', 'cancel', 'Cancel')]
+    DEFAULT_CSS = """
+    SearchProviderDialog { align: center middle; background: #000000 70%; }
+    #search-provider-dialog { width: 72; max-width: 95%; height: 90%; max-height: 32; padding: 1 2; background: #34383d; border: solid #f2b544; }
+    #search-provider-dialog Static { height: auto; }
+    #search-provider-fields { height: 1fr; }
+    """
 
-    def __init__(self, value, defaults=False):
+    def __init__(self, providers, name=None, selected_mode='auto'):
         super().__init__()
-        self.value, self.defaults_mode = value, defaults
+        self.providers, self.provider_name, self.selected_mode = providers, name, selected_mode
+        self.original = providers.get(name, {})
 
     def compose(self):
-        value = self.value
-        with Collapsible(title='Web access · search and read pages', collapsed=True):
-            with Vertical(classes='setting'):
-                yield Checkbox('Enable pi-web-access', value=value['enabled'], id='web-enabled')
-                yield Static('Adds web_search and fetch_content to Pi and Pendant. The chosen search service is allowed automatically; reading result pages uses your network rules and website categories.', classes='setting-help checkbox-help')
-            with Vertical(id='web-fields'):
-                with Vertical(classes='setting'):
-                    yield Label('Search service')
-                    yield Select([(spec[0], name) for name, spec in web_access.SERVICES.items()], value=value['service'], allow_blank=False, id='web-service')
-                with Vertical(id='web-endpoint-field', classes='setting'):
-                    yield Label('Endpoint URL · required for SearXNG; optional OpenAI Responses URL')
-                    yield Input(value['endpoint'], id='web-endpoint')
-                with Vertical(id='web-model-field', classes='setting'):
-                    yield Label('OpenAI search model · leave empty for the extension default')
-                    yield Input(value['model'], id='web-model')
-                if not self.defaults_mode:
-                    with Vertical(id='web-key-field', classes='setting'):
-                        yield Label('API key · leave empty to keep a saved key')
-                        yield Input(password=True, id='web-key')
-                        yield Static('Saved in this sandbox’s private Pi configuration, where the agent can read it.', classes='setting-help')
-                yield Static('', id='web-hosts', markup=False)
+        choices = [name for name in web_access.SERVICES if name == self.provider_name or name not in self.providers]
+        name = self.provider_name or choices[0]
+        with Vertical(id='search-provider-dialog'):
+            yield Label('Edit search provider' if self.provider_name else 'Add search provider')
+            with VerticalScroll(id='search-provider-fields'):
+                yield Select([(web_access.SERVICES[n][0], n) for n in choices], value=name, allow_blank=False, disabled=bool(self.provider_name), id='search-provider-name')
+                with Vertical(id='search-endpoint-field', classes='setting'):
+                    yield Label('Endpoint URL')
+                    yield Input(self.original.get('endpoint', ''), id='search-endpoint')
+                    yield Static('', id='search-endpoint-help', classes='setting-help')
+                with Vertical(id='search-model-field', classes='setting'):
+                    yield Label('Search model · optional')
+                    yield Input(self.original.get('model', ''), id='search-model')
+                with Vertical(id='search-key-field', classes='setting'):
+                    yield Static('', id='search-key-status', classes='setting-help')
+                    yield Label('API key · leave empty to keep the saved key')
+                    yield Input(password=True, id='search-key')
+                    yield Checkbox('Remove saved key', id='search-remove-key')
+            yield Static('', id='search-provider-error', markup=False)
+            with Horizontal(classes='buttons'):
+                yield Button('Cancel', id='search-cancel')
+                if self.provider_name:
+                    yield Button('Remove provider', id='search-remove')
+                yield Button('Save', id='search-save', variant='primary')
 
     def on_mount(self):
         self.sync_fields()
 
-    @on(Select.Changed, '#web-service')
+    @on(Select.Changed, '#search-provider-name')
+    def sync_fields(self):
+        name = self.query_one('#search-provider-name', Select).value
+        self.query_one('#search-endpoint-field').display = name in ('openai', 'searxng')
+        self.query_one('#search-model-field').display = name == 'openai'
+        self.query_one('#search-key-field').display = name != 'searxng'
+        self.query_one('#search-endpoint-help', Static).update('Required: your SearXNG server URL.' if name == 'searxng' else 'Optional: a custom OpenAI Responses URL.')
+        self.query_one('#search-key-status', Static).update('API key configured' if self.original.get('has_key') else 'No API key required' if name == 'exa' else 'API key missing · inactive')
+
+    def action_cancel(self):
+        self.dismiss(None)
+
+    @on(Button.Pressed)
+    def pressed(self, event):
+        event.stop()
+        if event.button.id == 'search-cancel':
+            self.dismiss(None)
+            return
+        name = self.query_one('#search-provider-name', Select).value
+        if event.button.id == 'search-remove':
+            if name == self.selected_mode:
+                self.query_one('#search-provider-error', Static).update('Choose another search mode before removing this provider.')
+            else:
+                self.dismiss((name, None, None))
+            return
+        try:
+            endpoint = self.query_one('#search-endpoint', Input).value.strip() if name in ('openai', 'searxng') else ''
+            has_key = self.original.get('has_key', False) and endpoint == self.original.get('endpoint', '')
+            key = None
+            if name != 'searxng':
+                entered = self.query_one('#search-key', Input).value.strip()
+                removed = self.query_one('#search-remove-key', Checkbox).value
+                if removed and entered:
+                    raise ValueError('Enter a replacement key or select Remove saved key.')
+                if entered or removed:
+                    key = '' if removed else entered
+                    has_key = bool(key)
+            row = web_access.provider_settings(name, {'endpoint': endpoint, 'has_key': has_key,
+                'model': self.query_one('#search-model', Input).value if name == 'openai' else ''})
+            self.dismiss((name, row, key))
+        except ValueError as error:
+            self.query_one('#search-provider-error', Static).update(str(error))
+
+
+class CopyWebAccess(ModalScreen):
+    BINDINGS = [('escape', 'cancel', 'Cancel')]
+    DEFAULT_CSS = """
+    CopyWebAccess { align: center middle; background: #000000 70%; }
+    #copy-web-dialog { width: 72; max-width: 95%; height: auto; max-height: 95%; padding: 1 2; background: #34383d; border: solid #f2b544; }
+    #copy-web-dialog Static { height: auto; }
+    """
+
+    def __init__(self, records):
+        super().__init__()
+        self.records = {record['name']: record for record in records}
+
+    def compose(self):
+        with VerticalScroll(id='copy-web-dialog'):
+            yield Label('Copy web access from sandbox')
+            yield Select([(name, name) for name in self.records], value=next(iter(self.records)), allow_blank=False, id='copy-web-source')
+            yield Checkbox('Include search API keys', value=True, id='copy-web-keys')
+            yield Static('', id='copy-web-help', markup=False)
+            yield Static('', id='copy-web-error', markup=False)
+            with Horizontal(classes='buttons'):
+                yield Button('Cancel', id='copy-web-cancel')
+                yield Button('Copy configuration', id='copy-web-apply', variant='primary')
+
+    def on_mount(self):
+        self.source_changed()
+
+    @on(Select.Changed, '#copy-web-source')
+    def source_changed(self):
+        record = self.records[self.query_one('#copy-web-source', Select).value]
+        checkbox = self.query_one('#copy-web-keys', Checkbox)
+        checkbox.disabled = record['dev'] != 'running'
+        checkbox.value = not checkbox.disabled
+        self.query_one('#copy-web-help', Static).update(
+            'Start this sandbox to include its saved API keys.' if checkbox.disabled else
+            'Copies provider settings and selected keys into this form. The source sandbox is unchanged.')
+
+    def action_cancel(self):
+        self.dismiss(None)
+
+    @on(Button.Pressed)
+    async def pressed(self, event):
+        event.stop()
+        if event.button.id == 'copy-web-cancel':
+            self.dismiss(None)
+            return
+        button = self.query_one('#copy-web-apply', Button)
+        button.disabled = True
+        try:
+            record = self.records[self.query_one('#copy-web-source', Select).value]
+            value = web_access.settings(options(record['config'].get('options'))['web_access'])
+            include_keys = self.query_one('#copy-web-keys', Checkbox).value
+            keys = {}
+            if include_keys:
+                stored = await asyncio.to_thread(self.app.service.search_keys, record['name'])
+                keys = web_access.matching_keys(stored, value)
+            for name, row in value['providers'].items():
+                row['has_key'] = bool(keys.get(name))
+                if name != 'searxng':
+                    keys.setdefault(name, '')  # Clear matching credentials in an edited target sandbox.
+            self.dismiss((value, keys if include_keys else None))
+        except (OSError, ValueError) as error:
+            self.query_one('#copy-web-error', Static).update(str(error))
+            button.disabled = False
+
+
+class WebAccessForm(Vertical):
+    DEFAULT_CSS = """
+    WebAccessForm, #web-fields, #web-provider-list { height: auto; }
+    .search-provider-row { height: auto; min-height: 2; margin-bottom: 1; }
+    .search-provider-row Static { width: 1fr; height: auto; }
+    """
+
+    def __init__(self, value, defaults=False):
+        super().__init__()
+        self.value, self.defaults_mode = web_access.settings(value), defaults
+        self.providers = self.value['providers']
+        self.keys = {}
+
+    def compose(self):
+        with Collapsible(title='Web access · search and read pages', collapsed=True):
+            with Vertical(classes='setting'):
+                yield Checkbox('Enable pi-web-access', value=self.value['enabled'], id='web-enabled')
+                yield Static('Search provider endpoints are allowed automatically. Reading pages uses your network rules and website categories.', classes='setting-help checkbox-help')
+            with Vertical(id='web-fields'):
+                with Vertical(classes='setting'):
+                    yield Label('Search mode')
+                    yield Select(self.mode_choices(), value=self.value['mode'], allow_blank=False, id='web-mode')
+                yield Vertical(id='web-provider-list')
+                yield Button('Add provider', id='web-add')
+                yield Button('Copy from sandbox…', id='web-copy')
+                yield Button('Save as default web access', id='web-save-defaults')
+                yield Static('Includes API keys, stored privately on this workstation for new sandboxes.', classes='setting-help')
+                yield Static('', id='web-active', markup=False, classes='setting-help')
+
+    def copy_sources(self):
+        current = self.screen.draft.get('name') if getattr(self.screen, 'editing', False) else None
+        return [record for record in self.app.records if record['name'] != current
+                and options(record['config'].get('options'))['web_access']['enabled']]
+
+    async def copied(self, result):
+        if result is None:
+            return
+        value, keys = result
+        if keys is None:
+            keys = {}
+            for name, row in value['providers'].items():
+                previous = self.providers.get(name, {})
+                if getattr(self.screen, 'editing', False) and previous.get('endpoint') == row['endpoint']:
+                    row['has_key'] = previous.get('has_key', False)
+                    if name in self.keys:
+                        keys[name] = self.keys[name]
+                elif name != 'searxng':
+                    keys[name] = ''
+        self.value, self.keys = value, keys
+        self.providers = self.value['providers']
+        self.query_one('#web-enabled', Checkbox).value = self.value['enabled']
+        mode = self.query_one('#web-mode', Select)
+        mode.set_options(self.mode_choices())
+        mode.value = self.value['mode']
+        await self.refresh_providers()
+
+    def mode_choices(self):
+        return [('Automatic fallback', 'auto')] + [('Only ' + web_access.SERVICES[name][0], name) for name in self.providers]
+
+    async def on_mount(self):
+        if not getattr(self.screen, 'editing', False):
+            self.keys = web_access.saved_keys(search_keys_path(), self.value)
+            for name, row in self.providers.items():
+                row['has_key'] = bool(self.keys.get(name))
+        await self.refresh_providers()
+        self.sync_fields()
+        self.query_one('#web-copy', Button).disabled = not self.copy_sources()
+        if getattr(self.screen, 'editing', False) and hasattr(self.app.service, 'search_status'):
+            self.refresh_key_status(self.screen.draft['name'])
+
+    @work(exclusive=True)
+    async def refresh_key_status(self, name):
+        original = {provider: dict(row) for provider, row in self.providers.items()}
+        try:
+            statuses = await asyncio.to_thread(self.app.service.search_status, name)
+        except (OSError, ValueError):
+            return
+        if statuses is None:
+            return
+        for provider, row in self.providers.items():
+            if row == original.get(provider) and provider not in self.keys:
+                row['has_key'] = row['has_key'] and statuses.get(provider, False)
+        await self.refresh_providers()
+
+    async def refresh_providers(self):
+        listing = self.query_one('#web-provider-list', Vertical)
+        await listing.remove_children()
+        mode = self.query_one('#web-mode', Select).value
+        for name, row in self.providers.items():
+            status = ('API key configured' if row['has_key'] else 'No API key required') if name == 'exa' else ('Server configured' if row['endpoint'] else 'Server URL missing · inactive') if name == 'searxng' else ('API key configured' if row['has_key'] else 'API key missing · inactive')
+            if mode not in ('auto', name):
+                status += ' · saved, not used'
+            await listing.mount(Horizontal(Static(web_access.SERVICES[name][0] + '\n' + status, markup=False), Button('Edit', id='web-edit-' + name), classes='search-provider-row'))
+        self.query_one('#web-add', Button).disabled = len(self.providers) == len(web_access.SERVICES)
+        names = [web_access.SERVICES[n][0] for n, row in self.providers.items() if mode in ('auto', n) and web_access.ready(n, row)]
+        self.query_one('#web-active', Static).update('Active providers: ' + (', '.join(names) or 'none'))
+
     @on(Checkbox.Changed, '#web-enabled')
     def sync_fields(self):
-        service = self.query_one('#web-service', Select).value
         self.query_one('#web-fields').display = self.query_one('#web-enabled', Checkbox).value
-        self.query_one('#web-endpoint-field').display = service in ('openai', 'searxng')
-        self.query_one('#web-model-field').display = service == 'openai'
-        if not self.defaults_mode:
-            self.query_one('#web-key-field').display = service in ('exa-api', 'openai', 'brave', 'tavily')
-        host = web_access.SERVICES[service][2]
-        self.query_one('#web-hosts', Static).update('Search destination: ' + (host or 'your configured server') + '. A custom endpoint uses its own hostname and port.')
+
+    @on(Select.Changed, '#web-mode')
+    async def mode_changed(self):
+        await self.refresh_providers()
+
+    @on(Button.Pressed)
+    async def edit_provider(self, event):
+        button = event.button.id or ''
+        if button == 'web-copy':
+            event.stop()
+            self.app.push_screen(CopyWebAccess(self.copy_sources()), self.copied)
+            return
+        if button == 'web-save-defaults':
+            event.stop()
+            try:
+                value, keys = await self.defaults_selection()
+                self.app.defaults = save_web_defaults(value, keys)
+                self.notify('Web access defaults saved, including API keys.')
+            except (OSError, ValueError) as error:
+                self.notify(str(error), severity='error')
+            return
+        if button != 'web-add' and not button.startswith('web-edit-'):
+            return
+        event.stop()
+        name = button.removeprefix('web-edit-') if button.startswith('web-edit-') else None
+        self.app.push_screen(SearchProviderDialog(self.providers, name,
+            self.query_one('#web-mode', Select).value), self.provider_saved)
+
+    async def provider_saved(self, result):
+        if result is None:
+            return
+        name, row, key = result
+        old = self.providers.get(name)
+        if row is None:
+            self.providers.pop(name)
+            self.keys.pop(name, None)
+        else:
+            self.providers[name] = row
+            if old and old['endpoint'] != row['endpoint']:
+                self.keys.pop(name, None)
+            if key is not None:
+                self.keys[name] = key
+        mode = self.query_one('#web-mode', Select)
+        selected = mode.value
+        mode.set_options(self.mode_choices())
+        mode.value = selected
+        await self.refresh_providers()
+
+    async def defaults_selection(self):
+        value, pending = self.collect()
+        keys = {}
+        form = self.screen
+        if isinstance(form, SettingsForm) and form.editing:
+            needed = [name for name, row in value['providers'].items() if row['has_key'] and name not in pending]
+            if needed:
+                stored = await asyncio.to_thread(self.app.service.search_keys, form.draft['name'])
+                keys.update(web_access.matching_keys(stored, value))
+        keys.update(pending)
+        missing = [web_access.SERVICES[name][0] for name, row in value['providers'].items()
+                   if row['has_key'] and not keys.get(name)]
+        if missing:
+            raise ValueError('Enter API keys before saving defaults for: ' + ', '.join(missing))
+        return value, keys
 
     def collect(self):
-        service = self.query_one('#web-service', Select).value
-        value = web_access.settings({
-            'enabled': self.query_one('#web-enabled', Checkbox).value,
-            'service': service,
-            'endpoint': self.query_one('#web-endpoint', Input).value if service in ('openai', 'searxng') else '',
-            'model': self.query_one('#web-model', Input).value if service == 'openai' else '',
-        })
-        key = self.query_one('#web-key', Input).value.strip() if not self.defaults_mode and value['enabled'] and service in ('exa-api', 'openai', 'brave', 'tavily') else ''
-        return value, key
+        value = web_access.settings({'enabled': self.query_one('#web-enabled', Checkbox).value,
+            'mode': self.query_one('#web-mode', Select).value, 'providers': self.providers})
+        if value['enabled'] and not web_access.active(value):
+            raise ValueError('Configure a search provider with the required key or server URL.')
+        return value, dict(self.keys)
 
 
 class NetworkForm(Screen):
@@ -1081,7 +1383,7 @@ class SettingsForm(Screen):
         return draft, key
 
     @on(Button.Pressed)
-    def pressed(self, event):
+    async def pressed(self, event):
         event.stop()
         action = event.button.id
         try:
@@ -1106,8 +1408,8 @@ class SettingsForm(Screen):
                     saved = {k: draft[k] for k in DEFAULT_SETTINGS if k in draft}
                     saved['profile'] = self.query_one('#default-profile', Select).value
                     saved['workspace_parent'] = self.query_one('#workspace-parent', Input).value.strip()
-                    write_json(defaults_path(), saved)
-                    self.app.defaults = load_defaults()
+                    search, keys = await self.query_one(WebAccessForm).defaults_selection()
+                    self.app.defaults = save_defaults_with_search(saved, search, keys)
                     self.app.pop_screen()
                     self.notify('Defaults saved for future sandboxes.')
                 elif self.editing:

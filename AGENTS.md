@@ -10,7 +10,7 @@ Implementation and shipped assets live in `pi_sandbox_factory/`:
 
 - `sandbox.py`: lifecycle, ownership, immutable snapshots and image identities.
 - `sandbox_tui.py`: terminal forms; `sandbox_options.py`: shared validation.
-- `web_access.py`: search settings; `network_groups.py`: trusted category updates and gateway rules.
+- `web_access.py`: search modes, provider settings and reusable private keys; `network_groups.py`: trusted category updates and gateway rules.
 - `updates.py`: GitHub tags, installed version and pipx upgrade detection.
 - `browser_viewer.py`: authenticated loopback viewer and container-bound lifetime.
 - `registry.py`: Git/local packages, revisions and installation.
@@ -37,6 +37,10 @@ Keep the inner command sandbox, outer container, gateway and credential companio
 separate. Approval never grants host access. Automatic approval returns failures
 to Pi without a human dialog; assisted mode enables human fallback.
 `ask_user_question` goes directly to the user without reviewer authorization.
+
+Search defaults and sandbox copies must keep credentials separate from options.
+Match keys to both provider and endpoint; a copy without keys must not inherit
+workstation defaults. Exercise fallback and Only-provider behavior in both clients.
 
 Preserve workspace files, ownership checks and private home state. Model discovery
 must work before a Pi session exists and allow opening the editor while offline.

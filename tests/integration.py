@@ -19,7 +19,9 @@ p.add_argument('--port',type=int,default=8000,help='Unused host port allowed in 
 p.add_argument('--pendant-questions-only', action='store_true', help='Check Pendant startup and question choices, free text and cancellation')
 p.add_argument('--browser-viewer', action='store_true', help='Check viewer tool and guidance in actual Pendant sessions')
 p.add_argument('--web-access', action='store_true', help='Live keyless Exa search and category-controlled retrieval in Pi and Pendant')
+p.add_argument('--web-providers', action='store_true', help='Also check native fallback and Only-provider enforcement')
 a=p.parse_args()
+if a.web_providers: a.web_access=True
 RUNTIME=a.artifacts or Path(tempfile.mkdtemp(prefix='pi-sandbox-factory-check-'))
 RUNTIME.mkdir(parents=True,exist_ok=True)
 DEV='pi-sandbox-factory-'+a.name
@@ -42,6 +44,7 @@ with (fixture/'server.log').open('w') as log:
  server=subprocess.Popen([sys.executable,str(fixture/'server.py')],stdout=log,stderr=log)
 saved=subprocess.run(['podman','exec',DEV,'cat','/home/node/.pi/agent/models.json'],capture_output=True,text=True)
 saved_models=saved.stdout if saved.returncode==0 else None
+saved_search = None
 try:
  for _ in range(100):
   try:
@@ -88,12 +91,25 @@ try:
     assert worker.wait(timeout=30)==0, 'Pendant worker failed'
   else:
    subprocess.run(['podman','exec','-i',DEV,*command],input=(ROOT/'tests'/file).read_text(),text=True,check=True)
+ if a.web_providers:
+  attempts = fixture/'search-attempts.txt'
+  assert attempts.exists() and len(attempts.read_text().splitlines()) == 2, 'Both clients must try SearXNG before falling back to Exa'
+  saved_search = subprocess.check_output(['podman','exec',DEV,'cat','/home/node/.pi/agent/web-search.json'],text=True)
+  selection = json.loads(saved_search)
+  selection.update(provider='searxng', webSearch={'allowedProviders':['searxng']})
+  search_writer = "from pathlib import Path;import sys;Path('/home/node/.pi/agent/web-search.json').write_text(sys.stdin.read())"
+  subprocess.run(['podman','exec','-i',DEV,'python3','-c',search_writer],input=json.dumps(selection),text=True,check=True)
+  for file, command in checks:
+   subprocess.run(['podman','exec','-i','-e','WEB_ONLY=1',DEV,*command],input=(ROOT/'tests'/file).read_text(),text=True,check=True)
+  assert len(attempts.read_text().splitlines()) == 4, 'Only-provider requests must still reach SearXNG'
  reviews = fixture/'reviews.jsonl'
  if reviews.exists():
   if a.web_access: assert len(reviews.read_text().splitlines()) == 6, 'Only the three explicit fetches in each client should invoke the reviewer'
   assert not any(json.loads(line)['question'] for line in reviews.read_text().splitlines()), 'Question tool unexpectedly invoked the reviewer'
  print('PASS Pi/Pendant browser viewer integration' if a.browser_viewer else 'PASS Pendant startup and questions; no question review calls' if a.pendant_questions_only else 'PASS Pi/Pendant web access integration' if a.web_access else 'PASS real Pi/Pendant security, Goal, scheduling and transport using fixture replies',flush=True)
 finally:
+ if saved_search is not None:
+  subprocess.run(['podman','exec','-i',DEV,'python3','-c',search_writer],input=saved_search,text=True,check=True)
  server.terminate();server.wait(timeout=20)
  if saved_models is None:
   subprocess.run(['podman','exec',DEV,'rm','-f','/home/node/.pi/agent/models.json'],check=True)
