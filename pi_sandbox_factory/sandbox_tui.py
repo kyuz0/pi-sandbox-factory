@@ -13,6 +13,7 @@ import shutil
 from typing import Optional
 
 from . import sandbox, editor_settings
+from .advisors_ui import AdvisorChoices
 from .editor_ui import EditorFields, EditorScreen, OpenWith
 from .folders_ui import FolderFields
 from .communications_ui import CommunicationsForm
@@ -209,8 +210,10 @@ class Service:
         self.run(['build', name], log)
         self.run(['up', name], log)
         self.setup(name, draft, key, log)
+        for provider in draft.get('_advisor_imports', []):
+            self.run(['advisor-import', name, provider], log)
         if draft.get('advisors', {}).get('providers'):
-            log('Advisors added. Return to Settings → Advisors to sign in; no login has been performed.')
+            log('Advisors added. Open Settings → Advisors to sign in or check the copied sign-ins.')
 
     def save_communication_keys(self, name, changes, log):
         if changes:
@@ -783,7 +786,7 @@ class SettingsMenu(ModalScreen[Optional[str]]):
     ACTIONS = [('Network · website categories and allowed destinations', 'network-settings'),
                ('Models · endpoints and discovery', 'models'),
                ('Configuration · resources, tools and network mode', 'configuration'),
-               ('Advisors · Codex, Antigravity and Claude', 'advisors'),
+               ('Advisors · Codex, Claude and Antigravity', 'advisors'),
                ('SSH · hosts and private key access', 'ssh-settings'),
                ('Folders · starting folder and host mounts', 'folders'),
                ('Web access · search providers and API keys', 'web-access'),
@@ -940,17 +943,22 @@ class AdvisorsScreen(Screen):
         yield Header()
         with VerticalScroll(classes='form'):
             yield Label('Advisors · ' + self.record['name'], classes='title')
-            yield Static('Ask Codex (OpenAI models), Antigravity (Gemini models) or Claude for advice from Pi. Login stays in a separate container.')
-            yield Checkbox('Codex', value='codex' in providers, id='advisor-codex')
-            yield Checkbox('Antigravity · Gemini', value='agy' in providers, id='advisor-agy')
-            yield Checkbox('Claude', value='claude' in providers, id='advisor-claude')
-            yield Static('Sign-in is available only after the advisor has been added to this sandbox. Select Apply, wait for setup to finish, then reopen Settings → Advisors to sign in. Applying settings restarts the sandbox; files and saved logins are preserved.', id='advisor-login-help')
+            yield Static('Choose the advisors Pi can consult. Sign-ins stay in a separate container.')
+            yield AdvisorChoices(providers, 'advisor-')
+            yield Static('Copying credentials replaces the selected advisor’s saved sign-in when you apply.')
+            yield Static('Use the sign-in buttons to replace a login, or Check advisors to check the saved sign-ins.' if providers else 'Sign-in is available only after the advisor has been added. Select Apply, then reopen Settings → Advisors.', id='advisor-login-help')
             with Horizontal(classes='buttons'):
                 yield Button('Sign in to Codex', id='advisor-login-codex', disabled='codex' not in providers)
-                yield Button('Open Antigravity', id='advisor-login-agy', disabled='agy' not in providers)
-            with Horizontal(classes='buttons'):
                 yield Button('Sign in to Claude', id='advisor-login-claude', disabled='claude' not in providers)
+            with Horizontal(classes='buttons'):
+                yield Button('Sign in to Antigravity', id='advisor-login-agy', disabled='agy' not in providers)
                 yield Button('Check advisors', id='advisor-check', disabled=not providers)
+            with Collapsible(title='Claude model', collapsed=True):
+                yield Label('Model alias or exact ID · default sonnet')
+                yield Input(settings.get('claude_model', 'sonnet'), id='advisor-claude-model')
+                yield Label('Thinking effort')
+                yield Select([(x.title(), x) for x in ('low', 'medium', 'high', 'xhigh', 'max')], value=settings.get('claude_effort', 'medium'), allow_blank=False, id='advisor-claude-effort')
+                yield Static('Use /advisor status in Pi to refresh Claude subscription quota and reset times without a model call.')
             with Collapsible(title='Antigravity model', collapsed=True):
                 yield Label('Exact Gemini model ID · leave blank to sign in first')
                 yield Input(settings.get('agy_model', ''), id='advisor-model')
@@ -958,12 +966,6 @@ class AdvisorsScreen(Screen):
                 yield Input(settings.get('agy_quota_group', ''), id='advisor-quota')
                 yield Label('Effort matching that model')
                 yield Select([(x.title(), x) for x in ('low', 'medium', 'high')], value=settings.get('agy_effort', 'medium'), allow_blank=False, id='advisor-effort')
-            with Collapsible(title='Claude model', collapsed=True):
-                yield Label('Model alias or exact ID · default sonnet')
-                yield Input(settings.get('claude_model', 'sonnet'), id='advisor-claude-model')
-                yield Label('Thinking effort')
-                yield Select([(x.title(), x) for x in ('low', 'medium', 'high', 'xhigh', 'max')], value=settings.get('claude_effort', 'medium'), allow_blank=False, id='advisor-claude-effort')
-                yield Static('Use /advisor status in Pi to refresh Claude subscription quota and reset times without a model call.')
             with Collapsible(title='Usage and network', collapsed=True):
                 yield Label('Maximum calls per Pi session · blank for no limit')
                 yield Input(str(settings.get('max_calls') or ''), id='advisor-calls', type='integer')
@@ -994,7 +996,7 @@ class AdvisorsScreen(Screen):
             try:
                 calls = self.query_one('#advisor-calls', Input).value.strip()
                 settings = sandbox_advisors.validate({
-                    'providers': [p for p in ('codex', 'agy', 'claude') if self.query_one('#advisor-' + p, Checkbox).value],
+                    'providers': self.query_one(AdvisorChoices).selected(),
                     'claude_model': self.query_one('#advisor-claude-model', Input).value.strip() or 'sonnet',
                     'claude_effort': self.query_one('#advisor-claude-effort', Select).value,
                     'agy_model': self.query_one('#advisor-model', Input).value.strip(),
@@ -1006,12 +1008,18 @@ class AdvisorsScreen(Screen):
             except ValueError as error:
                 self.notify(str(error), severity='error')
                 return
+            imports = self.query_one(AdvisorChoices).imports()
             def apply(yes):
                 if not yes:
                     return
                 self.app.pop_screen()
-                self.app.push_screen(Operation('Advisors · ' + name, lambda log: self.app.service.advisors(name, settings, log)))
-            self.app.push_screen(Confirm('Apply advisor settings?\nActive sandbox processes restart. Workspace, home and advisor logins are preserved.', 'Apply'), apply)
+                def setup(log):
+                    self.app.service.advisors(name, settings, log)
+                    for provider in imports:
+                        self.app.service.run(['advisor-import', name, provider], log)
+                self.app.push_screen(Operation('Advisors · ' + name, setup))
+            self.app.push_screen(Confirm('Apply advisor settings?\nActive sandbox processes restart. Workspace and private home are preserved.'
+                                         + ('\nSelected host sign-ins replace the saved advisor logins.' if imports else ''), 'Apply'), apply)
 
     def action_back(self):
         self.app.pop_screen()
@@ -1554,12 +1562,10 @@ class SettingsForm(Screen):
                 with Collapsible(title='Folders · starting folder and host mounts', collapsed=not bool(value.get('extra_folders')), id='folders-section'):
                     yield FolderFields(value, self.app.state_root)
             if not self.editing and not self.defaults_mode:
-                with Collapsible(title='Advisors · optional Codex / Antigravity / Claude', collapsed=True, id='new-advisors-section'):
+                with Collapsible(title='Advisors · Codex / Claude / Antigravity', collapsed=True, id='new-advisors-section'):
                     providers = value.get('advisors', {}).get('providers', [])
-                    yield Checkbox('Add Codex advisor', value='codex' in providers, id='new-advisor-codex')
-                    yield Checkbox('Add Antigravity advisor · Gemini', value='agy' in providers, id='new-advisor-agy')
-                    yield Checkbox('Add Claude advisor', value='claude' in providers, id='new-advisor-claude')
-                    yield Static('Creates a separate advisor container. After creation, open Settings → Advisors to sign in. No host credentials are imported.', id='new-advisor-help')
+                    yield AdvisorChoices(providers, 'new-advisor-')
+                    yield Static('Copy an existing host sign-in, or sign in after creation through Settings → Advisors. Credentials stay in the separate advisor container.', id='new-advisor-help')
             if self.defaults_mode:
                 yield Label('Default profile')
                 yield Select([(v, k) for k, v in profile_titles().items()], value=self.profile_name if self.profile_name in profile_titles() else 'base',
@@ -1717,8 +1723,9 @@ class SettingsForm(Screen):
                      skill_repo=inp('skill-repo'), skill_path=inp('skill-path'))
         if not self.editing and not self.defaults_mode:
             from . import sandbox_advisors
-            draft['advisors'] = sandbox_advisors.validate({**draft.get('advisors', {}), 'providers': [
-                provider for provider in ('codex', 'agy', 'claude') if check('new-advisor-' + provider)]})
+            choices = self.query_one(AdvisorChoices)
+            draft['advisors'] = sandbox_advisors.validate({**draft.get('advisors', {}), 'providers': choices.selected()})
+            draft['_advisor_imports'] = choices.imports()
         draft['allowlist'] = self.query_one('#allowlist', TextArea).text if draft['network'] == 'allowlist' else ''
         # Local model ports are controlled by their labelled field; other rules stay intact.
         rules = [r for r in sandbox.parse_rules(draft['allowlist']) if r[0] != 'local-model.internal']
@@ -1854,6 +1861,7 @@ class Cockpit(App):
     #package-error { color: $error; height: auto; }
     .setting { height: auto; margin-bottom: 1; }
     .setting > Checkbox, .setting > Input, .setting > Select { margin-bottom: 0; }
+    AdvisorChoices .setting > .copy-login { margin: 1 0 0 2; }
     .setting-help { height: auto; color: #b8bdc3; }
     .checkbox-help { padding-left: 4; }
     .section-intro { height: auto; margin-bottom: 1; }

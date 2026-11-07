@@ -23,7 +23,7 @@ def validate(value):
         raise ValueError('Invalid advisor settings')
     providers = value.get('providers', [])
     if not isinstance(providers, list) or any(not isinstance(p, str) or p not in HOSTS for p in providers) or len(set(providers)) != len(providers):
-        raise ValueError('Choose Codex, Antigravity and/or Claude')
+        raise ValueError('Choose Codex, Claude and/or Antigravity')
     result = dict(value, providers=providers)
     if 'claude' in providers:
         model = value.get('claude_model', 'sonnet')

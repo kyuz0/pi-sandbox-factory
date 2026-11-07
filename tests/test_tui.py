@@ -327,7 +327,7 @@ class TUITests(unittest.TestCase):
             self.assertEqual(draft['allowlist'],'local-model.internal:8002\nlocal-model.internal:8003')
             self.assertEqual(draft['local_model_ports'],'8002-8003')
             self.assertEqual(draft['options']['website_groups'],['dev-python','dev-npmjs','dev-github'])
-            self.assertEqual(draft['advisors']['providers'], ['codex', 'agy', 'claude'])
+            self.assertEqual(draft['advisors']['providers'], ['codex', 'claude', 'agy'])
             await pilot.press('q')
 
     async def test_settings_and_models_follow_selection(self):

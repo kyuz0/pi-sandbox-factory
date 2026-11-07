@@ -1049,7 +1049,7 @@ def main():
     new.add_argument('--memory', default=None, help='Optional memory limit, e.g. 8g; default: no explicit limit')
     new.add_argument('--skill-source', help='Additional skill Git repository URL')
     new.add_argument('--skill-path', default='.', help='Skill folder in the additional repository')
-    new.add_argument('--advisor', action='append', choices=['codex', 'agy', 'claude'], default=[],
+    new.add_argument('--advisor', action='append', choices=['codex', 'claude', 'agy'], default=[],
                      help='Add an advisor companion during creation; repeat for multiple advisors, sign in afterwards')
     new.add_argument('--options-file', help='JSON agent, skill and MCP settings')
     new.add_argument('--start', action='store_true', help='Build images and start after creation')
@@ -1062,8 +1062,9 @@ def main():
         'up': 'Resume containers and recover stale runtime or gateway state',
         'delete': 'Remove both containers, private volumes, and saved state; keep the host workspace',
         'configure': 'Check or refresh enabled providers',
+        'advisor-import': 'Copy a host sign-in into the advisor container',
     }
-    for command in ('update', 'build', 'up', 'down', 'delete', 'recreate', 'open', 'configure', 'shell', 'pi', 'exec', 'check', 'policy', 'network', 'web-key', 'communication-key', 'advisor-login', 'advisor-check', 'ssh-import-key', 'ssh-unlock', 'browser-editor'):
+    for command in ('update', 'build', 'up', 'down', 'delete', 'recreate', 'open', 'configure', 'shell', 'pi', 'exec', 'check', 'policy', 'network', 'web-key', 'communication-key', 'advisor-login', 'advisor-import', 'advisor-check', 'ssh-import-key', 'ssh-unlock', 'browser-editor'):
         cmd = sub.add_parser(command, **({'help': descriptions[command]} if command in descriptions else {}))
         cmd.add_argument('name')
         if command == 'browser-editor':
@@ -1075,8 +1076,8 @@ def main():
             cmd.add_argument('--editor', choices=['browser', 'pi', 'desktop'], help='Open with a different client this time')
         if command == 'ssh-import-key':
             cmd.add_argument('--key-file', required=True)
-        if command == 'advisor-login':
-            cmd.add_argument('provider', choices=['codex', 'agy', 'claude'])
+        if command in ('advisor-login', 'advisor-import'):
+            cmd.add_argument('provider', choices=['codex', 'claude', 'agy'])
         if command == 'communication-key':
             cmd.add_argument('--keys-stdin', action='store_true', help=argparse.SUPPRESS)
             cmd.add_argument('--status', action='store_true', help='Show Slack token status')
@@ -1166,6 +1167,10 @@ def main():
         sandbox_ssh.unlock(config, state)
     elif args.command == 'advisor-check':
         sandbox_advisors.check(config, state)
+    elif args.command == 'advisor-import':
+        from .advisor_credentials import import_from_host, LABELS
+        import_from_host(config, state, args.provider)
+        print(f'{LABELS[args.provider]} host sign-in copied into the advisor container.')
     elif args.command == 'advisor-login':
         sandbox_advisors.login(config, state, args.provider)
     elif args.command == 'up':

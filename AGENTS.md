@@ -20,6 +20,7 @@ Implementation and shipped assets live in `pi_sandbox_factory/`:
 - `registry.py`: Git/local packages, revisions and installation.
 - `model_providers.py` and `providers/`: provider image layer and container runner.
 - `sandbox_advisors.py`, `sandbox_ssh.py`: credential companions.
+- `advisor_credentials.py`, `advisors_ui.py`: explicit host sign-in copies and advisor selection.
 - `containers/`: images, bootstrap and extension pins; `profiles/base/`: generic profile.
 
 The root `sandbox.py` is a checkout convenience wrapper. The installed command
@@ -64,6 +65,8 @@ extension changes, not just mocked APIs. Never restart a user's sandbox to test.
   below its control; put one blank row between groups, not inside them.
 - Path inputs and Browse buttons share a three-row height. Put dependent options
   one row below, indented two columns. Use the shared checkbox from `tui_widgets.py`.
+- Keep related choices in a consistent order and use the same label pattern.
+  Advisors are Codex (OpenAI), Claude (Anthropic), Antigravity (Google).
 - Give inputs persistent labels; placeholders are examples, not labels. Use the
   same title style and left edge across screens. Full-page forms and action bars
   use the available terminal width with consistent side padding; constrain modal

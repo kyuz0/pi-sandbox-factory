@@ -105,6 +105,51 @@ class TUILayoutTests(unittest.TestCase):
                 await pilot.press('escape')
                 await pilot.press('q')
 
+    async def test_advisor_labels_order_and_explicit_copy_controls(self):
+        from pi_sandbox_factory.advisors_ui import AdvisorChoices
+        from pi_sandbox_factory.advisor_credentials import LABELS
+        from pi_sandbox_factory.sandbox_tui import AdvisorsScreen
+        for creation in (True, False):
+            app = self.app()
+            async with app.run_test(size=(120, 40)) as pilot:
+                await self.ready(app, pilot)
+                await app.push_screen(SettingsForm(self.draft()) if creation else AdvisorsScreen(self.record))
+                if creation:
+                    app.screen.query_one('#new-advisors-section', Collapsible).collapsed = False
+                await pilot.pause()
+                choices = app.screen.query_one(AdvisorChoices)
+                prefix = 'new-advisor-' if creation else 'advisor-'
+                fields = [choices.query_one('#' + prefix + p, Checkbox) for p in LABELS]
+                self.assertEqual([str(field.label) for field in fields], list(LABELS.values()))
+                self.assertEqual([field.region.y for field in fields], sorted(field.region.y for field in fields))
+                copy = choices.query_one('#' + prefix + 'copy-claude', Checkbox)
+                self.assertFalse(copy.value)
+                self.assertFalse(copy.display)
+                choices.query_one('#' + prefix + 'claude', Checkbox).value = True
+                await pilot.pause()
+                self.assertTrue(copy.display)
+                self.assertFalse(copy.disabled)
+                parent = choices.query_one('#' + prefix + 'claude', Checkbox)
+                self.assertEqual(copy.region.x, parent.region.x + 2)
+                self.assertEqual(copy.region.y, parent.region.bottom + 1)
+                copy.value = True
+                self.assertEqual(choices.imports(), ['claude'])
+                if not creation:
+                    calls = []
+                    app.service.advisors = lambda name, settings, log: calls.append(('save', settings['providers']))
+                    app.service.run = lambda args, log: calls.append(args)
+                    await pilot.click('#advisor-apply')
+                    await pilot.pause()
+                    await pilot.click('#yes')
+                    await self.ready(app, pilot)
+                    self.assertEqual(calls, [('save', ['claude']), ['advisor-import', 'demo', 'claude']])
+                else:
+                    choices.query_one('#' + prefix + 'claude', Checkbox).value = False
+                    await pilot.pause()
+                    self.assertFalse(copy.value)
+                    self.assertEqual(choices.imports(), [])
+                await pilot.press('q')
+
     async def test_folder_and_confirmation_dialogs_cancel_with_escape(self):
         app = self.app()
         async with app.run_test(size=(80, 24)) as pilot:

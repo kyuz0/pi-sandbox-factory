@@ -86,6 +86,12 @@ Run
 package. It checks isolated launchers and credential volumes without real login.
 Actual account login and authorized SSH access are separate checks.
 
+Run `python tests/advisor_credentials_container.py` to check synthetic credential
+copies, file permissions, keyring persistence and companion mounts. With explicit
+authorization, add `--host-logins` to copy the host’s Codex, Claude and Antigravity
+sign-ins and check login/model status without inference. The script removes its
+disposable containers and credential volumes afterwards.
+
 Use disposable state throughout. Never restart a user's sandbox or copy credentials
 for testing. Record commands and results; distinguish fixtures from live services.
 
