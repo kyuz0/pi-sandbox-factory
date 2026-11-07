@@ -12,7 +12,8 @@ import pyfiglet
 import shutil
 from typing import Optional
 
-from . import sandbox
+from . import sandbox, editor_settings
+from .editor_ui import EditorFields, EditorScreen, OpenWith
 from .folders_ui import FolderFields
 from .communications_ui import CommunicationsForm
 from .tui_widgets import Checkbox
@@ -37,7 +38,7 @@ def profile_titles():
 DEFAULT_SETTINGS = {'profile': 'base', 'model_providers': {'local':{}}, 'workspace_parent': '', 'network': 'allowlist',
                     'engine': 'podman', 'memory': '8g', 'subagents': False, 'env_file': '',
                     'pi_config': '', 'skill_repo': '', 'skill_path': '', 'open_editor': True,
-                    'local_model_ports': '8000', 'options': DEFAULTS}
+                    'local_model_ports': '8000', 'options': DEFAULTS, 'editor': {**editor_settings.DEFAULTS, 'mode': editor_settings.default_mode()}}
 
 
 def safe_text(value):
@@ -81,6 +82,7 @@ def load_defaults():
         raise ValueError('Invalid cockpit defaults file')
     result = {**DEFAULT_SETTINGS, **value}
     result['options'] = options(result['options'])
+    result['editor'] = editor_settings.copy_choice(result['editor'])
     memory_limit(result['memory'])
     if result['local_model_ports']:
         sandbox.local_model_ports(result['local_model_ports'])
@@ -107,6 +109,7 @@ def copy_draft(record, state_root):
     value.update(profile=config['profile']['path'], options=options(config.get('options')),
                  name='', workspace='', workspace_parent='', env_file='', pi_config='', working_directory='.',
                  reuse_from=record['name'], reused_profile=copy.deepcopy(config['profile']))
+    value['editor'] = editor_settings.copy_choice(editor_settings.load(Path(state_root) / record['name']))
     value['allowlist'] = (Path(state_root) / record['name'] / 'allowlist.txt').read_text()
     for row in value['options']['web_access']['providers'].values():
         row['has_key'] = False
@@ -202,6 +205,7 @@ class Service:
             if draft['subagents']:
                 args += ['--subagents']
             self.run(args, log)
+        editor_settings.save(state, draft.get('editor', editor_settings.DEFAULTS))
         self.run(['build', name], log)
         self.run(['up', name], log)
         self.setup(name, draft, key, log)
@@ -743,7 +747,7 @@ class Confirm(ModalScreen[bool]):
 class MoreActions(ModalScreen[Optional[str]]):
     BINDINGS = [('escape', 'cancel', 'Back')]
 
-    def __init__(self, record):
+    def __init__(self, record, *, browser_running=False):
         super().__init__()
         running = record['dev'] == 'running'
         self.sandbox_name = record['name']
@@ -751,6 +755,8 @@ class MoreActions(ModalScreen[Optional[str]]):
                         ('Container shell', 'shell'),
                         ('Test MCP connections', 'connections'), ('Container logs', 'logs'),
                         ('Update sources and recreate…', 'rebuild'), ('Delete sandbox…', 'delete')]
+        if browser_running:
+            self.actions.append(('Stop browser editor', 'stop-editor'))
 
     def compose(self):
         with Vertical(id='confirm-box'):
@@ -781,7 +787,8 @@ class SettingsMenu(ModalScreen[Optional[str]]):
                ('SSH · hosts and private key access', 'ssh-settings'),
                ('Folders · starting folder and host mounts', 'folders'),
                ('Web access · search providers and API keys', 'web-access'),
-               ('Communications · Slack', 'communications')]
+               ('Communications · Slack', 'communications'),
+               ('Editor · browser, Pi CLI or VS Code on host', 'editor-settings')]
 
     def __init__(self, name):
         super().__init__()
@@ -1205,10 +1212,11 @@ class InstallPackage(Screen):
 class Operation(Screen):
     BINDINGS = [Binding('escape', 'back', 'Back')]
 
-    def __init__(self, title, task, *, back_label='Back to sandboxes'):
+    def __init__(self, title, task, *, back_label='Back to sandboxes', on_success=None):
         super().__init__()
         self.title, self.operation_task, self.finished = title, task, False
         self.back_label = back_label
+        self.on_success = on_success
         self.failed = False
         self.model_disconnected = False
 
@@ -1251,6 +1259,9 @@ class Operation(Screen):
         status.add_class('failed' if self.failed else 'disconnected' if self.model_disconnected else 'complete')
         output = self.query_one(RichLog)
         output.styles.height = min(18, max(6, len(output.lines) + 2))
+        if not self.failed and self.on_success:
+            callback, self.on_success = self.on_success, None
+            self.app.call_later(callback)
 
     @on(Button.Pressed)
     def back(self, event):
@@ -1511,6 +1522,10 @@ class SettingsForm(Screen):
                         ('Sandbox settings' if self.editing else 'Review sandbox · 2 of 2'), classes='title')
             yield Static(('Profile: ' + profile_titles().get(self.profile_name, self.profile_name)) +
                          ('' if self.defaults_mode else '\nWorkspace: ' + value['workspace']), markup=False)
+            if not self.editing:
+                mode = value.get('editor', editor_settings.DEFAULTS)['mode']
+                with Collapsible(title='Editor · ' + editor_settings.MODES[mode], collapsed=True, id='editor-section'):
+                    yield EditorFields(value.get('editor', editor_settings.DEFAULTS), connection_settings=not self.defaults_mode)
             yield Checkbox('Connect to models on this host (rootless Podman)',
                            value=bool(value.get('local_model_ports')), id='local-models')
             with Vertical(classes='setting'):
@@ -1616,7 +1631,7 @@ class SettingsForm(Screen):
                 yield Input(value.get('pi_config') or '', id='pi-config', disabled=self.editing)
             yield Static('', id='form-error', classes='error', markup=False)
         with Vertical(classes='wizard-actions settings-actions'):
-            yield Checkbox('Open VS Code after applying' if self.editing else 'Open VS Code after creation',
+            yield Checkbox('Open selected editor after applying' if self.editing else 'Open selected editor after creation',
                            value=False if self.editing else value.get('open_editor', True), id='open-editor')
             with Horizontal(classes='action-buttons'):
                 yield Button('Back', id='back')
@@ -1691,6 +1706,10 @@ class SettingsForm(Screen):
         selected['disabled_skills'] = [s for s in SKILLS if
             (s in PROFILE_SKILLS.get(self.profile_name, []) and not check('skill-' + s))
             or (s not in PROFILE_SKILLS.get(self.profile_name, []) and s in selected['disabled_skills'])]
+        if not self.editing:
+            draft['editor'] = self.query_one(EditorFields).collect()
+            if draft['editor']['mode'] == 'browser' and editor_settings.default_mode(self.query_one('#engine', Select).value) != 'browser':
+                raise ValueError('Browser editor requires rootless Podman on x86_64 Linux. Choose Pi CLI or VS Code on host.')
         draft.update(network=self.query_one('#network', Select).value, memory=memory_limit(inp('memory')),
                      subagents=check('subagents'), options=options(selected), engine=self.query_one('#engine', Select).value,
                      env_file=inp('env-file') or None, pi_config=inp('pi-config') or None,
@@ -1758,6 +1777,7 @@ class SettingsForm(Screen):
                 draft, key = self.collect()
                 if self.defaults_mode:
                     saved = {k: draft[k] for k in DEFAULT_SETTINGS if k in draft}
+                    saved['editor'] = editor_settings.copy_choice(saved['editor'])
                     saved['profile'] = self.query_one('#default-profile', Select).value
                     saved['workspace_parent'] = self.query_one('#workspace-parent', Input).value.strip()
                     search, keys = await self.query_one(WebAccessForm).defaults_selection()
@@ -1781,6 +1801,7 @@ class SettingsForm(Screen):
     def submit(self, draft, key):
         service = self.app.service
         editing = self.editing
+        editor = (editor_settings.load(self.app.state_root / draft['name']) if editing else draft.get('editor', editor_settings.DEFAULTS))
         def task(log):
             if draft.get('mkdir'):
                 Path(draft['workspace']).mkdir(parents=True, exist_ok=True)
@@ -1788,16 +1809,17 @@ class SettingsForm(Screen):
                 service.update(draft['name'], draft, key, log)
             else:
                 service.create(draft, key, log)
-            if draft.get('open_editor'):
+            if draft.get('open_editor') and editor['mode'] != 'pi':
                 try:
                     service.run(['open', draft['name']], log)
                 except (OSError, ValueError) as error:
-                    log(f'Sandbox {"updated" if editing else "created"}, but VS Code could not open: {error}')
-                    log('Use Open in VS Code on the sandbox list to try again.')
+                    log(f'Sandbox {"updated" if editing else "created"}, but the editor could not open: {error}')
+                    log('Use Open on the sandbox list to try again.')
         self.app.pop_screen()
         if not editing:
             self.app.pop_screen()
-        self.app.push_screen(Operation(('Updating ' if editing else 'Creating ') + draft['name'], task))
+        self.app.push_screen(Operation(('Updating ' if editing else 'Creating ') + draft['name'], task,
+            on_success=(lambda: self.app.interactive('pi', draft['name'])) if draft.get('open_editor') and editor['mode'] == 'pi' else None))
 
     def action_back(self):
         self.app.pop_screen()
@@ -1930,8 +1952,8 @@ class Cockpit(App):
             yield Static('Choose a sandbox, or create your first one.', id='details', markup=False)
             yield Static('', id='home-error', markup=False)
             with Horizontal(classes='buttons'):
-                yield Button('Open in VS Code', id='open', variant='primary')
-                yield Button('Open Pi CLI', id='pi', tooltip='Use Pi in this terminal; return here when Pi exits.')
+                yield Button('Open in browser', id='open', variant='primary')
+                yield Button('Open with…', id='launch-with')
                 yield Button('Settings', id='settings')
                 yield Button('Actions…', id='more')
         yield Footer()
@@ -2048,7 +2070,9 @@ class Cockpit(App):
             text += ' · Gateway: ' + str(record.get('proxy', 'Unknown'))
             text += ' · Profile: ' + str(record['profile'])
         self.query_one('#details', Static).update(safe_text(text))
-        for action in ('open', 'pi', 'settings', 'more'):
+        mode = editor_settings.load(self.state_root / record['name'])['mode'] if record else 'browser'
+        self.query_one('#open', Button).label = {'browser': 'Open in browser', 'pi': 'Open Pi CLI', 'desktop': 'Open VS Code'}[mode]
+        for action in ('open', 'launch-with', 'settings', 'more'):
             self.query_one('#' + action, Button).disabled = record is None
 
     @on(DataTable.RowSelected)
@@ -2115,8 +2139,15 @@ class Cockpit(App):
             self.notify('Choose a sandbox first.')
             return
         name, config = record['name'], record['config']
-        if action == 'more':
-            self.push_screen(MoreActions(record), lambda choice: self.perform(choice) if choice else None)
+        if action == 'launch-with':
+            self.push_screen(OpenWith(desktop_allowed=not (self.state_root / name / 'browser-editor.enabled').exists()), lambda mode: self.launch_client(name, mode) if mode else None)
+        elif action == 'editor-settings':
+            self.push_screen(EditorScreen(name))
+        elif action == 'stop-editor':
+            self.operation('Stopping browser editor', ['browser-editor', name, '--stop'])
+        elif action == 'more':
+            from .browser_editor import runtime
+            self.push_screen(MoreActions(record, browser_running=bool(runtime(self.state_root / name))), lambda choice: self.perform(choice) if choice else None)
         elif action == 'settings':
             self.push_screen(SettingsMenu(name), lambda choice: self.perform(choice) if choice else None)
         elif action == 'folders':
@@ -2153,7 +2184,7 @@ class Cockpit(App):
         elif action in ('pi', 'shell'):
             self.interactive(action, name)
         elif action == 'open':
-            self.push_screen(Operation('Opening ' + name, lambda log: self.open_ready(name, log)))
+            self.launch_client(name, editor_settings.load(self.state_root / name)['mode'])
         elif action == 'connections':
             args = ['exec', name, '--', 'pi', 'mcp', 'list']
             self.operation('Checking configured MCP connections', args)
@@ -2174,9 +2205,18 @@ class Cockpit(App):
         elif action == 'stop':
             self.operation('Stopping ' + name, ['down', name])
 
-    def open_ready(self, name, log):
+    def launch_client(self, name, mode):
+        if mode == 'pi':
+            self.interactive('pi', name)
+        else:
+            self.push_screen(Operation('Opening ' + name, lambda log: self.open_ready(name, log, mode)))
+
+    def open_ready(self, name, log, mode=None):
         self.service.start(name, log)
-        self.service.run(['open', name], log)
+        args = ['open', name]
+        if mode:
+            args += ['--editor', mode]
+        self.service.run(args, log)
 
     def operation(self, title, args):
         self.push_screen(Operation(title, lambda log: self.service.run(args, log)))

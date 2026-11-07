@@ -353,7 +353,7 @@ class TUITests(unittest.TestCase):
         app=Cockpit(self.root,FakeService(self.records))
         async with app.run_test(size=(80,24)) as pilot:
             await self.ready(app,pilot);self.assertEqual(app.theme,'cockpit-gold')
-            for name in ['open','pi','settings','new','create-from','more','packages']:
+            for name in ['open','launch-with','settings','new','create-from','more','packages']:
                 b=app.query_one('#'+name,Button)
                 self.assertLessEqual(b.region.right,80,name);self.assertLessEqual(b.region.bottom,23,name)
             self.assertEqual(len(app.query('#home Button')),7)
@@ -364,7 +364,7 @@ class TUITests(unittest.TestCase):
             await pilot.press('escape');await pilot.pause()
             await pilot.press('q')
 
-    async def test_pi_button_uses_terminal_and_returns_to_manager(self):
+    async def test_open_with_pi_uses_terminal_and_returns_to_manager(self):
         from contextlib import nullcontext
         import subprocess
         service=FakeService(self.records)
@@ -375,14 +375,17 @@ class TUITests(unittest.TestCase):
             app.query_one(DataTable).move_cursor(row=1)
             with patch.object(app,'suspend',return_value=nullcontext()) as suspend, \
                  patch('pi_sandbox_factory.sandbox_tui.subprocess.run',return_value=subprocess.CompletedProcess([],0)) as run:
-                await pilot.click('#pi');await self.ready(app,pilot)
+                await pilot.click('#launch-with');await pilot.pause()
+                choices=app.screen.query_one('#editor-choices',OptionList)
+                choices.highlighted=1;choices.focus()
+                await pilot.press('enter');await self.ready(app,pilot)
                 suspend.assert_called_once()
                 run.assert_called_once_with(service.command('pi','beta'),check=False)
             self.assertEqual(len(app.screen_stack),1)
             self.assertEqual(app.selected_name(),'beta')
             app.query_one(DataTable).focus()
             await pilot.press('enter');await self.ready(app,pilot)
-            self.assertEqual(service.calls,[['start','beta'],['open','beta']])
+            self.assertEqual(service.calls,[['start','beta'],['open','beta','--editor','browser']])
 
     async def test_missing_model_is_completed_with_warning(self):
         app=Cockpit(self.root,FakeService(self.records))
@@ -431,7 +434,7 @@ class TUITests(unittest.TestCase):
             self.assertEqual(app.screen.actions[0],('Start sandbox','start'))
             await pilot.press('escape');await pilot.pause()
             app.query_one('#search',Input).value='no-match';await pilot.pause()
-            for name in ('open','pi','settings','more'):
+            for name in ('open','launch-with','settings','more'):
                 self.assertTrue(app.query_one('#'+name,Button).disabled)
             self.assertFalse(app.query_one('#new',Button).disabled)
 

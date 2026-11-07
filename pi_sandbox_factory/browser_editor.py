@@ -1,14 +1,21 @@
-"""Opt-in code-server prototype: container editor, authenticated loopback browser UI."""
+"""Container-hosted code-server with configurable browser access and process supervision."""
 import asyncio
 import fcntl
 import hashlib
 import json
+import os
+import sys
+import time
+import select
 from pathlib import Path
 import re
 import secrets
 import signal
 import subprocess
 import urllib.request
+
+from . import editor_settings
+from .sandbox_options import write_json
 
 VERSION = '4.145.2'
 SHA256 = '2f6db6c3e8b733dd6b3aeee83532e148b2bae2e392353ba85452d03572348962'
@@ -62,7 +69,7 @@ def verify_archive(path):
         raise ValueError('Browser editor archive checksum does not match the pinned release')
 
 
-def validate_head(head, host):
+def validate_head(head, host, scheme="http"):
     """Validate browser origin and authority before creating the fixed connector."""
     if len(head) > 16384:
         raise ValueError('Headers too large')
@@ -82,10 +89,15 @@ def validate_head(head, host):
                 any(ord(c) < 32 and c != '\t' or ord(c) == 127 for c in value)):
             raise ValueError('Invalid headers')
         headers[name] = value.strip()
-    if headers.get('host') != host or headers.get('origin', 'http://' + host) != 'http://' + host:
+    if headers.get('host') != host or headers.get('origin', scheme + '://' + host) != scheme + '://' + host:
         raise ValueError('Invalid host or origin')
+    if headers.get('sec-fetch-site') in ('cross-site', 'same-site'):
+        raise ValueError('Cross-site request')
+    if 'expect' in headers or 'transfer-encoding' in headers or not headers.get('content-length', '0').isdigit():
+        raise ValueError('Unsupported request framing')
     if any(k == 'forwarded' or k.startswith('x-forwarded-') for k in headers):
         raise ValueError('Forwarded headers are not accepted')
+    return headers
 
 
 class Relay:
@@ -95,6 +107,7 @@ class Relay:
             raise ValueError('Expected immutable container ID')
         self.container = container
         self.host = ''
+        self.scheme = 'http'
         self.tasks = set()
 
     async def connector(self):
@@ -112,22 +125,73 @@ class Relay:
         self.tasks.add(task)
         process = None
         pumps = []
-        try:
-            head = await asyncio.wait_for(reader.readuntil(b'\r\n\r\n'), 10)
-            validate_head(head, self.host)
-            process = await self.connector()
-            process.stdin.write(head)
-            await process.stdin.drain()
+        async def transfer(source, target, length):
+            while length:
+                data = await source.readexactly(min(length, 65536))
+                target.write(data)
+                await target.drain()
+                length -= len(data)
 
-            async def pump(source, target):
-                while data := await source.read(65536):
-                    target.write(data)
-                    await target.drain()
-            # After validating the first head, preserve HTTP keep-alive and WebSocket bytes.
-            # Browser connections stay on one origin; code-server authenticates each request.
-            pumps = [asyncio.create_task(pump(reader, process.stdin)),
-                     asyncio.create_task(pump(process.stdout, writer))]
-            await asyncio.wait(pumps, return_when=asyncio.FIRST_COMPLETED)
+        async def pump(source, target):
+            while data := await source.read(65536):
+                target.write(data)
+                await target.drain()
+
+        try:
+            while True:
+                head = await asyncio.wait_for(reader.readuntil(b'\r\n\r\n'), 60)
+                headers = validate_head(head, self.host, self.scheme)
+                if process is None:
+                    process = await self.connector()
+                process.stdin.write(head)
+                await process.stdin.drain()
+                await transfer(reader, process.stdin, int(headers.get('content-length', '0')))
+                # Preserve keep-alive, checking each new request before forwarding it.
+                while True:
+                    response = await process.stdout.readuntil(b'\r\n\r\n')
+                    lines = response.decode('latin1').split('\r\n')
+                    status = int(lines[0].split()[1])
+                    fields = {}
+                    for i, line in enumerate(lines[1:], 1):
+                        if line:
+                            key, value = line.split(':', 1)
+                            fields[key.lower()] = value.strip()
+                            if key.lower() == 'set-cookie' and self.scheme == 'https':
+                                lines[i] = line + '; Secure'
+                    writer.write('\r\n'.join(lines).encode('latin1'))
+                    await writer.drain()
+                    if status == 101 or status >= 200:
+                        break
+                if status == 101:
+                    if headers.get('upgrade', '').lower() != 'websocket':
+                        raise ValueError('Unexpected protocol upgrade')
+                    pumps = [asyncio.create_task(pump(reader, process.stdin)),
+                             asyncio.create_task(pump(process.stdout, writer))]
+                    await asyncio.wait(pumps, return_when=asyncio.FIRST_COMPLETED)
+                    break
+                if head.startswith(b'HEAD ') or status in (204, 304):
+                    pass
+                elif fields.get('transfer-encoding', '').lower() == 'chunked':
+                    while True:
+                        chunk = await process.stdout.readuntil(b'\r\n')
+                        count = int(chunk.split(b';', 1)[0].strip(), 16)
+                        writer.write(chunk)
+                        if not count:
+                            while True:
+                                trailer = await process.stdout.readuntil(b'\r\n')
+                                writer.write(trailer)
+                                if trailer == b'\r\n':
+                                    break
+                            await writer.drain()
+                            break
+                        await transfer(process.stdout, writer, count + 2)
+                elif 'content-length' in fields:
+                    await transfer(process.stdout, writer, int(fields['content-length']))
+                else:
+                    await pump(process.stdout, writer)
+                    break
+                if headers.get('connection', '').lower() == 'close' or fields.get('connection', '').lower() == 'close':
+                    break
         except (ValueError, UnicodeError, OSError, ConnectionError, asyncio.TimeoutError,
                 asyncio.IncompleteReadError, asyncio.LimitOverrunError):
             if process is None:
@@ -157,33 +221,50 @@ class Relay:
         await asyncio.gather(*list(self.tasks), return_exceptions=True)
 
 
-async def serve(container, cwd, password):
+async def serve(container, cwd, preferences, state, ready=None):
     task = asyncio.current_task()
     for signum in (signal.SIGTERM, signal.SIGINT):
         asyncio.get_running_loop().add_signal_handler(signum, task.cancel)
     relay = Relay(container)
-    address = '127.' + '.'.join(str(secrets.randbelow(254) + 1) for _ in range(3))
-    server = await asyncio.start_server(relay.handle, address, 0, limit=16384)
-    relay.host = address + ':' + str(server.sockets[0].getsockname()[1])
+    address, port = editor_settings.connection(state, preferences)
+    context = editor_settings.tls_context(preferences)
+    relay.scheme = 'https' if context else 'http'
+    try:
+        server = await asyncio.start_server(relay.handle, address, port, ssl=context, limit=16384)
+    except OSError:
+        if preferences['port'] or not port:
+            raise
+        server = await asyncio.start_server(relay.handle, address, 0, ssl=context, limit=16384)
+    port = server.sockets[0].getsockname()[1]
+    relay.host = editor_settings.authority(address, port)
     editor = None
     try:
         helper = (Path(__file__).parent / 'containers/editor/launch.py').read_text()
         editor = await asyncio.create_subprocess_exec('podman', 'exec', '-i', '--user', 'node',
             container, 'python3', '-u', '-c', helper, stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE, start_new_session=True)
         editor.stdin.write((json.dumps({'binary': INSTALL + '/bin/code-server',
-                                      'cwd': cwd, 'authority': relay.host, 'password_hash': hashlib.sha256(password.encode()).hexdigest()}) + '\n').encode())
+                                      'cwd': cwd, 'authority': relay.host, 'password_hash': preferences['password_hash']}) + '\n').encode())
         await editor.stdin.drain()
-        ready = await asyncio.wait_for(editor.stdout.readline(), 60)
-        if ready != b'ready\n':
+        status = await asyncio.wait_for(editor.stdout.readline(), 60)
+        if status != b'ready\n':
             raise ValueError('Browser editor did not start; see the error above')
-        print(f'\nBrowser editor: http://{relay.host}\nPassword: {password}\n'
-              'Open this URL in a separate browser profile and enter the password.\n'
-              'Keep this terminal open. Ctrl+C stops the browser editor.\n', flush=True)
+        (state / 'browser-editor.enabled').touch(mode=0o600)
+        editor_settings.remember_connection(state, preferences, address, port)
+        url = relay.scheme + '://' + relay.host
+        write_json(state / 'browser-editor-runtime.json', {
+            'pid': os.getpid(), 'start': process_start(os.getpid()), 'url': url,
+            'container': container, 'preferences': preferences,
+        })
+        if ready:
+            ready(url)
+        else:
+            print(f'Browser editor: {url}\nCtrl+C stops the browser editor.', flush=True)
         # The attached exec exits when its container stops.
         await editor.wait()
         if editor.returncode not in (None, 0):
             raise ValueError('Browser editor stopped; see the error above')
     finally:
+        (state / 'browser-editor-runtime.json').unlink(missing_ok=True)
         server.close()
         await relay.close()
         await server.wait_closed()
@@ -196,7 +277,7 @@ async def serve(container, cwd, password):
                 await editor.wait()
 
 
-def open_browser_editor(config, state, archive=None):
+def open_browser_editor(config, state, archive=None, background=False, open_tab=True):
     from . import sandbox, folders
     if config['engine'] != 'podman':
         raise ValueError('The browser editor prototype requires rootless Podman on x86_64 Linux')
@@ -204,11 +285,19 @@ def open_browser_editor(config, state, archive=None):
     if not current or not current['State']['Running']:
         raise ValueError('Start the sandbox before opening its browser editor')
     container = current['Id']
+    preferences = editor_settings.load(state)
+    preferences = editor_settings.validate({**preferences, 'mode': 'browser'})
     with (state / 'browser-editor.lock').open('a+') as lock:
         try:
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError:
-            raise ValueError('This sandbox already has a browser editor open') from None
+            info = runtime(state)
+            if info and info['container'] == container and info['preferences'] == preferences:
+                show_url(info['url'], open_tab)
+                return
+            if not info:
+                raise ValueError('The browser editor is already starting; wait for it to finish.') from None
+            raise ValueError('Browser editor settings changed. Stop it from Actions and reopen it.') from None
         rootless = subprocess.check_output(['podman', 'info', '--format', '{{.Host.Security.Rootless}}'], text=True).strip()
         if rootless != 'true':
             raise ValueError('The browser editor prototype requires rootless Podman')
@@ -233,8 +322,93 @@ def open_browser_editor(config, state, archive=None):
                                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         if config.get('local_model_ports') or config.get('model_providers'):
             sandbox.initialize_models(config)
-        (state / 'browser-editor.enabled').touch(mode=0o600)
+        if background:
+            start_background(container, folders.container_cwd(config), preferences, state, open_tab)
+        else:
+            try:
+                asyncio.run(serve(container, folders.container_cwd(config), preferences, state))
+            except (KeyboardInterrupt, asyncio.CancelledError):
+                print('\nBrowser editor stopped.')
+
+
+def process_start(pid):
+    try:
+        return Path(f'/proc/{pid}/stat').read_text().rsplit(')', 1)[1].split()[19]
+    except (OSError, IndexError):
+        return None
+
+
+def runtime(state):
+    try:
+        value = json.loads((state / 'browser-editor-runtime.json').read_text())
+        return value if active(state) and process_start(value['pid']) == value['start'] else None
+    except (OSError, ValueError, KeyError):
+        return None
+
+
+def stop(state):
+    value = runtime(state)
+    if not value:
+        return
+    try:
+        fd = os.pidfd_open(value['pid'])
+    except ProcessLookupError:
+        return
+    try:
+        if process_start(value['pid']) == value['start']:
+            signal.pidfd_send_signal(fd, signal.SIGTERM)
+            if not select.select([fd], [], [], 15)[0]:
+                raise ValueError('Browser editor is still stopping; see browser-editor.log')
+    finally:
+        os.close(fd)
+
+
+def show_url(url, open_tab=True):
+    print('Browser editor: ' + url, flush=True)
+    if open_tab and (os.environ.get('DISPLAY') or os.environ.get('WAYLAND_DISPLAY')):
+        import shutil
+        if shutil.which('xdg-open'):
+            subprocess.Popen(['xdg-open', url], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                             stdin=subprocess.DEVNULL, start_new_session=True)
+
+
+def start_background(container, cwd, preferences, state, open_tab):
+    """Fork after installation; the child inherits the locked editor descriptor."""
+    read_fd, write_fd = os.pipe()
+    sys.stdout.flush()
+    sys.stderr.flush()
+    pid = os.fork()
+    if pid == 0:
+        os.close(read_fd)
+        os.setsid()
+        with open(os.devnull, 'r') as source, (state / 'browser-editor.log').open('w') as log:
+            os.dup2(source.fileno(), 0)
+            os.dup2(log.fileno(), 1)
+            os.dup2(log.fileno(), 2)
+        def ready(url):
+            os.write(write_fd, (url + '\n').encode())
+            os.close(write_fd)
         try:
-            asyncio.run(serve(container, folders.container_cwd(config), secrets.token_urlsafe(32)))
+            asyncio.run(serve(container, cwd, preferences, state, ready))
         except (KeyboardInterrupt, asyncio.CancelledError):
-            print('\nBrowser editor stopped.')
+            pass
+        except Exception:
+            import traceback
+            traceback.print_exc()
+        finally:
+            sys.stdout.flush()
+            sys.stderr.flush()
+            os._exit(0)
+    os.close(write_fd)
+    try:
+        if not select.select([read_fd], [], [], 75)[0]:
+            os.kill(pid, signal.SIGTERM)
+            os.waitpid(pid, 0)
+            raise ValueError('Browser editor did not become ready; see browser-editor.log')
+        url = os.read(read_fd, 4096).decode().strip()
+        if not url.startswith(('http://', 'https://')):
+            os.waitpid(pid, 0)
+            raise ValueError('Browser editor failed to start; see ' + str(state / 'browser-editor.log'))
+        show_url(url, open_tab)
+    finally:
+        os.close(read_fd)

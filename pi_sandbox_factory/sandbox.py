@@ -762,6 +762,8 @@ def create(args, state):
     (state / 'allowlist.txt').write_text(policy_text)
     (state / 'squid.conf').write_text(network_policy(config, rules))
     write_attach(config, state)
+    from . import editor_settings
+    editor_settings.save(state, {'mode': getattr(args, 'editor', None) or editor_settings.default_mode(engine)})
     print(f'Created {state}\nProfile: {profile["name"]}. Network: {mode}; {len(rules)} hostname/port rules. Run build, then up.')
 
 
@@ -912,6 +914,22 @@ def configure_models(config, preview=False):
     initialize_models(config, preview=preview)
 
 
+def open_selected(config, state, mode=None):
+    from . import editor_settings, browser_editor
+    mode = mode or editor_settings.load(state)['mode']
+    if mode == 'browser':
+        browser_editor.open_browser_editor(config, state, background=True)
+    elif mode == 'pi':
+        up(config, state)
+        if config.get('local_model_ports') or config.get('model_providers'):
+            initialize_models(config)
+        tty = ['-it'] if sys.stdin.isatty() else ['-i']
+        run([config['engine'], 'exec', '--workdir', folders.container_cwd(config),
+             *tty, names(config)[0], 'pi'])
+    else:
+        open_editor(config, state)
+
+
 def open_editor(config, state):
     from .browser_editor import active
     if (state / 'browser-editor.enabled').exists():
@@ -1036,7 +1054,8 @@ def main():
     new.add_argument('--options-file', help='JSON agent, skill and MCP settings')
     new.add_argument('--start', action='store_true', help='Build images and start after creation')
     new.add_argument('--local-model-ports', help='Host-loopback model ports, e.g. 8000 or 8000-8003; rootless Podman only')
-    new.add_argument('--open', action='store_true', help='Open VS Code after startup; requires --start')
+    new.add_argument('--editor', choices=['browser', 'pi', 'desktop'], help='Client to open (default: browser on supported hosts)')
+    new.add_argument('--open', action='store_true', help='Open the selected editor after startup; requires --start')
     descriptions = {
         'browser-editor': 'Open the browser editor prototype (rootless Podman, x86_64)',
         'update': 'Validate, build and apply saved settings by recreating containers',
@@ -1049,6 +1068,11 @@ def main():
         cmd.add_argument('name')
         if command == 'browser-editor':
             cmd.add_argument('--archive', help='Use a downloaded copy of the pinned code-server archive')
+            cmd.add_argument('--background', action='store_true', help='Keep the editor running after this command exits')
+            cmd.add_argument('--no-open', action='store_true', help='Print the address without opening a browser tab')
+            cmd.add_argument('--stop', action='store_true', help='Stop only the browser editor')
+        if command == 'open':
+            cmd.add_argument('--editor', choices=['browser', 'pi', 'desktop'], help='Open with a different client this time')
         if command == 'ssh-import-key':
             cmd.add_argument('--key-file', required=True)
         if command == 'advisor-login':
@@ -1123,7 +1147,7 @@ def main():
             build(config)
             up(config, state)
             if args.open:
-                open_editor(config, state)
+                open_selected(config, state)
             elif config.get('local_model_ports') or config.get('model_providers'):
                 initialize_models(config)
         return
@@ -1170,10 +1194,13 @@ def main():
         down(config, remove=True)
         up(config, state)
     elif args.command == 'browser-editor':
-        from .browser_editor import open_browser_editor
-        open_browser_editor(config, state, args.archive)
+        from . import browser_editor
+        if args.stop:
+            browser_editor.stop(state)
+        else:
+            browser_editor.open_browser_editor(config, state, args.archive, args.background, not args.no_open)
     elif args.command == 'open':
-        open_editor(config, state)
+        open_selected(config, state, args.editor)
     elif args.command == 'configure':
         config['state_path'] = str(state)
         if 'model_providers' not in config:

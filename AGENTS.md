@@ -14,7 +14,8 @@ Implementation and shipped assets live in `pi_sandbox_factory/`:
 - `communications.py` and `communications_ui.py`: optional channel tools and private credential configuration.
 - `web_access.py`: search modes, provider settings and reusable private keys; `network_groups.py`: trusted category updates and gateway rules.
 - `updates.py`: GitHub tags, installed version and pipx upgrade detection.
-- `browser_editor.py` and `containers/editor/launch.py`: opt-in code-server, loopback relay and process supervision.
+- `editor_settings.py` and `editor_ui.py`: client choice, private connection settings and shared controls.
+- `browser_editor.py` and `containers/editor/launch.py`: code-server, browser connections and process supervision.
 - `browser_viewer.py`: authenticated loopback viewer and container-bound lifetime.
 - `registry.py`: Git/local packages, revisions and installation.
 - `model_providers.py` and `providers/`: provider image layer and container runner.
@@ -84,6 +85,9 @@ extension changes, not just mocked APIs. Never restart a user's sandbox to test.
   tests complement visual inspection; neither replaces the other.
 
 ## Changes and docs
+
+During pre-release development, use the current configuration format and defaults.
+Do not add migrations or legacy fallbacks for disposable local test sandboxes.
 
 Run the relevant suites in `TESTING.md`. Extension implementation and unit tests
 belong in the extension repository; this project pins and integrates them.

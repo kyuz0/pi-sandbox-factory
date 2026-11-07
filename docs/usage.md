@@ -1,8 +1,8 @@
 # Usage
 
-Run Pi in your terminal or through Pendant in a dedicated VS Code window. Each sandbox has its own workspace selection, private home, model configuration and editor state.
+Run Pi through Pendant in the browser editor, in your terminal, or in host VS Code. Each sandbox has its own workspace selection, private home, model configuration and editor state.
 
-Requirements: Linux, Python 3.10+, rootless Podman or Docker. Desktop VS Code with `code` on PATH is required only for the editor interface. Host-loopback model access currently requires rootless Podman. Build steps download application dependencies; model servers and model files are managed separately.
+Requirements: Linux, Python 3.10+, rootless Podman or Docker. The browser editor requires x86_64 and rootless Podman. Host VS Code requires `code` on PATH. Host-loopback model access currently requires rootless Podman. Build steps download application dependencies; model servers and model files are managed separately.
 
 Install and update with [pipx](../README.md#install). Run `pi-sandbox-factory`
 to open the manager. The version appears beside the title; `--version` prints it
@@ -22,15 +22,21 @@ Model and advisor logins, SSH credentials, browser sessions and conversations
 start fresh. Environment files and Pi seed directories must be selected again.
 The new sandbox keeps independent copies of its packages.
 
-Use **Open in VS Code** or **Open Pi CLI** for the selected sandbox. VS Code is
-the default; for terminal-only use, clear **Open VS Code after creation** during
-setup. **Open Pi CLI** starts the sandbox if needed and opens Pi in the current
-terminal. Exit Pi to return to the manager.
+**Open in browser** is the default on supported hosts. The editor opens locally
+without a password. During creation, expand **Editor** to choose Pi CLI or
+VS Code on host; clear **Open selected editor after creation** to launch later.
+Use **Settings → Editor** to change the launch choice, address, port or password.
 
-Both can run at once: open VS Code, return to the manager and choose **Open Pi
-CLI**, or run `pi-sandbox-factory pi NAME` in another terminal. They share the
-workspace, mounts and model configuration; each starts its own conversation.
-Both use the starting folder configured under **Settings → Folders**.
+**Open with…** opens another client without changing the default. Pi CLI runs in
+the current terminal; exit Pi to return to the manager. You can use it alongside
+the browser editor. Both share files and model settings, with separate conversations,
+and start in the folder configured under **Settings → Folders**.
+
+The browser editor continues running when the manager closes. **Actions → Stop
+browser editor** stops it and its terminal/agent processes. Opening it again
+reuses its address and saved conversations. Use a separate sandbox for host VS Code
+after browser-editor use to preserve the extension isolation boundary.
+[Browser editor setup and access](browser-editor.md).
 
 Use **Settings** for configuration and **Actions** for start/stop, shell, logs,
 rebuild and deletion. Press **D** on the home screen to configure defaults for
@@ -83,7 +89,7 @@ add each filesystem as its own folder if needed.
 
 You can start your inference server before or after creating the sandbox. During creation or in Settings, enable host-local models and enter its ports, such as `8000` or `8000-8002`. The launcher adds those exact destinations to the restricted gateway policy. The development container keeps its isolated network; only the gateway maps `local-model.internal` to host loopback.
 
-The manager initializes the model catalogue before opening VS Code. If the server is offline, the editor still opens with **Model not connected**. Start the server, then choose **Settings → Models → Refresh** or run `pi-sandbox-factory configure NAME`.
+The manager initializes the model catalogue before opening the selected editor. If the server is offline, the editor still opens with **Model not connected**. Start the server, then choose **Settings → Models → Refresh** or run `pi-sandbox-factory configure NAME`.
 
 For later model changes within an open Pi or Pendant session:
 
@@ -168,7 +174,7 @@ host loopback and requires a session-specific link. Keep that link private: it
 allows browser control and appears in the conversation. Website traffic still
 passes through the sandbox’s configured network policy.
 
-If a link stops loading, use **Open in VS Code** in the launcher again, then ask
+If a link stops loading, use **Open in browser** in the launcher again, then ask
 for a fresh link. This repairs the viewer without restarting the browser. Stopping
 the sandbox ends its running browser sessions.
 

@@ -29,7 +29,7 @@ for item in Path('/proc').glob('[0-9]*/cmdline'):
     except (OSError, PermissionError):
         continue
     if any(b'/.vscode-server/' in arg or b'/.vscode-server-insiders/' in arg for arg in args):
-        raise SystemExit('A desktop VS Code server is running. Use a fresh sandbox for the browser editor.')
+        raise SystemExit('Desktop VS Code is still connected. Close it, or stop and start the sandbox, then open the browser editor.')
 
 extensions = root / 'extensions'
 extensions.mkdir(exist_ok=True)
@@ -79,7 +79,7 @@ with sqlite3.connect(trust_store) as database:
     database.execute('INSERT OR REPLACE INTO ItemTable (key, value) VALUES (?, ?)', (key, json.dumps(trust)))
 
 config = root / 'config.yaml'
-config.write_text(json.dumps({'hashed-password': settings['password_hash']}) + '\n')
+config.write_text(json.dumps({'hashed-password': settings['password_hash']} if settings['password_hash'] else {}) + '\n')
 config.chmod(0o600)
 sock = root / 'editor.sock'
 sock.unlink(missing_ok=True)
@@ -87,7 +87,7 @@ env = dict(os.environ)
 for key in ('PASSWORD', 'HASHED_PASSWORD', 'GITHUB_TOKEN', 'VSCODE_IPC_HOOK_CLI'):
     env.pop(key, None)
 command = [settings['binary'], '--config', str(config), '--socket', str(sock),
-           '--socket-mode', '600', '--auth', 'password', '--user-data-dir', str(root / 'data'),
+           '--socket-mode', '600', '--auth', 'password' if settings['password_hash'] else 'none', '--user-data-dir', str(root / 'data'),
            '--extensions-dir', str(extensions), '--disable-telemetry', '--disable-update-check',
            '--disable-proxy', '--disable-file-downloads', '--disable-file-uploads',
            '--disable-file-cache', '--enable-remote-storage', settings['cwd']]

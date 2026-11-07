@@ -185,6 +185,23 @@ class TUILayoutTests(unittest.TestCase):
                 await self.ready(app, pilot)
                 await pilot.press('q')
 
+    async def test_create_with_pi_opens_the_terminal_after_success(self):
+        app = self.app()
+        async with app.run_test(size=(80, 24)) as pilot:
+            await self.ready(app, pilot)
+            await app.push_screen(NewSandbox())
+            draft = self.draft()
+            draft['editor']['mode'] = 'pi'
+            draft['open_editor'] = True
+            await app.push_screen(SettingsForm(draft))
+            with patch.object(app, 'interactive') as launch:
+                app.screen.submit(draft, {})
+                await self.ready(app, pilot)
+                launch.assert_called_once_with('pi', 'demo')
+            self.assertEqual([call[0] for call in app.service.calls], ['create'])
+            self.assertTrue(app.screen.finished)
+            self.assertFalse(app.screen.failed)
+
     async def test_editor_choice_stays_with_final_action(self):
         for size in ((80, 24), (120, 40)):
             for editing in (False, True):
@@ -231,7 +248,7 @@ class TUILayoutTests(unittest.TestCase):
             self.assertTrue(app.screen.finished)
             self.assertFalse(app.screen.failed)
             output = '\n'.join(line.text for line in app.screen.query_one(RichLog).lines)
-            self.assertIn('Sandbox created, but VS Code could not open', output)
+            self.assertIn('Sandbox created, but the editor could not open', output)
             self.assertIn('try again', output)
             await pilot.press('escape')
             await self.ready(app, pilot)

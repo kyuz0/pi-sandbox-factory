@@ -1,70 +1,83 @@
-# Browser editor prototype
+# Browser editor
 
-Run Pendant in a browser with the editor server and its Node extensions inside
-the sandbox. This avoids attaching a host VS Code process to the workspace.
-The prototype is CLI-only; the normal VS Code and Pi CLI workflows are unchanged.
+The browser editor runs Pendant and its Node extensions inside the sandbox.
+It is the default on x86_64 Linux with rootless Podman. Pi CLI and host VS Code
+remain available through **Open with…**.
 
-Requires Linux x86_64 and rootless Podman. The first launch downloads a pinned,
-checksum-verified code-server release (226 MiB). It uses the existing development
-container and gateway, with no additional container.
-
-## Try it
-
-Install the prototype separately from your usual installation:
+## Try the prototype branch
 
 ```sh
 git clone --branch codex/browser-editor-prototype \
   https://github.com/kyuz0/pi-sandbox-factory.git pi-browser-editor
 cd pi-browser-editor
 python3 -m venv .venv
-.venv/bin/pip install -e .
-mkdir -p ~/pi-browser-test
-.venv/bin/pi-sandbox-factory --state-dir ~/.local/state/pi-browser-editor \
-  create browser-test \
-  --workspace ~/pi-browser-test --local-model-ports 8000 \
-  --allow-domain local-model.internal:8000 --start
-.venv/bin/pi-sandbox-factory --state-dir ~/.local/state/pi-browser-editor \
-  browser-editor browser-test
+.venv/bin/python -m pip install -e .
+.venv/bin/pi-sandbox-factory --state-dir ~/.local/state/pi-browser-editor
 ```
 
-These commands use separate prototype state. Manage this sandbox through the
-branch installation; do not attach it through your regular VS Code launcher.
+For a checkout of this branch you already have, run `git pull` and repeat the
+package-install command before launching the manager.
 
-Start your model server on port 8000 before opening Pendant. Other ports and
-providers use the [usual model configuration](usage.md).
+## Open a sandbox
 
-1. Open the printed URL in a separate browser profile and enter the printed
-   password. Keep the launcher terminal open.
-2. The selected workspace opens trusted. The editor starts in dark mode;
-   Pendant belongs in the secondary sidebar on the right. Select its tab if needed.
-3. In Pendant, select your model and ask: “Create a small HTML page in this folder
-   with a button that counts clicks.” Confirm that the files appear in Explorer
-   and in `~/pi-browser-test` on the host.
-4. Use **Terminal → New Terminal**. Run `pwd`; it should show `/workspace`.
-   Configured additional folders are available under `/mnt/<name>`.
-5. Press Ctrl+C in the launcher terminal. The browser editor and its terminals
-   stop, including active Pendant runs and scheduled prompts; the sandbox stays running. Run the `browser-editor` command again
-   and sign in at the new URL. Open Pendant and resume the saved conversation.
+Run `pi-sandbox-factory`, choose **New sandbox**, select your project folder and
+model connection, then **Create and start**. The browser opens automatically unless
+you clear **Open selected editor after creation**. The first launch downloads a
+pinned code-server release (226 MiB) into the existing development container.
 
-Each launch creates a new browser origin and password. The launcher trusts
-`/workspace` and its subfolders at that address automatically. Editor settings and
-Pi conversations remain in the sandbox's private home. Your chosen theme and sidebar arrangement are preserved.
-A sandbox opened this way is marked for browser use: the Factory refuses desktop
-VS Code attachment afterward. Use a separate sandbox for the desktop editor so
-extensions left in container state cannot regain the desktop client API bridge.
-A running desktop VS Code server also prevents browser-editor startup.
+The selected workspace opens trusted, in dark mode, with Pendant in the right
+secondary sidebar. Choose its tab, select your model and start a conversation.
+Files in `/workspace` are your project files; additional mounts appear under `/mnt`.
 
-To stop the test sandbox:
+Closing the tab or manager leaves the editor running. **Open in browser** returns
+to it. **Actions → Stop browser editor** stops the editor and its terminals,
+active Pendant runs and scheduled prompts. Pi CLI sessions remain independent.
+Stopping the sandbox stops both clients.
+
+## Connection settings
+
+During creation, expand **Editor → Browser connection**. For a saved sandbox,
+use **Settings → Editor → Browser connection**.
+
+- **Listen address:** empty chooses a separate local-only address for each sandbox.
+  Enter a specific IP address and enable a password to use a custom address.
+- **Port:** empty chooses an available port and remembers it. Enter a port to fix it.
+- **Require a password:** off by default. Enter a password or choose **Generate**;
+  **Show password** lets you copy it. Only its hash is saved.
+
+Changing settings stops a running editor. Use **Open** to launch it again.
+Creating from another sandbox copies the editor choice; connection addresses and
+passwords start fresh.
+
+To connect from another computer, enter the host's interface IP, enable a password
+and supply an HTTPS certificate and private key. These fields appear when the
+address is non-local. The certificate must be trusted by the connecting browser
+and cover that IP. Pendant's webviews require a secure browser context. The key
+stays on the host and must have permissions `0600`; encrypted keys are unsupported.
+
+## Choose a client
+
+**Settings → Editor** changes the default client. **Open with…** selects a client
+for one launch. Use Pi CLI alongside either editor.
+
+A sandbox used in the browser cannot subsequently attach to host VS Code: that
+would give its installed extensions a bridge back to the host client. Create a
+separate sandbox for host VS Code. A running desktop VS Code server also prevents
+browser-editor startup.
+
+## Command line
 
 ```sh
-.venv/bin/pi-sandbox-factory --state-dir ~/.local/state/pi-browser-editor down browser-test
+pi-sandbox-factory open NAME
+pi-sandbox-factory open NAME --editor pi
+pi-sandbox-factory open NAME --editor desktop
+pi-sandbox-factory browser-editor NAME --background
+pi-sandbox-factory browser-editor NAME --stop
 ```
 
-To remove its containers and private state, keeping your project files:
-
-```sh
-.venv/bin/pi-sandbox-factory --state-dir ~/.local/state/pi-browser-editor delete browser-test
-```
+`open` uses the saved client. The `browser-editor` command without `--background`
+runs in the foreground; Ctrl+C stops it. `--no-open` prints the address without
+opening a tab. Both modes use the same saved connection settings.
 
 ## Access boundaries
 
@@ -75,9 +88,9 @@ Do not mount a directory containing secrets that extensions should not read.
 Browser extensions run in the browser's web worker environment. They have no
 unrestricted host filesystem or local terminal. Explicit browser file grants,
 clipboard permissions and uploads can expose data; use a separate browser profile
-and grant only what you intend to share. The launcher binds to loopback and checks
-Host and Origin; code-server authenticates HTTP and WebSocket sessions. Other
-local users can reach the listener, so keep its password private.
+and grant only what you intend to share. The launcher checks Host and Origin on
+HTTP and WebSocket requests. Local access is passwordless by default; enable a password on a shared computer. With a password
+enabled, code-server authenticates both HTTP and WebSocket sessions.
 
 The container network policy applies to backend traffic. Browser-side requests use
 the host browser's network, including browser-side extension gallery requests, so this is **not a browser network allowlist**. Container

@@ -8,7 +8,7 @@ version = "2026.11.6.195734"
 description = "Manage isolated Pi and Pendant workspaces with installable profiles and model providers"
 readme = "README.md"
 requires-python = ">=3.10"
-dependencies = ["textual==8.1.1", "pyfiglet>=1.0.2,<2", "packaging>=24"]
+dependencies = ["textual==8.1.1", "pyfiglet>=1.0.2,<2", "packaging>=24", "argon2-cffi>=23.1,<26"]
 
 [project.urls]
 Homepage = "https://github.com/kyuz0/pi-sandbox-factory"

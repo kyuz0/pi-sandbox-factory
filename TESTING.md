@@ -14,8 +14,10 @@ subfolder exports, provider selection and terminal interactions, including 80×2
 cover the adapter contract, preview, credential handling and refresh locking.
 Creation tests cover **Create from existing…**, optional search keys, independent
 package snapshots after source deletion, and unchanged source settings.
-Launcher tests cover the visible Pi CLI button, terminal handoff and return,
-VS Code as the default action, startup failure and the configured working folder.
+Launcher tests cover Open with, terminal handoff and return, browser-editor defaults,
+startup failure and the configured working folder. Editor tests cover password
+generation, masked saved credentials, connection validation and settings changes
+without container recreation.
 These tests use fixtures and no account credentials.
 
 ## Package installation
@@ -241,11 +243,11 @@ and credentials surviving disable/re-enable.
 Follow [the browser editor guide](docs/browser-editor.md) for the real-model smoke
 check. Confirm dark mode, Explorer on the left, Pendant in the right secondary
 sidebar, a shell tool writing a workspace file, and conversation persistence after
-restarting the launcher. Open a terminal before Ctrl+C and verify that its process
-also exits. Stopping the container must close the loopback listener. Neither action
+restarting the editor. Use **Actions → Stop browser editor** and verify that its
+terminal processes also exit. Stopping the container must close the loopback listener. Neither action
 should stop unrelated sandboxes or Pi CLI sessions.
 
-On a fresh launch and after restarting at a new address, `/workspace` must open
+On a fresh launch and after restarting, `/workspace` must open
 without a trust prompt or Restricted Mode. Check that Manage Workspace Trust says
 “You trust this folder”. Opening `/tmp` instead must still request trust.
 
@@ -267,7 +269,7 @@ Leave the launcher running. In another terminal at this checkout:
   --root /tmp/pi-browser-boundary-check --container pi-sandbox-factory-browser-check
 ```
 
-Open the printed URL, sign in and reload the page.
+Open the printed URL and reload the page.
 Both probe extensions write JSON results into the workspace. Then run:
 
 ```sh
@@ -281,9 +283,22 @@ the fake files with real secrets or grant the browser access to the host-private
 
 The unit suite checks relay headers, origin rejection, fixed container commands,
 stream forwarding, archive integrity and the desktop/browser session lock.
-For changes to authentication, also exercise code-server over HTTP: anonymous page
-redirect, anonymous WebSocket rejection, authenticated editor load, foreign Origin
-rejection with a valid cookie, disabled `/proxy/` routes and failed-login rate limiting.
+For authentication and lifecycle changes, run against the disposable sandbox:
+
+```sh
+.venv/bin/python tests/browser_editor_lifecycle.py --state-dir "$check_root/state" --name browser-check
+```
+
+It checks passwordless startup, reopening, address reuse, password login,
+anonymous WebSocket rejection, foreign origins, HTTPS cookies and occupied ports.
+It restores the saved editor settings and leaves the editor stopped.
+
+In the TUI, check **Editor** during creation and **Settings → Editor** afterward.
+Generate a password, save, open the browser and sign in. Close the manager and
+confirm the editor remains usable. Reopen through **Open**; use **Open with… → Pi
+CLI** alongside it. Confirm that selecting Pi CLI during creation opens it in the
+terminal and returns to the manager when Pi exits. For remote HTTPS, use a
+certificate trusted by the connecting browser and verify Pendant loads there too.
 
 Delete the disposable sandbox after stopping the launcher:
 
