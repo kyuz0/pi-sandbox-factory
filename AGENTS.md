@@ -115,6 +115,9 @@ Conversation recall defaults to Lite in both clients; keep its mode tied to the
 saved sandbox options. Its dependency lock lives in `containers/dev/compaction-recall/`.
 
 Write short, direct documentation explaining supported behavior and actual setup.
+Each sentence should explain an action, mechanism, contract or actionable limitation.
+Remove generic prerequisites, repeated explanations and statements that merely
+restate a control’s label.
 Keep private names, credentials, conversation history and investigation logs out of
 this public project. Add an example or test when it explains a contract better
 than another paragraph.

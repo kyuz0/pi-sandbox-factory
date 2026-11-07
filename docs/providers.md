@@ -2,11 +2,18 @@
 
 A provider connects Pi to a model service and configures the models it can use.
 You choose providers independently of the profile, so the same working environment
-can use local models or a hosted service. The built-in `local` provider discovers
-models on selected host ports using Pi Local Model Manager.
+can use local models or a hosted service.
 
 Provider packages can also include a Pi extension to refresh the model list during
 a conversation.
+
+## Local inference servers
+
+Enable **Connect to models on this host** and set **Host model ports** during
+creation or in **Settings → Configuration**. Factory’s included
+[Pi Local Model Manager](https://github.com/kyuz0/pi-local-model-manager) extension
+discovers models and configures their capabilities for Pi and Pendant.
+See [local model setup](usage.md#local-models) for refresh commands and output limits.
 
 ## Hosted services
 
@@ -108,7 +115,7 @@ with the same lock. Provider extensions load inside Pi/Pendant, never on the hos
 
 The example configures one text-only model. Replace its explicit context/output
 limits, input capabilities and API compatibility with your service's documented
-values. A model name alone does not establish thinking or image support.
+values.
 
 Run `node --test tests/test_provider_runtime.mjs` to exercise the example contract,
 then test your adapter against a fixture service and in a disposable sandbox.
@@ -129,7 +136,7 @@ The [example provider](../examples/provider/provider.json) declares:
 }
 ```
 
-Replace the origin with your service. Paths are exact; declare required query values
+Paths are exact; declare required query values
 as `"query": {"model_type": ["ALL_TEXT"]}`. Header authentication uses
 `{"type":"header","header":"api-key"}` or `x-api-key`. The base path tells the
 adapter where the API begins; it does not grant additional routes. Factory checks
@@ -137,5 +144,4 @@ all routes before starting or replacing the companion.
 
 An in-session extension must reuse the saved proxy endpoint and placeholder.
 Credential replacement belongs in Factory's **Settings → Models → Configure
-credentials**, not an agent-side key prompt. The runnable example preserves unrelated
-models and checks the service catalogue before saving.
+credentials**, rather than asking for a key inside Pi.

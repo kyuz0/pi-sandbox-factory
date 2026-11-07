@@ -43,7 +43,8 @@ Choose **New sandbox**, select your project folder and enable the port used by
 your model server, usually `8000`. Create it, then choose **Open in browser**.
 **Settings → Editor** selects the client and optional address, port and password.
 Start the model server separately. If it starts later, use **Settings → Models →
-Refresh**. For OpenRouter, Together, Azure/Foundry or AWS Bedrock, use
+Refresh**. [Local model setup](docs/usage.md#local-models) uses the included
+Pi Local Model Manager extension. For OpenRouter, Together, Azure/Foundry or AWS Bedrock, use
 **Model services and providers** during creation or **Settings → Models** afterward.
 Factory keeps these API credentials in a separate container, outside Pi and editor
 extensions. [Hosted model setup](docs/hosted-models.md). [CLI and everyday use](docs/usage.md).

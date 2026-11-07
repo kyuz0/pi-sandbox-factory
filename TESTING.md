@@ -102,9 +102,8 @@ restarting containers, stopped-service recovery and deletion of credential volum
 
 For live verification, connect an account in **Settings → Models**, choose a model
 and use **Test selected model**. Repeat with the supported authentication methods;
-AWS IAM tests must include a session token when using temporary credentials. This
-sends a small billable request. Fixture results do not establish account permissions
-or real provider acceptance of a request.
+Include a temporary AWS session in IAM checks to exercise session-token signing
+and expired-session recovery.
 
 ## Runtime updates
 

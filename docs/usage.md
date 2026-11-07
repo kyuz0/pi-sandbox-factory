@@ -98,11 +98,25 @@ add each filesystem as its own folder if needed.
 
 ## Local models
 
-You can start your inference server before or after creating the sandbox. During creation or in Settings, enable host-local models and enter its ports, such as `8000` or `8000-8002`. The launcher adds those exact destinations to the restricted gateway policy. The development container keeps its isolated network; only the gateway maps `local-model.internal` to host loopback.
+Factory includes [Pi Local Model Manager](https://github.com/kyuz0/pi-local-model-manager).
+It discovers running inference servers, reads their context limits and image support,
+and configures thinking controls for supported engines. Pi and Pendant share the
+resulting model catalogue.
 
-The manager initializes the model catalogue before opening the selected editor. If the server is offline, the editor still opens with **Model not connected**. Start the server, then choose **Settings → Models → Refresh** or run `pi-sandbox-factory configure NAME`.
+1. Start your inference server on the host.
+2. During sandbox creation, or under **Settings → Configuration**, enable
+   **Connect to models on this host (rootless Podman)**. Set **Host model ports**
+   to the server’s ports, for example `8000`, `8000,8080` or `8000-8002`.
+3. Create or update the sandbox, then choose a model in Pendant’s model picker
+   or with `/model` in Pi CLI.
 
-For later model changes within an open Pi or Pendant session:
+Factory allows the selected ports through the gateway and configures discovery
+against `local-model.internal`. On Windows, the host is WSL; see
+[platform setup](platforms.md) for Windows-hosted servers.
+
+Discovery runs before the editor opens. If the server starts later or you load a
+different model, choose **Settings → Models**, select **Local inference servers**,
+then **Refresh**. From an open Pi or Pendant chat, use:
 
 ```text
 /local-models preview
@@ -110,11 +124,14 @@ For later model changes within an open Pi or Pendant session:
 /model
 ```
 
-New model entries use a 32,768-token output allowance, capped by the active context and any advertised server output limit. Thinking uses part of this allowance. A saved `maxTokens` value in the sandbox’s private `local-pi-models.json` overrides the default. Refresh the catalogue after changing these settings.
+`preview` shows the proposed catalogue changes; `refresh` applies them. From the
+host terminal, `pi-sandbox-factory configure NAME --provider local` also refreshes
+the catalogue; reopen Pi/Pendant afterward.
 
-[Pi Local Model Manager](https://github.com/kyuz0/pi-local-model-manager) provides discovery and thinking controls. Preview shows proposed changes; refresh writes them and updates Pi's model list.
-
-Other remote destinations may be added explicitly in Settings. Disabling host-local access removes its generated allowlist entries. Model credentials belong in private configuration, not source files or images.
+New model entries use a 32,768-token output allowance, capped by the active context
+and any advertised server output limit. Thinking uses part of this allowance.
+A saved `maxTokens` value in the sandbox’s private `local-pi-models.json` overrides
+the default. Refresh after changing it.
 
 ## CLI and storage
 
