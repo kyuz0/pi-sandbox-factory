@@ -4,7 +4,13 @@
 
 The terminal manager runs on the host and manages rootless Podman containers. VS Code runs on the host; its Dev Containers attachment runs Pendant and Pi against the development container. The selected host folder is mounted at `/workspace`, so edits are real changes to that folder.
 
-Each sandbox has a separate persistent home volume for Pi configuration and sessions. Editor state is kept separately on the host. Stopping or recreating containers preserves that saved state. Deleting a sandbox removes its private home and editor state, but keeps the selected workspace and shared images.
+Desktop VS Code and its extensions remain trusted host software. A remote extension
+can use VS Code APIs that request client-side resources; Dev Containers alone is
+not isolation from malicious editor extensions. The opt-in [browser editor](browser-editor.md)
+runs the backend in the container and uses the browser filesystem permission boundary
+for client-side access.
+
+Each sandbox has a separate persistent home volume for Pi configuration and sessions. Desktop editor state is kept separately on the host. Stopping or recreating containers preserves that saved state. Deleting a sandbox removes its private home and editor state, but keeps the selected workspace and shared images.
 
 ## Restricted networking
 

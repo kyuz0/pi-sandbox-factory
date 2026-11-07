@@ -14,6 +14,7 @@ Implementation and shipped assets live in `pi_sandbox_factory/`:
 - `communications.py` and `communications_ui.py`: optional channel tools and private credential configuration.
 - `web_access.py`: search modes, provider settings and reusable private keys; `network_groups.py`: trusted category updates and gateway rules.
 - `updates.py`: GitHub tags, installed version and pipx upgrade detection.
+- `browser_editor.py` and `containers/editor/launch.py`: opt-in code-server, loopback relay and process supervision.
 - `browser_viewer.py`: authenticated loopback viewer and container-bound lifetime.
 - `registry.py`: Git/local packages, revisions and installation.
 - `model_providers.py` and `providers/`: provider image layer and container runner.

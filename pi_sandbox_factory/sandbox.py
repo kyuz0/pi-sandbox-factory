@@ -913,6 +913,11 @@ def configure_models(config, preview=False):
 
 
 def open_editor(config, state):
+    from .browser_editor import active
+    if (state / 'browser-editor.enabled').exists():
+        raise ValueError('This sandbox uses the browser editor. Create a separate sandbox for desktop VS Code.')
+    if active(state):
+        raise ValueError("Stop the browser editor before opening desktop VS Code for this sandbox")
     dev = names(config)[0]
     current = inspect(config, dev)
     if not current or not current['State']['Running']:
@@ -1033,14 +1038,17 @@ def main():
     new.add_argument('--local-model-ports', help='Host-loopback model ports, e.g. 8000 or 8000-8003; rootless Podman only')
     new.add_argument('--open', action='store_true', help='Open VS Code after startup; requires --start')
     descriptions = {
+        'browser-editor': 'Open the browser editor prototype (rootless Podman, x86_64)',
         'update': 'Validate, build and apply saved settings by recreating containers',
         'up': 'Resume containers and recover stale runtime or gateway state',
         'delete': 'Remove both containers, private volumes, and saved state; keep the host workspace',
         'configure': 'Check or refresh enabled providers',
     }
-    for command in ('update', 'build', 'up', 'down', 'delete', 'recreate', 'open', 'configure', 'shell', 'pi', 'exec', 'check', 'policy', 'network', 'web-key', 'communication-key', 'advisor-login', 'advisor-check', 'ssh-import-key', 'ssh-unlock'):
+    for command in ('update', 'build', 'up', 'down', 'delete', 'recreate', 'open', 'configure', 'shell', 'pi', 'exec', 'check', 'policy', 'network', 'web-key', 'communication-key', 'advisor-login', 'advisor-check', 'ssh-import-key', 'ssh-unlock', 'browser-editor'):
         cmd = sub.add_parser(command, **({'help': descriptions[command]} if command in descriptions else {}))
         cmd.add_argument('name')
+        if command == 'browser-editor':
+            cmd.add_argument('--archive', help='Use a downloaded copy of the pinned code-server archive')
         if command == 'ssh-import-key':
             cmd.add_argument('--key-file', required=True)
         if command == 'advisor-login':
@@ -1161,6 +1169,9 @@ def main():
         (state / 'config.json').write_text(json.dumps(config, indent=2) + '\n')
         down(config, remove=True)
         up(config, state)
+    elif args.command == 'browser-editor':
+        from .browser_editor import open_browser_editor
+        open_browser_editor(config, state, args.archive)
     elif args.command == 'open':
         open_editor(config, state)
     elif args.command == 'configure':

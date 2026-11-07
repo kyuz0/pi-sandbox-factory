@@ -1,0 +1,1 @@
+{"name":"browser-editor-probe","publisher":"sandbox-tests","version":"0.0.1","engines":{"vscode":"^1.109.0"},"extensionKind":["workspace"],"main":"./extension.cjs","activationEvents":["onStartupFinished"],"capabilities":{"untrustedWorkspaces":{"supported":true}}}

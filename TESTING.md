@@ -235,3 +235,53 @@ Run `tests/communications_lifecycle.py --state-dir PATH --name NAME` against the
 same disposable sandbox to check token-only updates without recreation, removal
 of a duplicate npm registration, disabled tools in Pendant, network-rule removal,
 and credentials surviving disable/re-enable.
+
+## Browser editor prototype
+
+Follow [the browser editor guide](docs/browser-editor.md) for the real-model smoke
+check. Confirm dark mode, Explorer on the left, Pendant in the right secondary
+sidebar, a shell tool writing a workspace file, and conversation persistence after
+restarting the launcher. Open a terminal before Ctrl+C and verify that its process
+also exits. Stopping the container must close the loopback listener. Neither action
+should stop unrelated sandboxes or Pi CLI sessions.
+
+For synthetic host-file probes, create a disposable sandbox without desktop VS Code:
+
+```sh
+check_root=/tmp/pi-browser-boundary-check
+.venv/bin/python tests/browser_editor_check.py prepare --root "$check_root"
+.venv/bin/pi-sandbox-factory --state-dir "$check_root/state" create browser-check \
+  --workspace "$check_root/workspace" --folders-file "$check_root/folders.json" --start
+.venv/bin/pi-sandbox-factory --state-dir "$check_root/state" browser-editor browser-check
+```
+
+Leave the launcher running. In another terminal at this checkout:
+
+```sh
+.venv/bin/python tests/browser_editor_check.py install \
+  --root /tmp/pi-browser-boundary-check --container pi-sandbox-factory-browser-check
+```
+
+Open the printed URL, sign in, trust the generated workspace and reload the page.
+Both probe extensions write JSON results into the workspace. Then run:
+
+```sh
+.venv/bin/python tests/browser_editor_check.py verify --root /tmp/pi-browser-boundary-check
+```
+
+The probes exercise container Node APIs and a browser-only extension worker against
+fake `.env` and SSH-key files outside the mounts. They also check workspace writes,
+read-only mount enforcement and absence of the host-terminal command. Never replace
+the fake files with real secrets or grant the browser access to the host-private folder.
+
+The unit suite checks relay headers, origin rejection, fixed container commands,
+stream forwarding, archive integrity and the desktop/browser session lock.
+For changes to authentication, also exercise code-server over HTTP: anonymous page
+redirect, anonymous WebSocket rejection, authenticated editor load, foreign Origin
+rejection with a valid cookie, disabled `/proxy/` routes and failed-login rate limiting.
+
+Delete the disposable sandbox after stopping the launcher:
+
+```sh
+.venv/bin/pi-sandbox-factory --state-dir /tmp/pi-browser-boundary-check/state delete browser-check
+```
