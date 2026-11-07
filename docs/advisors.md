@@ -38,7 +38,13 @@ Codex imports the ChatGPT sign-in from `$CODEX_HOME/auth.json` (default
 `$CLAUDE_CONFIG_DIR/.credentials.json` (default `~/.claude/.credentials.json`).
 Antigravity copies its Linux Secret Service entry; the host needs `secret-tool`
 and an unlocked keyring. Install `libsecret` on Fedora or `libsecret-tools` on Ubuntu
-if that command is missing. Keyring-only Codex logins require a separate advisor login.
+if that command is missing.
+
+On macOS, file-based Codex and Claude logins can be copied through the same paths.
+Claude normally stores its login in Keychain; importing that entry is not supported.
+Antigravity's macOS Keychain entry and keyring-only Codex logins also require a
+separate login through **Settings → Advisors → Sign in**. Use **Check advisors**
+after signing in.
 
 Only credentials are copied, not CLI settings, hooks or conversation history.
 The copy lives in the advisor’s private volume; the coding agent receives only

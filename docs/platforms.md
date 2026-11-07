@@ -51,29 +51,42 @@ and [Ubuntu’s installation guide](https://ubuntu.com/wsl/docs/latest/howto/ins
 
 ## macOS
 
-Install [Homebrew](https://brew.sh/) if needed, then:
+You need an Apple Silicon Mac with macOS 15 or newer, [Homebrew](https://docs.brew.sh/Installation),
+Podman 5.6 or newer, Git and pipx. Homebrew installs Python with pipx. Safari works
+with the browser editor; installing desktop VS Code is optional.
+
+The tested setup uses a 16 GB M1 Mac with four CPU cores and 8 GB RAM assigned to
+Podman Machine. This allocation is for the development containers; local model
+inference needs additional memory.
 
 ```sh
 brew install podman pipx git
-podman machine init --cpus 4 --memory 8192
+podman machine init --cpus 4 --memory 8192 --disk-size 60
 podman machine start
 pipx ensurepath
 pipx install git+https://github.com/kyuz0/pi-sandbox-factory.git
-pi-sandbox-factory
+mkdir -p ~/Projects
 ```
 
-Use Podman 5.6 or newer with a current machine image. Skip initialization if you
-already have a machine; select its rootless connection. Keep workspaces, extra
-folders and sandbox state under your macOS home, which Podman shares by default.
-The manager checks folder visibility, write access and read-only enforcement
-before starting the sandbox. It never changes the ownership of your project files.
-See [Podman installation](https://podman.io/docs/installation) and
-[machine volumes](https://docs.podman.io/en/stable/markdown/podman-machine-init.1.html).
+Open a new Terminal window and run `pi-sandbox-factory`. Choose **New sandbox**,
+a project folder under `~/Projects`, then **Create and start**. The browser editor
+opens automatically. Pi and Pendant are installed inside the container.
 
-Host-local models run on your Mac; the gateway reaches them through Podman’s
-host networking service. Apple Silicon uses native ARM64 containers and code-server.
-Agent browsing uses Debian Chromium on ARM64 and BetterChromium on amd64, through
-the same Pi browser tools and network gateway.
+If a Podman Machine already exists, skip `machine init`. Use its rootless
+connection. Keep workspaces, additional folders and sandbox state under your Mac
+home directory, which the default machine shares. See [Podman installation](https://podman.io/docs/installation)
+and [machine settings](https://docs.podman.io/en/stable/markdown/podman-machine-init.1.html).
+
+If a build tool watches files edited by Mac applications, enable its polling
+option. Changes are visible inside the container, but native file-watch events
+may not cross the VM share. See [Node's file-watching caveats](https://nodejs.org/api/fs.html#availability).
+
+After restarting your Mac, run `podman machine start` before opening the manager.
+To update Factory, run `pipx upgrade pi-sandbox-factory`.
+
+**Connect to models on this host** reaches model servers on the Mac. For
+OpenRouter or a custom endpoint, follow [model setup](providers.md#openrouter-and-other-built-in-services).
+Apple Silicon runs native ARM64 containers, including the editor and Chromium.
 
 ## Browser access and advisors
 

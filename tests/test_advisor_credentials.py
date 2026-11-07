@@ -46,6 +46,13 @@ class CredentialTests(unittest.TestCase):
         with patch.object(auth.subprocess, 'run', side_effect=FileNotFoundError):
             with self.assertRaisesRegex(ValueError, 'sign-in button'): auth.read_host('agy')
 
+    @patch.object(auth.host_platform, 'is_mac', return_value=True)
+    def test_mac_keychain_logins_offer_container_sign_in(self, _mac):
+        for provider in ('claude', 'agy'):
+            with self.subTest(provider=provider):
+                with self.assertRaisesRegex(ValueError, 'sign-in button'):
+                    auth.read_host(provider)
+
     def test_disabled_provider_cannot_read_host_credentials(self):
         self.config['advisors']['providers'] = []
         with patch.object(auth, 'read_host') as read:

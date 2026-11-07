@@ -18,7 +18,7 @@ args = parser.parse_args()
 
 with tempfile.TemporaryDirectory(prefix='advisor-import-') as temporary:
     state = Path(temporary)
-    config = dict(name=state.name, engine='podman', uid=os.getuid(), gid=os.getgid(),
+    config = dict(name=state.name, engine='podman', uid=1000, gid=1000,
                   advisors={'providers': list(credentials.LABELS)})
     worker = advisors.names(config)[0]
     def execute(command, **kwargs):
@@ -29,16 +29,31 @@ with tempfile.TemporaryDirectory(prefix='advisor-import-') as temporary:
         fixtures = {'codex': '{"tokens":{"access_token":"synthetic-codex"}}',
                     'claude': '{"claudeAiOauth":{"accessToken":"synthetic-claude"}}',
                     'agy': '{"token":"synthetic-antigravity"}'}
-        for provider, payload in fixtures.items():
-            with patch.object(credentials, 'read_host', return_value=payload):
+        for provider, variable, filename in [
+            ('codex', 'CODEX_HOME', 'auth.json'),
+            ('claude', 'CLAUDE_CONFIG_DIR', '.credentials.json'),
+        ]:
+            source = state / ('host-' + provider)
+            source.mkdir(mode=0o700)
+            (source / filename).write_text(fixtures[provider])
+            with patch.dict(os.environ, {variable: str(source)}):
                 credentials.import_from_host(config, state, provider)
+        if credentials.host_platform.is_mac():
+            try:
+                credentials.read_host('agy')
+            except ValueError as error:
+                assert 'sign-in button' in str(error)
+            else:
+                raise AssertionError('macOS Keychain import should direct users to sign-in')
+        with patch.object(credentials, 'read_host', return_value=fixtures['agy']):
+            credentials.import_from_host(config, state, 'agy')
         advisors.down(config)
         advisors.up(config, state)
         for provider, relative in [('codex','.codex/auth.json'), ('claude','.claude/.credentials.json')]:
             check = execute(['python3','-c',
                 'import pathlib,stat,sys; p=pathlib.Path(sys.argv[1]); assert stat.S_IMODE(p.stat().st_mode)==0o600; print(p.read_text(),end="")',
                 '/home/node/'+relative])
-            assert check.returncode == 0 and check.stdout == fixtures[provider], provider
+            assert check.returncode == 0 and json.loads(check.stdout) == json.loads(fixtures[provider]), provider
         keyring = execute(['secret-tool','lookup','service','gemini','username','antigravity'])
         assert keyring.returncode == 0 and keyring.stdout.strip() == fixtures['agy']
         data = core.inspect(config, worker)

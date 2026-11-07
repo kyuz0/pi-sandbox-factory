@@ -1,4 +1,4 @@
-import sys,json,os,tempfile,subprocess
+import sys,json,tempfile,subprocess
 from pathlib import Path
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 import argparse
@@ -7,7 +7,7 @@ parser.add_argument('--dev-image', required=True, help='A built Pi Sandbox Facto
 args=parser.parse_args()
 from pi_sandbox_factory import sandbox as core, sandbox_advisors as a
 root=Path(tempfile.mkdtemp(prefix='advisor-check-'))
-config={'name':root.name,'engine':'podman','uid':os.getuid(),'gid':os.getgid(),'workspace':str(root),'advisors':{'providers':['codex','agy','claude']}}
+config={'name':root.name,'engine':'podman','uid':1000,'gid':1000,'workspace':str(root),'advisors':{'providers':['codex','agy','claude']}}
 worker,proxy,socket,home,egress=a.names(config)
 try:
  if core.run(['podman','image','inspect',core.image_names(config)[1]],capture=True,check=False,stderr=subprocess.DEVNULL).returncode:
@@ -41,7 +41,7 @@ try:
   core.run(['podman','exec',dev,'node','/tmp/pendant-advisor-test.cjs','--advisor'])
  finally:core.run(['podman','rm','-f',dev])
 
- args=['podman','run','--rm','--network=none','--cap-drop=ALL','--security-opt=no-new-privileges','--security-opt=label=disable','--userns=keep-id:uid=1000,gid=1000','--user',f'{os.getuid()}:{os.getgid()}','-v',f'{socket}:/run/advisor:ro','--entrypoint','node',a.image(config),'--input-type=module','-e',"import{access}from'node:fs/promises';import{RemoteAdvisorService}from'/opt/advisor/lib/advisor/remote.mjs';try{await access('/home/node/credential-sentinel');throw Error('credential volume exposed')}catch(e){if(e.code!=='ENOENT')throw e}const c=new RemoteAdvisorService('/run/advisor/advisor.sock');const r=await c.state({sessionId:'peer',runIds:[]});if(r.runs.length)throw Error('unexpected runs');console.log('peer socket connected; credentials absent');"]
+ args=['podman','run','--rm','--network=none','--cap-drop=ALL','--security-opt=no-new-privileges','--security-opt=label=disable','--userns=keep-id:uid=1000,gid=1000','--user','1000:1000','-v',f'{socket}:/run/advisor:ro','--entrypoint','node',a.image(config),'--input-type=module','-e',"import{access}from'node:fs/promises';import{RemoteAdvisorService}from'/opt/advisor/lib/advisor/remote.mjs';try{await access('/home/node/credential-sentinel');throw Error('credential volume exposed')}catch(e){if(e.code!=='ENOENT')throw e}const c=new RemoteAdvisorService('/run/advisor/advisor.sock');const r=await c.state({sessionId:'peer',runIds:[]});if(r.runs.length)throw Error('unexpected runs');console.log('peer socket connected; credentials absent');"]
  core.run(args)
  core.run(['podman','exec',worker,'node','--input-type=module','-e',"import{sandboxInvocation}from'/opt/advisor/lib/advisor/agy.mjs';import{runProcess}from'/opt/advisor/lib/advisor/process.mjs';const i=await sandboxInvocation({executable:'/usr/local/bin/agy',containerRuntime:true},'/tmp/agy-check',['--version']);try{const r=await runProcess(i.command,i.args,{env:i.env,timeoutMs:30000});if(r.code!==0)throw Error(r.stderr);console.log('isolated Antigravity '+r.stdout)}finally{await i.close()}"],capture=True)
  core.run(['podman','exec',worker,'node','--input-type=module','-e',"import{inspect}from'/opt/advisor/lib/advisor/codex.mjs';console.log(await inspect({executable:'/usr/local/bin/advisor-codex',containerRuntime:true,sharedHome:true,codexHome:'/home/node/.codex'},'/tmp/codex-check'));"],capture=True)

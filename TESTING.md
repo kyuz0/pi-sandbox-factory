@@ -23,8 +23,9 @@ under your home directory: the default system temporary directory is intentional
 excluded from sandbox workspaces.
 
 ```sh
-mkdir -p "$HOME/.cache/pi-sandbox-factory-tests"
-TMPDIR="$HOME/.cache/pi-sandbox-factory-tests" .venv/bin/python -m unittest discover -s tests -p 'test_*.py'
+export TMPDIR="$HOME/Projects/pi-sandbox-test-tmp"
+mkdir -p "$TMPDIR"
+.venv/bin/python -m unittest discover -s tests -p 'test_*.py'
 ```
 
 Use `~/Projects` for container integration workspaces on macOS so Podman Machine
@@ -50,7 +51,7 @@ Use a disposable workspace and an unused port. This fixture serves synthetic
 replies; it does not evaluate a real inference model.
 
 ```sh
-test_root=$(mktemp -d /tmp/pi-sandbox-check.XXXXXX)
+test_root=$(mktemp -d "${TMPDIR:-/tmp}/pi-sandbox-check.XXXXXX")
 mkdir "$test_root/workspace"
 .venv/bin/pi-sandbox-factory --state-dir "$test_root/state" create pendant-check \
   --workspace "$test_root/workspace" --local-model-ports 18081 \
@@ -93,17 +94,23 @@ tests belong in their own repositories; update the lock file here afterward.
 Advisor or SSH changes need their unit suites and companion tests.
 Run
 `.venv/bin/python tests/advisor_container.py --dev-image IMAGE` after installing the
-package. It checks isolated launchers and credential volumes without real login.
+package. Use an image with the local model provider enabled. It checks isolated launchers
+and credential volumes without real login.
 Actual account login and authorized SSH access are separate checks.
 
 Run `python tests/advisor_credentials_container.py` to check synthetic credential
 copies, file permissions, keyring persistence and companion mounts. With explicit
 authorization, add `--host-logins` to copy the host’s Codex, Claude and Antigravity
 sign-ins and check login/model status without inference. The script removes its
-disposable containers and credential volumes afterwards.
+disposable containers and credential volumes afterwards. On macOS, set
+`TMPDIR="$HOME/Projects/pi-sandbox-test-tmp"` as above so the fixture state is
+inside the VM share. The synthetic check reads Codex and Claude fixture files
+through the real importer, checks the macOS Keychain recovery message, and tests
+Antigravity's container keyring separately. It does not establish that a real
+provider accepts copied or renewed tokens.
 
-Use disposable state throughout. Never restart a user's sandbox or copy credentials
-for testing. Record commands and results; distinguish fixtures from live services.
+Use disposable state throughout. Never restart a user's sandbox or copy real credentials
+without explicit authorization. Record commands and results; distinguish fixtures from live services.
 
 ## Browser viewer
 
@@ -282,7 +289,7 @@ VS Code profile when changing extension startup behavior.
 For synthetic host-file probes, create a disposable sandbox without desktop VS Code:
 
 ```sh
-check_root=/tmp/pi-browser-boundary-check
+check_root="${TMPDIR:-/tmp}/pi-browser-boundary-check"
 .venv/bin/python tests/browser_editor_check.py prepare --root "$check_root"
 .venv/bin/pi-sandbox-factory --state-dir "$check_root/state" create browser-check \
   --workspace "$check_root/workspace" --folders-file "$check_root/folders.json" \
@@ -294,14 +301,14 @@ Leave the launcher running. In another terminal at this checkout:
 
 ```sh
 .venv/bin/python tests/browser_editor_check.py install \
-  --root /tmp/pi-browser-boundary-check --container pi-sandbox-factory-browser-check
+  --root "$check_root" --container pi-sandbox-factory-browser-check
 ```
 
 Open the printed URL and reload the page.
 Both probe extensions write JSON results into the workspace. Then run:
 
 ```sh
-.venv/bin/python tests/browser_editor_check.py verify --root /tmp/pi-browser-boundary-check
+.venv/bin/python tests/browser_editor_check.py verify --root "$check_root"
 ```
 
 The probes exercise container Node APIs and a browser-only extension worker against
@@ -331,7 +338,7 @@ certificate trusted by the connecting browser and verify Pendant loads there too
 Delete the disposable sandbox after stopping the launcher:
 
 ```sh
-.venv/bin/pi-sandbox-factory --state-dir /tmp/pi-browser-boundary-check/state delete browser-check
+.venv/bin/pi-sandbox-factory --state-dir "$check_root/state" delete browser-check
 ```
 
 
@@ -349,11 +356,13 @@ Podman Machine, install from [platform setup](docs/platforms.md) and check:
    mode, trusted workspace, Pendant on the right and a responding fixture/local model.
    Reopen it, stop the editor, restart it and confirm its URL stays stable.
 2. Open a second sandbox. Confirm its hostname differs and its login cookie is
-   not sent to the first. Check WebSocket connection, clipboard and file downloads
-   in the target browser. Open Pi CLI alongside the editor.
+   not sent to the first. Check WebSocket connection and clipboard in the target
+   browser. Confirm the editor’s file upload/download commands are disabled. Open
+   Pi CLI alongside the editor.
 3. Use a workspace subfolder and two extra folders: read-only and writable. Check
-   host-to-container and container-to-host changes, file watching and unchanged
-   host ownership. Attempt writes to the read-only mount from the outer container.
+   host-to-container and container-to-host changes and unchanged host ownership.
+   On macOS, check polling for host edits; native file-watch events may not cross
+   the VM share. Attempt writes to the read-only mount from the outer container.
 4. Run the browser and model fixture recipes above. An allowed endpoint must work;
    an unselected destination and a redirect to it must fail. Open the browser
    viewer, interact with the synthetic form and read that state through Pi.

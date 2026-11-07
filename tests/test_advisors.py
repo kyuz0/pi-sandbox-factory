@@ -81,6 +81,7 @@ class AdvisorCreationTests(unittest.TestCase):
                         '--workspace', str(workspace), '--allow-domain', 'example.com:443']
                 for provider in providers: argv += ['--advisor', provider]
                 with patch('sys.argv', argv), patch.object(sandbox, 'choose_engine', return_value='podman'), \
+                     patch.object(sandbox.host_platform, 'check_engine', return_value=None), \
                      patch.object(sandbox, 'run', return_value=SimpleNamespace(stdout='true')), \
                      patch.object(sandbox, 'build') as build, patch.object(advisors, 'login') as login:
                     sandbox.main()
