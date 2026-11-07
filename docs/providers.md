@@ -9,11 +9,8 @@ a conversation.
 
 ## Local inference servers
 
-Enable **Connect to models on this host** and set **Host model ports** during
-creation or in **Settings → Configuration**. Factory’s included
-[Pi Local Model Manager](https://github.com/kyuz0/pi-local-model-manager) extension
-discovers models and configures their capabilities for Pi and Pendant.
-See [local model setup](usage.md#local-models) for refresh commands and output limits.
+The included [Pi Local Model Manager](https://github.com/kyuz0/pi-local-model-manager)
+discovers models on the host ports you select. See [local setup](usage.md#local-models).
 
 ## Hosted services
 
