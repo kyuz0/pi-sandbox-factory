@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from textual.widgets import Button, Collapsible, Input, OptionList, Select, Static, RichLog
+from textual.widgets import Button, Collapsible, Input, Label, OptionList, Select, Static, RichLog
 from pi_sandbox_factory import sandbox
 from pi_sandbox_factory.sandbox_tui import (
     Cockpit, Confirm, DEFAULT_SETTINGS, FolderPicker, NewSandbox, SettingsForm,
@@ -135,6 +135,8 @@ class TUILayoutTests(unittest.TestCase):
                 copy.value = True
                 self.assertEqual(choices.imports(), ['claude'])
                 if not creation:
+                    self.assertFalse(app.screen.query_one('#advisor-claude-model').disabled)
+                    self.assertTrue(app.screen.query_one('#advisor-model').disabled)
                     calls = []
                     app.service.advisors = lambda name, settings, log: calls.append(('save', settings['providers']))
                     app.service.run = lambda args, log: calls.append(args)
@@ -208,6 +210,13 @@ class TUILayoutTests(unittest.TestCase):
             await self.ready(app, pilot)
             await app.push_screen(SettingsForm(self.draft()))
             form = app.screen
+            ports = form.query_one('#model-port-setting')
+            self.assertEqual(form.query_one('#hosted-section').region.y, ports.region.bottom + 1)
+            form.query_one('#network-section', Collapsible).collapsed = False
+            await pilot.pause()
+            categories = form.query_one('WebsiteGroups')
+            destinations = next(label for label in form.query('Label') if str(label.render()).startswith('Additional allowed destinations'))
+            self.assertGreaterEqual(destinations.region.y, categories.region.bottom)
             form.query_one('#local-models', Checkbox).value = False
             await pilot.pause()
             self.assertTrue(form.query_one('#model-ports', Input).disabled)
@@ -318,3 +327,87 @@ class TUILayoutTests(unittest.TestCase):
             await pilot.press('escape')
             await self.ready(app, pilot)
             await pilot.press('q')
+
+
+    async def test_context_actions_and_modal_actions_have_padding(self):
+        from pi_sandbox_factory.repository_ui import RepositorySetup
+        from pi_sandbox_factory.sandbox_tui import SSHScreen
+        for size in ((80, 24), (120, 40), (220, 50)):
+            app = self.app()
+            async with app.run_test(size=size) as pilot:
+                await self.ready(app, pilot)
+                await app.push_screen(SSHScreen(self.record))
+                await pilot.pause()
+                button = app.screen.query_one('#ssh-repository', Button)
+                self.assertGreaterEqual(button.styles.padding.left + button.styles.line_pad, 2)
+                self.assertGreaterEqual(button.styles.padding.right + button.styles.line_pad, 2)
+                self.assertGreater(button.region.y, app.screen.query_one('#ssh-hosts').region.bottom)
+                self.assertEqual(app.screen.query_one('#ssh-hosts').region.height, 5)
+                await app.push_screen(RepositorySetup())
+                await pilot.pause()
+                actions = app.screen.query_one('.dialog-actions')
+                save = app.screen.query_one('#repository-add', Button)
+                cancel = app.screen.query_one('#repository-cancel', Button)
+                self.assertEqual(save.region.right, actions.content_region.right)
+                self.assertEqual(save.region.height, 3 if size[1] >= 32 else 1)
+                self.assertEqual(cancel.region.height, save.region.height)
+                self.assertGreater(cancel.region.x, actions.content_region.x)
+                self.assertGreater(actions.region.y, app.screen.query_one('VerticalScroll').region.bottom)
+                self.assertLess(save.region.bottom, size[1] - 1)
+                self.assertNotEqual(cancel.styles.background, cancel.parent.parent.styles.background)
+
+    async def test_approval_help_is_separated_from_subagents(self):
+        app = self.app()
+        async with app.run_test(size=(120, 40)) as pilot:
+            await self.ready(app, pilot)
+            await app.push_screen(SettingsForm(self.draft()))
+            app.screen.query_one('#agent-section', Collapsible).collapsed = False
+            await pilot.pause()
+            approval = app.screen.query_one('#approval', Select)
+            help_text = app.screen.query_one('#approval-help', Static)
+            subagents = app.screen.query_one('#subagents', Checkbox)
+            self.assertIs(approval.parent, help_text.parent)
+            self.assertEqual(help_text.region.y, approval.region.bottom)
+            self.assertGreater(subagents.region.y, help_text.region.bottom)
+
+    async def test_labels_controls_and_feedback_do_not_create_empty_rows(self):
+        from pi_sandbox_factory.sandbox_tui import CreateFromSandbox, Operation
+        from pi_sandbox_factory.models_ui import ProviderDialog
+        for size in ((80, 24), (120, 40)):
+            app = self.app()
+            async with app.run_test(size=size) as pilot:
+                await self.ready(app, pilot)
+                await app.push_screen(NewSandbox())
+                await pilot.pause()
+                labels = list(app.screen.query(Label))
+                profile = app.screen.query_one('#profile')
+                self.assertEqual(profile.region.y, labels[1].region.bottom)
+                workspace = app.screen.query_one('#workspace')
+                label = next(x for x in labels if str(x.render()) == 'Workspace')
+                self.assertEqual(workspace.region.y, label.region.bottom)
+                self.assertLessEqual(app.screen.query_one('#name').region.bottom,
+                                     app.screen.query_one('.wizard-actions').region.y)
+                await app.pop_screen()
+                await app.push_screen(CreateFromSandbox([self.record]))
+                await pilot.pause()
+                self.assertEqual(app.screen.query_one('#copy-source').region.height, 3)
+                await app.pop_screen()
+                await app.push_screen(ProviderDialog())
+                feedback = app.screen.query_one('#hosted-error', Static)
+                self.assertFalse(feedback.display)
+                feedback.update('Enter an API key.')
+                await pilot.pause()
+                self.assertTrue(feedback.display)
+                self.assertTrue(feedback.has_class('error'))
+                self.assertLess(app.screen.query_one('#hosted-save').region.bottom, size[1])
+                feedback.update('')
+                self.assertFalse(feedback.display)
+                await app.pop_screen()
+                await app.push_screen(Operation('Starting sandbox', lambda log: log('Ready.')))
+                await self.ready(app, pilot)
+                button = app.screen.query_one('#operation-back')
+                bar = app.screen.query_one('.wizard-actions')
+                self.assertIs(button.parent, bar)
+                self.assertEqual(button.region.x, 3)
+                self.assertGreater(button.region.y, bar.region.y)
+                self.assertLess(button.region.bottom, app.screen.query_one('Footer').region.y)

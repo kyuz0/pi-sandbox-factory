@@ -5,7 +5,7 @@ from textual.binding import Binding
 from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.screen import ModalScreen
 from textual.widgets import Button, Collapsible, Input, Label, Link, Static
-from .tui_widgets import Checkbox
+from .tui_widgets import Checkbox, Feedback
 from . import communications
 
 
@@ -43,7 +43,7 @@ class SlackCredentials(ModalScreen):
                         yield Static(help_text, classes='setting-help')
                         if saved or self.status is None or field in self.changes:
                             yield Checkbox('Remove saved token', value=field in self.changes and not self.changes[field], id='slack-clear-' + field, classes='token-remove')
-            yield Static('', id='slack-error', markup=False)
+            yield Feedback('', id='slack-error', markup=False, classes='error')
             with Horizontal(classes='buttons dialog-actions'):
                 yield Button('Cancel', id='slack-cancel')
                 yield Button('Save', id='slack-save', variant='primary')
@@ -127,7 +127,9 @@ class CommunicationsForm(Vertical):
                 'Configure a bot token to connect Slack.')
         if status.get('userToken'):
             text += ' · Search token configured'
-        self.query_one('#slack-status', Static).update(text if enabled else '')
+        status_label = self.query_one('#slack-status', Static)
+        status_label.update(text if enabled else '')
+        status_label.display = enabled
 
     @on(Button.Pressed, '#slack-configure')
     def configure(self, event):

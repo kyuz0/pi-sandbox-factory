@@ -53,6 +53,7 @@ class HostedUITests(unittest.TestCase):
                     await app.push_screen(ModelsScreen({'name':'test','config':{'model_providers':[]}}));await pilot.pause();await app.workers.wait_for_complete();await pilot.pause()
                     await app.push_screen(ModelDialog('test','azure'));await pilot.pause();await app.workers.wait_for_complete();await pilot.pause()
                     self.assertTrue(app.screen.query_one('#model-save',Button).disabled)
+                    self.assertTrue(app.screen.query_one('#model-test',Button).disabled)
                     app.screen.query_one('#model-results',OptionList).highlighted=0;await pilot.pause()
                     app.screen.query_one('#model-deployment',Input).value='my-deployment'
                     app.screen.query_one('#model-test',Button).focus();await pilot.press('enter');await pilot.pause();await app.workers.wait_for_complete();await pilot.pause()

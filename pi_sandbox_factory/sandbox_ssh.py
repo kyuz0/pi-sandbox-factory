@@ -194,11 +194,13 @@ def import_key(config,state,path):
     if not enabled(config):raise ValueError('Configure SSH destinations first')
     source=Path(path).expanduser().resolve(strict=True)
     if not source.is_file() or not 0 < source.stat().st_size <= 65536:raise ValueError('Select an SSH private key file under 64 KiB')
-    for field in ('workspace', 'pi_config'):
-        if config.get(field):
-            exposed = Path(config[field]).resolve()
+    shared = [config.get(field) for field in ('workspace', 'pi_config')]
+    shared += [row['source'] for row in config.get('extra_folders', [])]
+    for path in shared:
+        if path:
+            exposed = Path(path).resolve()
             if source == exposed or exposed in source.parents:
-                raise ValueError('Choose a key outside the workspace and shared Pi configuration; those paths are visible to the agent')
+                raise ValueError('Choose a key outside all shared folders; those paths are visible to the agent')
     from . import sandbox as core
     up(config,state)
     # No key bytes in argv, environment, logs, project state, or the development container.
@@ -207,3 +209,47 @@ def import_key(config,state,path):
         core.run([config['engine'],'exec','-i',names(config)[0],'python3','-c',script],stdin=stream)
     print('Key imported into the private SSH companion. Unlocking for the declared destinations.',flush=True)
     unlock(config,state)
+
+
+def repository_destination(url):
+    """Turn a GitHub/GitLab project URL into a fixed SSH destination and setup links."""
+    from urllib.parse import urlsplit
+    import shlex
+    if not isinstance(url, str) or any(c.isspace() for c in url):
+        raise ValueError('Enter an HTTPS project URL without spaces')
+    parsed = urlsplit(url)
+    if parsed.scheme != 'https' or parsed.username or parsed.password or parsed.query or parsed.fragment or parsed.port:
+        raise ValueError('Use an HTTPS project URL, such as https://github.com/owner/project')
+    hostname = parsed.hostname or ''
+    path = parsed.path.rstrip('/').removesuffix('.git').lstrip('/')
+    parts = path.split('/')
+    if len(parts) < 2 or any(not re.fullmatch(r'[A-Za-z0-9_][A-Za-z0-9_.-]*', part) or part in ('.', '..') for part in parts):
+        raise ValueError('Enter the project URL, including its owner or group and repository')
+    if hostname == 'github.com' and len(parts) != 2:
+        raise ValueError('Use https://github.com/owner/repository')
+    host = dict(alias='repository', hostname=hostname, user='git', port=22, host_keys=['ssh-ed25519 AAAA'])
+    validate({'hosts': [host]})
+    base = 'https://' + hostname + '/' + path
+    return {'line': f'repository git {hostname} 22',
+            'settings_url': base + ('/settings/keys' if hostname == 'github.com' else '/-/settings/repository'),
+            'clone': 'git clone ' + shlex.quote('git@repository:' + path + '.git')}
+
+
+def repository_key(config, state, *, generate=False):
+    """Create or inspect a key inside the existing companion; return only its public half."""
+    if not enabled(config):
+        raise ValueError('Apply SSH destinations before configuring a key')
+    from . import sandbox as core
+    if core.run([config['engine'], 'image', 'inspect', image(config)], capture=True,
+                check=False, stderr=subprocess.DEVNULL).returncode:
+        raise ValueError('Apply SSH destinations first to build the SSH companion')
+    up(config, state)
+    result = core.run([config['engine'], 'exec', names(config)[0], 'python3',
+                       '/opt/ssh-access/key.py', 'generate' if generate else 'show'],
+                      capture=True, check=False, stderr=subprocess.PIPE)
+    if result.returncode:
+        raise ValueError(result.stderr.strip() or 'Could not read the public key. Unlock the key and retry.')
+    public = result.stdout.strip()
+    if not re.fullmatch(r'(?:ssh-ed25519|ssh-rsa|ecdsa-sha2-nistp(?:256|384|521)) [A-Za-z0-9+/]+={0,2}(?: [^\r\n]*)?', public):
+        raise ValueError('The SSH companion did not return one public key')
+    return public

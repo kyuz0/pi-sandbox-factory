@@ -19,7 +19,7 @@ from .folders_ui import FolderFields
 from .communications_ui import CommunicationsForm
 from .models_ui import HostedProviders
 from . import hosted_models
-from .tui_widgets import Checkbox
+from .tui_widgets import Checkbox, Feedback
 from . import sandbox_skills
 from . import host_platform, registry, model_providers, updates, web_access, network_groups, communications
 from .sandbox_options import DEFAULTS, SKILLS, PROFILE_SKILLS, options, endpoint_rule, memory_limit, write_json
@@ -299,6 +299,16 @@ class Service:
             write_json(path, {'ssh': settings})
             self.run(['update', name, '--settings-file', str(path)], log)
 
+    def ssh_key(self, name, generate=False):
+        result = subprocess.run(self.command('ssh-generate-key' if generate else 'ssh-public-key', name),
+                                text=True, capture_output=True)
+        if result.returncode:
+            raise ValueError(safe_text(result.stderr.strip() or 'Could not read the SSH public key'))
+        rows = result.stdout.strip().splitlines()
+        if not rows or not re.fullmatch(r'(?:ssh-ed25519|ssh-rsa|ecdsa-sha2-nistp(?:256|384|521)) [A-Za-z0-9+/]+={0,2}(?: [^\r\n]*)?', rows[-1]):
+            raise ValueError('The SSH companion did not return a public key')
+        return rows[-1]
+
     def advisors(self, name, settings, log):
         with tempfile.TemporaryDirectory(prefix='sandbox-advisors-') as temp:
             path = Path(temp) / 'settings.json'
@@ -348,7 +358,7 @@ class SearchProviderDialog(ModalScreen):
     BINDINGS = [('escape', 'cancel', 'Cancel')]
     DEFAULT_CSS = """
     SearchProviderDialog { align: center middle; background: #000000 70%; }
-    #search-provider-dialog { width: 72; max-width: 95%; height: 90%; max-height: 32; padding: 1 2; background: #34383d; border: solid #f2b544; }
+    #search-provider-dialog { width: 72; max-width: 95%; height: 25; max-height: 95%; padding: 1 2; background: #34383d; border: solid #f2b544; }
     #search-provider-dialog Static { height: auto; }
     #search-provider-fields { height: 1fr; }
     """
@@ -374,11 +384,11 @@ class SearchProviderDialog(ModalScreen):
                     yield Label('Search model · optional')
                     yield Input(self.original.get('model', ''), id='search-model')
                 with Vertical(id='search-key-field', classes='setting'):
-                    yield Static('', id='search-key-status', classes='setting-help')
                     yield Label('API key · leave empty to keep the saved key' if self.original.get('has_key') else 'API key', id='search-key-label')
                     yield Input(password=True, id='search-key')
+                    yield Static('', id='search-key-status', classes='setting-help')
                     yield Checkbox('Remove saved key', id='search-remove-key')
-            yield Static('', id='search-provider-error', markup=False)
+            yield Feedback('', id='search-provider-error', markup=False, classes='error')
             with Horizontal(classes='buttons dialog-actions'):
                 yield Button('Cancel', id='search-cancel')
                 if self.provider_name:
@@ -396,7 +406,7 @@ class SearchProviderDialog(ModalScreen):
         self.query_one('#search-key-field').display = name != 'searxng'
         self.query_one('#search-endpoint-help', Static).update('Required: your SearXNG server URL.' if name == 'searxng' else 'Optional: a custom OpenAI Responses URL.')
         self.query_one('#search-remove-key', Checkbox).display = bool(self.original.get('has_key'))
-        self.query_one('#search-key-status', Static).update('API key configured' if self.original.get('has_key') else 'No API key required' if name == 'exa' else 'API key missing · inactive')
+        self.query_one('#search-key-status', Static).update('API key configured' if self.original.get('has_key') else 'Optional: leave empty to use Exa without a key.' if name == 'exa' else 'API key missing · inactive')
 
     def action_cancel(self):
         self.dismiss(None)
@@ -447,11 +457,14 @@ class CopyWebAccess(ModalScreen):
 
     def compose(self):
         with VerticalScroll(id='copy-web-dialog'):
-            yield Label('Copy web access from sandbox')
-            yield Select([(name, name) for name in self.records], value=next(iter(self.records)), allow_blank=False, id='copy-web-source')
-            yield Checkbox('Include search API keys', value=True, id='copy-web-keys')
-            yield Static('', id='copy-web-help', markup=False)
-            yield Static('', id='copy-web-error', markup=False)
+            yield Label('Copy web access', classes='title')
+            with Vertical(classes='setting'):
+                yield Label('Source sandbox')
+                yield Select([(name, name) for name in self.records], value=next(iter(self.records)), allow_blank=False, id='copy-web-source')
+            with Vertical(classes='setting'):
+                yield Checkbox('Include search API keys', value=True, id='copy-web-keys')
+                yield Static('', id='copy-web-help', markup=False, classes='setting-help')
+            yield Feedback('', id='copy-web-error', markup=False, classes='error')
             with Horizontal(classes='buttons dialog-actions'):
                 yield Button('Cancel', id='copy-web-cancel')
                 yield Button('Copy configuration', id='copy-web-apply', variant='primary')
@@ -501,8 +514,8 @@ class CopyWebAccess(ModalScreen):
 class WebAccessForm(Vertical):
     DEFAULT_CSS = """
     WebAccessForm, #web-fields, #web-provider-list { height: auto; }
-    .search-provider-row { height: auto; min-height: 2; margin-bottom: 1; max-width: 48; }
-    #web-fields > .buttons { margin-top: 0; }
+    .search-provider-row { height: auto; min-height: 4; margin-bottom: 1; max-width: 80; padding: 1 2; background: #343a42; border-left: solid #707780; }
+    #web-fields > .buttons { margin: 0 0 1 0; }
     .search-provider-row Static { width: 1fr; height: auto; }
     """
 
@@ -708,7 +721,7 @@ class NetworkForm(Screen):
                 with Horizontal(classes='buttons'):
                     yield Button('Import', id='network-import')
                     yield Button('Export', id='network-export')
-            yield Static('', id='network-error')
+            yield Feedback('', id='network-error')
         with Horizontal(classes='wizard-actions'):
             yield Button('Cancel', id='cancel-network')
             yield Button('Apply network', id='apply-network', variant='primary')
@@ -797,7 +810,8 @@ class MoreActions(ModalScreen[Optional[str]]):
         with Vertical(id='confirm-box'):
             yield Label('Actions · ' + self.sandbox_name)
             yield OptionList(*[label for label, _ in self.actions], id='more-actions')
-            yield Button('Cancel', id='more-cancel')
+            with Horizontal(classes='dialog-actions'):
+                yield Button('Cancel', id='more-cancel')
 
     @on(OptionList.OptionSelected)
     def selected(self, event):
@@ -815,15 +829,15 @@ class MoreActions(ModalScreen[Optional[str]]):
 
 class SettingsMenu(ModalScreen[Optional[str]]):
     BINDINGS = [('escape', 'cancel', 'Back')]
-    ACTIONS = [('Network · website categories and allowed destinations', 'network-settings'),
+    ACTIONS = [('Editor · browser, Pi CLI or VS Code on host', 'editor-settings'),
                ('Models · endpoints and discovery', 'models'),
-               ('Configuration · resources, tools and network mode', 'configuration'),
-               ('Advisors · Codex, Claude and Antigravity', 'advisors'),
-               ('SSH · hosts and private key access', 'ssh-settings'),
                ('Folders · starting folder and host mounts', 'folders'),
+               ('Advisors · Codex, Claude and Antigravity', 'advisors'),
+               ('SSH and repositories · destinations and keys', 'ssh-settings'),
+               ('Network · website categories and allowed destinations', 'network-settings'),
                ('Web access · search providers and API keys', 'web-access'),
                ('Communications · Slack', 'communications'),
-               ('Editor · browser, Pi CLI or VS Code on host', 'editor-settings')]
+               ('Configuration · resources, tools and network mode', 'configuration')]
 
     def __init__(self, name):
         super().__init__()
@@ -833,7 +847,8 @@ class SettingsMenu(ModalScreen[Optional[str]]):
         with Vertical(id='confirm-box'):
             yield Label('Settings · ' + self.sandbox_name)
             yield OptionList(*[label for label, _ in self.ACTIONS], id='settings-actions')
-            yield Button('Back', id='settings-back')
+            with Horizontal(classes='dialog-actions'):
+                yield Button('Back', id='settings-back')
 
     @on(OptionList.OptionSelected)
     def selected(self, event):
@@ -862,7 +877,7 @@ class FoldersScreen(Screen):
             yield Label('Folders · ' + self.record['name'], classes='title')
             yield FolderFields(self.record['config'], self.app.state_root)
             yield Static('Changing host mounts recreates the sandbox. Changing only the starting folder takes effect when you reopen Pi or VS Code.')
-            yield Static('', id='folders-error', classes='error', markup=False)
+            yield Feedback('', id='folders-error', classes='error', markup=False)
         with Horizontal(classes='wizard-actions'):
             yield Button('Back', id='folders-back')
             yield Button('Apply', id='folders-apply', variant='primary')
@@ -892,6 +907,7 @@ class FoldersScreen(Screen):
 
 
 class SSHScreen(Screen):
+    DEFAULT_CSS = 'SSHScreen #ssh-hosts { height: 5; }'
     BINDINGS = [('escape', 'back', 'Back')]
 
     def __init__(self, record):
@@ -903,22 +919,40 @@ class SSHScreen(Screen):
         hosts = self.record['config'].get('ssh', {}).get('hosts', [])
         yield Header()
         with VerticalScroll(classes='form'):
-            yield Label('SSH · ' + self.record['name'], classes='title')
-            yield Static('Choose the hosts this sandbox can access. The private key stays in a separate container; Pi uses it through an SSH agent.')
-            yield Label('Destinations · alias username hostname-or-IP port')
-            yield TextArea('\n'.join(f'{h["alias"]} {h["user"]} {h["hostname"]} {h["port"]}' for h in hosts), id='ssh-hosts')
+            yield Label('SSH and repositories · ' + self.record['name'], classes='title')
+            yield Static('Keys stay in a separate SSH container. The remote account or deploy key determines what the sandbox can do.', classes='section-intro')
+            with Vertical(classes='setting'):
+                yield Label('Destinations · alias username hostname-or-IP port')
+                yield TextArea('\n'.join(f'{h["alias"]} {h["user"]} {h["hostname"]} {h["port"]}' for h in hosts), id='ssh-hosts')
+                yield Static('Apply destinations before generating or importing a key.', classes='setting-help')
+            with Vertical(classes='setting'):
+                yield Button('Add repository…', id='ssh-repository')
             with Collapsible(title='Import host SSH aliases', collapsed=True):
-                yield Input(placeholder='Aliases from your ~/.ssh/config, separated by spaces', id='ssh-aliases')
-                yield Button('Import destinations', id='ssh-import-aliases')
-            with Collapsible(title='Host identity and private key', collapsed=True):
-                yield Label('Trusted known_hosts file · used when applying manually entered destinations')
-                yield Input(str(Path.home() / '.ssh/known_hosts'), id='ssh-known-hosts')
-                yield Label('Private key file on your computer · never mounted in the development container')
-                yield Input(placeholder='~/.ssh/id_ed25519', id='ssh-key-file')
-                with Horizontal(classes='buttons'):
-                    yield Button('Import key and unlock', id='ssh-import-key', disabled=not hosts)
+                with Vertical(classes='setting'):
+                    yield Label('Aliases from ~/.ssh/config · separated by spaces')
+                    with Horizontal(classes='path-row'):
+                        yield Input(id='ssh-aliases')
+                        yield Button('Import', id='ssh-import-aliases')
+            with Collapsible(title='Host identity', collapsed=True):
+                with Vertical(classes='setting'):
+                    yield Label('Trusted known_hosts file')
+                    yield Input(str(Path.home() / '.ssh/known_hosts'), id='ssh-known-hosts')
+                    yield Static('Verify unknown hosts in your host terminal before applying destinations.', classes='setting-help')
+            with Collapsible(title='SSH key · one per sandbox', collapsed=not bool(hosts), id='ssh-key-section'):
+                with Vertical(classes='setting'):
+                    with Horizontal(classes='buttons'):
+                        yield Button('Generate repository key', id='ssh-generate-key', disabled=not hosts)
+                        yield Button('Show public key', id='ssh-public-key', disabled=not hosts)
+                    yield Static('Creates a new key inside the companion. An existing key is never replaced.', classes='setting-help')
+                with Vertical(classes='setting'):
+                    yield Label('Or import a private key from this computer')
+                    with Horizontal(classes='path-row'):
+                        yield Input(placeholder='~/.ssh/id_ed25519', id='ssh-key-file')
+                        yield Button('Import and unlock', id='ssh-import-key', disabled=not hosts)
+                    yield Static('Import replaces this sandbox’s key and keeps its server permissions. Encrypted keys ask for their passphrase in the terminal.', classes='setting-help')
+                with Vertical(classes='setting'):
                     yield Button('Unlock existing key', id='ssh-unlock', disabled=not hosts)
-            yield Static('Apply destinations first, then import a key. Encrypted keys ask for their passphrase directly in your terminal. Removing all destinations disables access; deleting the sandbox also deletes its private key copy.')
+                    yield Static('Keys stay unlocked for eight hours. Unlock again after expiry or restart.', classes='setting-help')
         with Horizontal(classes='wizard-actions'):
             yield Button('Back', id='ssh-back')
             yield Button('Apply', id='ssh-apply', variant='primary')
@@ -932,6 +966,12 @@ class SSHScreen(Screen):
         name = self.record['name']
         try:
             if action == 'ssh-back': self.action_back()
+            elif action == 'ssh-repository':
+                from .repository_ui import RepositorySetup
+                self.app.push_screen(RepositorySetup(), self.add_repository)
+            elif action in ('ssh-generate-key', 'ssh-public-key'):
+                from .repository_ui import PublicKey
+                self.app.push_screen(PublicKey(name, generate=action == 'ssh-generate-key'))
             elif action == 'ssh-import-aliases':
                 settings = sandbox_ssh.import_aliases(self.query_one('#ssh-aliases', Input).value, Path.home() / '.ssh/config')
                 text = '\n'.join(f'{h["alias"]} {h["user"]} {h["hostname"]} {h["port"]}' for h in settings['hosts'])
@@ -960,6 +1000,21 @@ class SSHScreen(Screen):
                 self.app.push_screen(Confirm('Apply SSH destinations?\nActive sandbox processes restart. Workspace and private key are preserved.\nThe key will be restricted to these users and trusted host identities.', 'Apply'), apply)
         except (OSError, ValueError, subprocess.SubprocessError) as error:
             self.notify(safe_text(error), severity='error')
+
+    def add_repository(self, value):
+        if not value:
+            return
+        field = self.query_one('#ssh-hosts', TextArea)
+        rows = [row for row in field.text.splitlines() if row.strip()]
+        existing = [row for row in rows if row.split()[0] == 'repository']
+        if existing and [row.split() for row in existing] != [value['line'].split()]:
+            self.notify('The repository alias already points elsewhere. Edit Destinations to change it.', severity='error')
+            return
+        if existing:
+            self.notify('Destination already present; no settings changed.')
+        else:
+            field.load_text('\n'.join(rows + [value['line']]))
+            self.notify('Destination added. Apply it, then return here to generate or import the key.')
 
     def action_back(self): self.app.pop_screen()
 
@@ -992,7 +1047,7 @@ class AdvisorsScreen(Screen):
                 yield Input(settings.get('claude_model', 'sonnet'), id='advisor-claude-model')
                 yield Label('Thinking effort')
                 yield Select([(x.title(), x) for x in ('low', 'medium', 'high', 'xhigh', 'max')], value=settings.get('claude_effort', 'medium'), allow_blank=False, id='advisor-claude-effort')
-                yield Static('Use /advisor status in Pi to refresh Claude subscription quota and reset times without a model call.')
+                yield Static('Use /advisor status in Pi to refresh Claude subscription quota and reset times without a model call.', classes='setting-help')
             with Collapsible(title='Antigravity model', collapsed=True):
                 yield Label('Exact Gemini model ID · leave blank to sign in first')
                 yield Input(settings.get('agy_model', ''), id='advisor-model')
@@ -1003,13 +1058,27 @@ class AdvisorsScreen(Screen):
             with Collapsible(title='Usage and network', collapsed=True):
                 yield Label('Maximum calls per Pi session · blank for no limit')
                 yield Input(str(settings.get('max_calls') or ''), id='advisor-calls', type='integer')
-                yield Static('These destinations apply to the advisor’s separate gateway.')
-                yield Label('Additional exact destinations · host:port, one per line')
-                yield TextArea(settings.get('extra_hosts', ''), id='advisor-hosts')
+                with Vertical(classes='setting'):
+                    yield Label('Additional allowed destinations · hostname:port')
+                    yield TextArea(settings.get('extra_hosts', ''), id='advisor-hosts')
+                    yield Static('These destinations apply to the advisor’s separate gateway.', classes='setting-help')
         with Horizontal(classes='wizard-actions'):
             yield Button('Back', id='advisor-back')
             yield Button('Apply', id='advisor-apply', variant='primary')
         yield Footer()
+
+    def on_mount(self):
+        self.sync_fields()
+
+    @on(Checkbox.Changed)
+    def sync_fields(self):
+        selected = self.query_one(AdvisorChoices).selected()
+        for provider, fields in {
+            'claude': ('claude-model', 'claude-effort'),
+            'agy': ('model', 'quota', 'effort'),
+        }.items():
+            for field in fields:
+                self.query_one('#advisor-' + field).disabled = provider not in selected
 
     @on(Button.Pressed)
     def pressed(self, event):
@@ -1070,7 +1139,7 @@ class ModelsScreen(Screen):
         with VerticalScroll(classes='form'):
             yield Label('Models · '+self.record['name'],classes='title')
             yield HostedProviders(self.record['name'])
-            yield Label('Installed provider plugins', classes='title')
+            yield Label('Installed provider plugins', classes='group-title')
             if not rows:
                 yield Static('No provider plugins are enabled. Add one in Configuration.', id='no-model-providers')
             with Vertical(id='provider-controls') as controls:
@@ -1080,13 +1149,13 @@ class ModelsScreen(Screen):
                     yield Select([(r['manifest'].get('description',r['name']),r['name']) for r in rows],id='model-provider',allow_blank=not rows,value=rows[0]['name'] if rows else Select.NULL,disabled=not rows)
                 with Vertical(classes='setting'):
                     yield Label('Provider credential · when required')
-                    yield Input(password=True,id='provider-key',disabled=not rows)
+                    with Horizontal(classes='path-row'):
+                        yield Input(password=True,id='provider-key',disabled=not rows)
+                        yield Button('Configure',id='provider-auth',disabled=not rows)
                 with Horizontal(classes='buttons'):
                     yield Button('Status',id='provider-status',disabled=not rows)
                     yield Button('Preview',id='provider-preview',disabled=not rows)
                     yield Button('Refresh',id='provider-refresh',disabled=not rows)
-                with Horizontal(classes='buttons'):
-                    yield Button('Configure credentials',id='provider-auth',disabled=not rows)
             yield Button('Configuration…',id='configuration')
         with Horizontal(classes='wizard-actions'):
             yield Button('Continue' if self.finished else 'Back',id='models-back',variant='primary' if self.finished else 'default')
@@ -1223,7 +1292,7 @@ class InstallPackage(Screen):
                     yield Label('Tag, branch or commit · optional')
                     yield Input(id='package-ref')
             yield Static('Install only profiles and providers you trust; they contain executable code.',classes='setting-help')
-            yield Static('',id='package-error',markup=False)
+            yield Feedback('',id='package-error',markup=False)
         with Horizontal(classes='wizard-actions'):
             yield Button('Cancel',id='package-cancel')
             yield Button('Install',id='package-add',variant='primary')
@@ -1275,9 +1344,10 @@ class Operation(Screen):
     def compose(self):
         yield Header()
         with Vertical(id='operation-body'):
-            yield Static(self.title, id='operation-title', markup=False)
+            yield Static(self.title, id='operation-title', markup=False, classes='title')
             yield Static('●  Running', id='operation-status')
             yield RichLog(id='operation-log', markup=False, wrap=True)
+        with Horizontal(classes='wizard-actions'):
             yield Button('Working…', id='operation-back', disabled=True)
         yield Footer()
 
@@ -1341,9 +1411,10 @@ class FolderPicker(ModalScreen[Optional[str]]):
     def compose(self):
         with Vertical(id='folder-box'):
             yield Label('Choose workspace folder', classes='title')
+            yield Label('Folder path')
             yield Input(str(self.folder), id='folder-path')
             yield DataTable(id='folders', cursor_type='row')
-            with Horizontal(classes='buttons'):
+            with Horizontal(classes='dialog-actions'):
                 yield Button('Up', id='folder-up')
                 yield Button('Open folder', id='folder-open')
                 yield Static('', classes='action-spacer')
@@ -1351,6 +1422,7 @@ class FolderPicker(ModalScreen[Optional[str]]):
                 yield Button('Use this folder', id='folder-use', variant='primary')
 
     def on_mount(self):
+        self.query_one(DataTable).show_header = False
         self.query_one(DataTable).add_column('Folders')
         self.refresh_folders()
 
@@ -1395,8 +1467,8 @@ class CreateFromSandbox(ModalScreen):
     BINDINGS = [('escape', 'cancel', 'Cancel')]
     DEFAULT_CSS = """
     CreateFromSandbox { align: center middle; background: #000000 70%; }
-    #copy-sandbox-dialog { width: 72; max-width: 95%; height: 95%; max-height: 28; padding: 1 2; background: #34383d; border: solid #f2b544; }
-    #copy-sandbox-dialog Static { height: auto; margin-bottom: 1; }
+    #copy-sandbox-dialog { width: 72; max-width: 95%; height: 24; max-height: 95%; padding: 1 2; background: #34383d; border: solid #f2b544; }
+    #copy-sandbox-dialog Static { height: auto; }
     #copy-sandbox-fields { height: 1fr; }
     """
 
@@ -1412,11 +1484,11 @@ class CreateFromSandbox(ModalScreen):
                 yield Label('Copy settings from')
                 yield Select([(name, name) for name in self.records], value=self.selected,
                              allow_blank=False, id='copy-source')
-                yield Static('Copy its configuration, then choose a new name and workspace. Review the settings before creating.')
+                yield Static('Copy its configuration, then choose a new name and workspace. Review the settings before creating.', classes='section-intro')
                 yield Checkbox('Include search API keys', value=False, id='copy-keys')
                 yield Static('', id='copy-keys-help', markup=False)
-                yield Static('Sign in to models and advisors again; SSH keys, browser sessions and chat history are not copied.')
-            yield Static('', id='copy-error', classes='error', markup=False)
+                yield Static('Sign in to models and advisors again; SSH keys, browser sessions and chat history are not copied.', classes='setting-help')
+            yield Feedback('', id='copy-error', classes='error', markup=False)
             with Horizontal(classes='buttons dialog-actions'):
                 yield Button('Cancel', id='copy-cancel')
                 yield Button('Continue', id='copy-continue', variant='primary')
@@ -1480,17 +1552,19 @@ class NewSandbox(Screen):
             yield Select([(v, k) for k, v in profiles.items()] + [('Custom profile…', 'custom')],
                          value=settings['profile'] if settings['profile'] in profiles else 'custom',
                          allow_blank=False, id='profile')
-            with Vertical(id='custom-profile-fields'):
+            with Vertical(id='custom-profile-fields', classes='setting'):
                 yield Label('Custom profile folder')
-                yield Input(id='custom-profile', placeholder='Folder containing profile.json, Dockerfile and profile.md')
+                yield Input(id='custom-profile', placeholder='~/profiles/my-profile')
+                yield Static('Folder containing profile.json, Dockerfile and profile.md.', classes='setting-help')
             yield Label('Workspace')
             with Horizontal(classes='path-row'):
                 yield Input(settings['workspace_parent'], id='workspace')
                 yield Button('Browse', id='browse')
             yield Checkbox('Create this workspace folder if it does not exist', id='mkdir')
-            yield Label('Sandbox name')
-            yield Input(id='name')
-            yield Static('', id='new-error', classes='error', markup=False)
+            with Vertical(classes='setting'):
+                yield Label('Sandbox name')
+                yield Input(id='name')
+            yield Feedback('', id='new-error', classes='error', markup=False)
         with Horizontal(classes='wizard-actions'):
             yield Button('Cancel', id='cancel')
             yield Button('Continue', id='continue', variant='primary')
@@ -1572,15 +1646,15 @@ class SettingsForm(Screen):
         with VerticalScroll(classes='form'):
             yield Label('Defaults for new sandboxes' if self.defaults_mode else
                         ('Sandbox settings' if self.editing else 'Review sandbox · 2 of 2'), classes='title')
-            yield Static(('Profile: ' + profile_titles().get(self.profile_name, self.profile_name)) +
-                         ('' if self.defaults_mode else '\nWorkspace: ' + value['workspace']), markup=False)
+            if not self.defaults_mode:
+                yield Static('Profile: ' + profile_titles().get(self.profile_name, self.profile_name) + '\nWorkspace: ' + value['workspace'], markup=False)
             if not self.editing:
                 mode = value.get('editor', editor_settings.DEFAULTS)['mode']
                 with Collapsible(title='Editor · ' + editor_settings.MODES[mode], collapsed=True, id='editor-section'):
                     yield EditorFields(value.get('editor', editor_settings.DEFAULTS), connection_settings=not self.defaults_mode)
             yield Checkbox('Connect to models on this host (rootless Podman)',
                            value=bool(value.get('local_model_ports')), id='local-models')
-            with Vertical(classes='setting'):
+            with Vertical(classes='setting', id='model-port-setting'):
                 yield Label('Host model ports · comma-separated ports or ranges')
                 yield Input(value.get('local_model_ports') or '8000', id='model-ports')
                 yield Static(('Inside the sandbox, local-model.internal reaches these ports inside WSL.' if host_platform.is_wsl() else 'Inside the sandbox, local-model.internal reaches these ports on your computer.'), classes='setting-help')
@@ -1629,7 +1703,7 @@ class SettingsForm(Screen):
                     yield Static('Allowed destinations: Settings → Network. Changes there preserve the development container.')
                 with Vertical(id='network-rules-fields'):
                     yield WebsiteGroups(selected['website_groups'])
-                    yield Label('Allowed destinations · one hostname:port per line; comments allowed')
+                    yield Label('Additional allowed destinations · hostname:port')
                     yield TextArea(value.get('allowlist', ''), id='allowlist')
                     with Collapsible(title='Import or export rules', collapsed=True):
                         yield Label('Allowlist file path')
@@ -1642,12 +1716,13 @@ class SettingsForm(Screen):
             yield CommunicationsForm(selected['communications'], self.defaults_mode, value.get('_communication_keys'))
             with Collapsible(title='Agent · ' + selected['approval'].capitalize() + ' approval · Inner sandbox ' + ('on' if selected['inner_sandbox'] else 'off'), collapsed=True, id='agent-section'):
                 yield Checkbox('Use inner command sandbox', value=selected['inner_sandbox'], id='inner-sandbox')
-                yield Label('Approval mode')
-                yield Select([('Automatic — never ask for approval', 'automatic'),
-                              ('Automatic with human fallback', 'assisted'),
-                              ('Ask me — human approval', 'manual'), ('No approval prompts', 'off')],
-                             value=selected['approval'], allow_blank=False, id='approval')
-                yield Static('', id='approval-help', markup=False)
+                with Vertical(classes='setting'):
+                    yield Label('Approval mode')
+                    yield Select([('Automatic — never ask for approval', 'automatic'),
+                                  ('Automatic with human fallback', 'assisted'),
+                                  ('Ask me — human approval', 'manual'), ('No approval prompts', 'off')],
+                                 value=selected['approval'], allow_blank=False, id='approval')
+                    yield Static('', id='approval-help', markup=False, classes='setting-help')
                 yield Checkbox('Enable optional subagents', value=value['subagents'], id='subagents')
             with Collapsible(title='Skills and features', collapsed=True, id='skills-section'):
                 with Vertical(classes='setting'):
@@ -1671,7 +1746,7 @@ class SettingsForm(Screen):
                     yield Label('Additional skill Git repository URL')
                     yield Input(value.get('skill_repo', ''), id='skill-repo')
                 with Vertical(classes='setting'):
-                    yield Label('Skill folder in that repository (must contain SKILL.md)')
+                    yield Label('Skill folder in that repository · must contain SKILL.md')
                     yield Input(value.get('skill_path', ''), id='skill-path')
                     yield Static('Add one skill per save. Existing skills are kept; add another through Settings → Configuration.', classes='setting-help')
             with Collapsible(title='Advanced settings', collapsed=True):
@@ -1684,7 +1759,7 @@ class SettingsForm(Screen):
                 yield Input(value.get('env_file') or '', id='env-file')
                 yield Label('Seed Pi agent directory · optional, fresh configuration by default')
                 yield Input(value.get('pi_config') or '', id='pi-config', disabled=self.editing)
-            yield Static('', id='form-error', classes='error', markup=False)
+            yield Feedback('', id='form-error', classes='error', markup=False)
         with Vertical(classes='wizard-actions settings-actions'):
             yield Checkbox('Open selected editor after applying' if self.editing else 'Open selected editor after creation',
                            value=False if self.editing else value.get('open_editor', True), id='open-editor')
@@ -1907,20 +1982,19 @@ class Cockpit(App):
     Header { background: #f2b544; color: #171a1d; }
     Footer { background: #34383d; }
     .title { color: #f2b544; text-style: bold; margin: 0 0 1 0; }
-    Label { margin: 0; height: auto; }
-    .form { width: 100%; padding: 1 3; }
-    NewSandbox .form { padding: 0 3; }
-    NewSandbox #new-title { margin-bottom: 0; }
-    CreateFromSandbox .title, CreateFromSandbox #copy-source { margin-bottom: 0; }
+    Label { margin: 0; height: auto; max-width: 100%; }
+    .form { width: 100%; padding: 1 3 0 3; }
     .form > Static { height: auto; margin-bottom: 1; }
+    .form > Label { margin-bottom: 0; }
+    .form > .title, .form > .group-title { margin-bottom: 1; }
     #package-list { height: auto; }
     .package-row { height: auto; padding: 1 2; margin-bottom: 1; background: #24292f; }
     .package-title { text-style: bold; }
     .package-actions { height: 1; margin-top: 1; }
-    .package-actions Button { background: #34383d; padding: 0 2; }
     #package-error { color: $error; height: auto; }
     .setting { height: auto; margin-bottom: 1; }
-    .setting > Checkbox, .setting > Input, .setting > Select { margin-bottom: 0; }
+    .setting > Checkbox, .setting > Input, .setting > Select, .setting > TextArea { margin-bottom: 0; }
+    .setting > Button, .setting > .buttons, .setting > .path-row { margin: 0; }
     AdvisorChoices .setting > .copy-login { margin: 1 0 0 2; }
     .setting-help { height: auto; color: #b8bdc3; }
     .checkbox-help { padding-left: 4; }
@@ -1934,55 +2008,76 @@ class Cockpit(App):
     Checkbox:focus > .toggle--label { color: #171a1d; background: #f2b544; text-style: bold underline; }
     Checkbox:focus > .toggle--button { color: #171a1d; background: #f2b544; }
     Button.-primary { background: #f2b544; color: #171a1d; }
-    Button:focus { text-style: bold underline; }
+    Button:focus { text-style: bold; background: #f2b544; color: #171a1d; }
     Collapsible { margin-bottom: 1; padding: 0; border: none; }
+    Collapsible > Contents { padding: 1 3; }
+    Collapsible > Contents > *:last-child { margin-bottom: 0; }
     .buttons { height: 1; min-height: 1; margin: 1 0; }
     .wizard-actions { dock: bottom; height: 3; padding: 1 3; margin-bottom: 1; width: 100%; }
     .settings-actions { height: 5; padding: 1 3; }
     .action-buttons { height: 1; }
-    .wizard-actions Button { min-width: 12; padding: 0 2; }
+    .wizard-actions Button { min-width: 12; padding: 0 1; }
     .wizard-actions Button.-primary { dock: right; margin-right: 0; }
     .tall-terminal .wizard-actions { height: 5; }
-    .tall-terminal .wizard-actions Button { height: 3; padding: 1 2; }
+    .tall-terminal .wizard-actions Button { height: 3; padding: 1 1; }
     .tall-terminal .settings-actions { height: 7; }
     .tall-terminal .action-buttons { height: 3; }
-    .dialog-actions { align-horizontal: right; }
-    .dialog-actions Button { min-width: 12; padding: 0 2; }
+    .dialog-actions { align-horizontal: right; height: 1; min-height: 1; margin: 1 0 0 0; }
+    .tall-terminal .dialog-actions { height: 3; min-height: 3; }
+    .tall-terminal .dialog-actions Button { height: 3; padding: 1 1; }
+    .dialog-actions Button { min-width: 12; padding: 0 1; }
     .action-spacer { width: 1fr; height: 1; }
-    Collapsible Button { background: #34383d; }
-    Collapsible Button:hover { background: #454b52; }
-    Button { height: 1; border: none; margin-right: 1; min-width: 8; }
+    Button { height: 1; border: none; margin-right: 1; min-width: 8; padding: 0 1; background: #4a5058; }
+    Button:hover { background: #5a616a; }
+    .dialog-actions Button:last-child { margin-right: 0; }
+    SSHScreen #ssh-hosts { height: 5; }
+    #web-fields > .buttons { margin: 0 0 1 0; }
+    #slack-controls { width: auto; }
+    #slack-controls Checkbox { width: auto; margin-bottom: 0; }
+    #editor-show-password { margin-top: 1; }
+    #editor-tls-fields { margin-top: 1; }
+    #model-port-setting { margin: 0 0 1 2; }
+    Collapsible > Contents > *:last-child > .setting:last-child,
+    Collapsible > Contents > *:last-child > Collapsible:last-child { margin-bottom: 0; }
+    #slack-controls Button { margin-right: 0; }
+    .search-provider-row Button { margin-right: 0; }
+    .model-fields, #slack-fields, #copy-sandbox-fields, #search-provider-fields { padding-right: 1; }
+    OptionList > .option-list--option { padding: 0 1; }
     #custom-profile-fields, #network-rules-fields, #provider-controls { height: auto; }
-    #home > .buttons { margin: 0; }
+    #home > .buttons { margin: 0 0 1 0; }
     #home > .buttons Label { width: 1fr; }
     #network-error { height: auto; color: #b75b52; }
     .path-row { height: 3; }
     .path-row Input { width: 1fr; margin-bottom: 0; }
-    .path-row Button { height: 3; padding: 1 0; margin-top: 0; }
+    .path-row Button { height: 3; padding: 1 1; margin: 0; }
     #mkdir { margin: 1 0 1 2; }
     .error { color: #b75b52; height: auto; }
-    #title-banner { height: auto; padding: 0 2; }
+    .model-dialog > Feedback, FolderEditor Feedback { margin-top: 1; }
+    .tall-terminal FolderEditor > Vertical, .tall-terminal FolderEditor #folder-fields { height: auto; }
+    #folder-fields > Checkbox:last-child { margin-bottom: 0; }
+    .hosted-row > .buttons { margin: 1 0 0 0; }
+    #iam-fields { margin-bottom: 1; }
+    #title-banner { height: auto; padding: 1 3 0 3; }
     #application-update { display: none; height: auto; margin: 0 2; }
     #application-update-message { width: 1fr; height: auto; }
     #application-update-run { width: 14; margin: 0 0 0 1; }
-    #home { padding: 1 2; }
-    #sandboxes { height: 1fr; min-height: 5; }
-    #details { height: auto; min-height: 3; padding: 1; }
+    #home { padding: 1 3; }
+    #sandboxes { padding-right: 1; height: 1fr; min-height: 5; }
+    #details { height: auto; min-height: 3; padding: 1 0; }
     #home-error { height: auto; color: #b75b52; }
-    #operation-body { width: 100%; padding: 1 2; }
+    #operation-body { width: 100%; padding: 1 3 0 3; }
     #operation-title { height: auto; text-style: bold; margin-bottom: 1; }
     #operation-status { height: 1; color: #f2b544; margin-bottom: 1; }
     #operation-status.complete { color: #4f8a62; }
     #operation-status.failed { color: #b75b52; }
-    #operation-log { height: 1fr; max-height: 24; min-height: 5; border: round #34383d; padding: 0 1; }
-    #operation-back { margin: 1 0; width: 24; }
+    #operation-log { height: 1fr; min-height: 5; border: round #707780; border-title-color: #b8bdc3; padding: 0 1; overflow-y: auto; }
     Confirm, FolderPicker, MoreActions, SettingsMenu { align: center middle; background: #000000 70%; }
     #confirm-box { width: 75; max-width: 95%; height: auto; max-height: 90%; padding: 1 2; background: #34383d; border: solid #f2b544; }
     #confirm-box Static { height: auto; }
     #confirm-box > Label { margin-bottom: 1; color: #f2b544; text-style: bold; }
     #confirm-box > OptionList { height: auto; max-height: 14; margin-bottom: 1; }
     #folder-box { width: 85%; height: 85%; padding: 1 2; background: #34383d; border: solid #f2b544; }
-    #folders { height: 1fr; }
+    #folders { height: 1fr; padding-right: 1; }
     '''
 
     def __init__(self, state_root, service=None):
@@ -2018,7 +2113,7 @@ class Cockpit(App):
             yield Input(id='search')
             yield DataTable(id='sandboxes', cursor_type='row', zebra_stripes=True)
             yield Static('Choose a sandbox, or create your first one.', id='details', markup=False)
-            yield Static('', id='home-error', markup=False)
+            yield Feedback('', id='home-error', markup=False)
             with Horizontal(classes='buttons'):
                 yield Button('Open in browser', id='open', variant='primary')
                 yield Button('Open with…', id='launch-with')

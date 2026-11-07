@@ -7,13 +7,14 @@ from textual.screen import ModalScreen
 from textual.widgets import Button, Input, Label, OptionList, Select, Static
 from textual.widgets.option_list import Option
 from . import hosted_models
+from .tui_widgets import Feedback
 
 
 class ProviderDialog(ModalScreen):
     BINDINGS = [('escape', 'cancel', 'Cancel')]
     DEFAULT_CSS = '''
     ProviderDialog, ModelDialog { align: center middle; }
-    .model-dialog { width: 88; max-width: 94%; height: 90%; max-height: 42; padding: 1 2; background: #34383d; border: solid #f2b544; }
+    .model-dialog { width: 88; max-width: 94%; height: 24; max-height: 95%; padding: 1 2; background: #34383d; border: solid #f2b544; }
     .model-fields { height: 1fr; min-height: 1; }
     .model-dialog Static { height: auto; }
     .provider-specific { height: auto; }
@@ -54,7 +55,7 @@ class ProviderDialog(ModalScreen):
                             yield Input(v.get(field,''), password=True, id='hosted-'+field)
                     yield Static('Leave all three empty to keep saved AWS keys. Temporary credentials must be replaced when they expire.', classes='setting-help')
                 yield Static('', id='hosted-destinations', markup=False, classes='setting-help')
-            yield Static('', id='hosted-error', markup=False)
+            yield Feedback('', id='hosted-error', markup=False, classes='error')
             with Horizontal(classes='buttons dialog-actions'):
                 yield Button('Cancel', id='hosted-cancel')
                 yield Button('Save', id='hosted-save', variant='primary')
@@ -64,6 +65,7 @@ class ProviderDialog(ModalScreen):
     @on(Select.Changed)
     def sync(self):
         provider = self.query_one('#hosted-provider', Select).value
+        self.query_one('.model-dialog').styles.height = 44 if provider == 'amazon-bedrock' else 32 if provider == 'azure' else 26
         iam = provider == 'amazon-bedrock' and self.query_one('#hosted-method', Select).value == 'iam'
         self.query_one('#azure-fields').display = provider == 'azure'
         self.query_one('#bedrock-fields').display = provider == 'amazon-bedrock'
@@ -109,13 +111,15 @@ class HostedProviders(Vertical):
         self.busy = False
 
     def compose(self):
-        yield Static('Hosted model services', classes='title')
+        yield Static('Hosted model services', classes='group-title')
         yield Vertical(classes='hosted-list', id='hosted-list')
-        yield Button('Connect provider…', id='hosted-add')
-        yield Static('Choose a model after the sandbox starts.' if not self.sandbox_name else 'Choose a default model for new Pi and Pendant chats. Reopen an existing client after changing its connection.', classes='setting-help')
-        yield Static('',id='hosted-message',markup=False)
+        with Vertical(classes='setting'):
+            yield Button('Connect provider…', id='hosted-add')
+            yield Static('Choose a model after the sandbox starts.' if not self.sandbox_name else 'Choose a default model for new Pi and Pendant chats. Reopen an existing client after changing its connection.', classes='setting-help')
+        yield Static('',id='hosted-message',markup=False, classes='setting-help')
 
     async def on_mount(self):
+        self.query_one('#hosted-message').display = False
         if self.sandbox_name and hasattr(self.app.service, 'hosted_request'): self.load()
         else: await self.render_rows()
 
@@ -126,7 +130,12 @@ class HostedProviders(Vertical):
             self.saved = {r['provider']: r for r in reply['providers'] if r['configured']}
             await self.render_rows()
         except (ValueError, OSError, subprocess.SubprocessError) as error:
-            self.query_one('#hosted-message',Static).update(str(error))
+            self.show_message(str(error))
+
+    def show_message(self, text):
+        message = self.query_one('#hosted-message', Static)
+        message.update(text)
+        message.display = bool(text)
 
     async def render_rows(self):
         target = self.query_one('#hosted-list',Vertical)
@@ -170,15 +179,15 @@ class HostedProviders(Vertical):
     @work(exclusive=True,group='hosted-change')
     async def save(self,value):
         self.busy = True
-        self.query_one('#hosted-message',Static).update('Saving connection…')
+        self.show_message('Saving connection…')
         try:
             reply = await asyncio.to_thread(self.app.service.hosted_save,self.sandbox_name,value)
             self.saved[value['provider']] = reply
-            self.query_one('#hosted-message',Static).update('Connection saved. Choose a model to use.')
+            self.show_message('Connection saved. Choose a model to use.')
             await self.render_rows()
             self.app.push_screen(ModelDialog(self.sandbox_name,value['provider']))
         except (ValueError, OSError, subprocess.SubprocessError) as error:
-            self.query_one('#hosted-message',Static).update(str(error))
+            self.show_message(str(error))
         finally:
             self.busy = False
             self.query_one('#hosted-add',Button).disabled = False
@@ -190,8 +199,8 @@ class HostedProviders(Vertical):
             await asyncio.to_thread(self.app.service.hosted_remove,self.sandbox_name,provider)
             self.saved.pop(provider,None)
             await self.render_rows()
-            self.query_one('#hosted-message',Static).update('Connection removed. Choose another default model if needed.')
-        except (ValueError, OSError, subprocess.SubprocessError) as error: self.query_one('#hosted-message',Static).update(str(error))
+            self.show_message('Connection removed. Choose another default model if needed.')
+        except (ValueError, OSError, subprocess.SubprocessError) as error: self.show_message(str(error))
         finally:
             self.busy = False
             self.query_one('#hosted-add',Button).disabled = False
@@ -231,11 +240,11 @@ class ModelDialog(ModalScreen):
                         yield Label('Bedrock model / inference profile ID or ARN · optional')
                         yield Input(id='model-profile')
                         yield Static('Leave empty to use the exact catalogue ID. For a custom profile, select its underlying model above.',classes='setting-help')
-                yield Static('The catalogue supplies model capabilities and limits. Your account must have access to the model.',classes='setting-help')
+                yield Static('The catalogue supplies model capabilities and limits.',classes='section-intro')
                 with Vertical(classes='setting'):
                     yield Button('Refresh catalogue',id='model-refresh')
                 with Vertical(classes='setting'):
-                    yield Button('Test selected model · sends a short request',id='model-test')
+                    yield Button('Test selected model · sends a short request',id='model-test',disabled=True)
             yield Static('Loading catalogue…',id='model-error',markup=False)
             with Horizontal(classes='buttons dialog-actions'):
                 yield Button('Cancel',id='model-cancel')
@@ -262,7 +271,9 @@ class ModelDialog(ModalScreen):
         results = self.query_one('#model-results',OptionList)
         results.clear_options()
         results.add_options([Option(m['name']+' · '+m['id'],id=str(i)) for i,m in enumerate(self.filtered)])
+        results.display = bool(self.filtered)
         results.highlighted = None
+        self.query_one('#model-test',Button).disabled = True
         self.query_one('#model-save',Button).disabled = True
         self.query_one('#model-details',Static).update('Select a model to see its limits.' if self.filtered else 'No matching model. Refresh the catalogue or configure an unlisted model in Pendant.')
 
@@ -271,6 +282,7 @@ class ModelDialog(ModalScreen):
         model = self.filtered[event.option_index]
         self.query_one('#model-details',Static).update(f"{model['contextWindow']:,} context tokens · {model['maxTokens']:,} output tokens · " + ', '.join(model['input']) + (' · reasoning' if model['reasoning'] else ''))
         self.query_one('#model-save',Button).disabled = False
+        self.query_one('#model-test',Button).disabled = False
 
     @on(Button.Pressed)
     def pressed(self,event):

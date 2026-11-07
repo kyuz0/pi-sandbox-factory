@@ -1,82 +1,107 @@
-# Repository permissions
+# Repository access
 
-Factory’s [SSH companion](ssh.md) keeps private keys outside the development
-container. The sandbox can still use an unlocked key to authenticate. Its remote
-permissions determine which repositories and branches it can change.
+Use **Settings → SSH and repositories**. Private keys stay in the SSH companion;
+GitHub or GitLab controls what the key can do. Factory holds one key per sandbox.
 
-## Read-only access
+## Read-only repository
 
-Use a separate deploy key for the repository:
+1. Choose **Add repository…**, enter its HTTPS project URL and **Add destination**.
+   This supports GitHub, GitLab.com and self-hosted GitLab.
+2. Under **Host identity**, select a `known_hosts` file containing that server’s
+   verified SSH host key. Choose **Apply**. This restarts the sandbox’s processes.
+3. Reopen **SSH and repositories → SSH key** and choose **Generate repository key**.
+   Choose **Copy public key**. Generation refuses to replace an existing key;
+   use a separate sandbox if this one already holds your account key.
+4. In GitHub, open the repository’s **Settings → Deploy keys → Add deploy key**.
+   Paste the public key and leave **Allow write access** unchecked.
+   In GitLab, use **Settings → Repository → Deploy keys → Add new key** and
+   leave **Grant write permissions** unchecked. **Add repository… → Open deploy-key
+   settings** opens the appropriate page.
+5. In the sandbox, clone through the `repository` alias:
 
-1. Generate the key on your host, outside the workspace:
-   `ssh-keygen -t ed25519 -f ~/.ssh/pi-project-readonly`.
-2. Add the `.pub` file under **Settings → Deploy keys** on GitHub, or
-   **Settings → Repository → Deploy keys** on GitLab. Leave write access disabled.
-3. Configure the destination and import the private key through
-   **Settings → SSH**, following the [SSH setup](ssh.md#ssh-setup).
-4. Clone through its alias, for example:
-   `git clone git@github-project:OWNER/REPOSITORY.git`.
+   ```sh
+   git clone git@repository:OWNER/PROJECT.git
+   ```
 
-The agent can edit files, create local branches and commit locally. The server
-rejects pushes. Factory currently holds one imported key per sandbox; GitHub
-requires a different deploy key for each repository.
+The agent can edit and commit locally; pushes are rejected by the server.
+GitHub requires a different deploy key for each repository.
+
+If you already have a repository key, use **Import and unlock** instead of
+Generate. Keep the source key outside every folder mounted into the sandbox.
+Use **Unlock existing key** after the eight-hour expiry; **Show public key**
+retrieves the public half of the unlocked key.
+
+For an unknown SSH host, verify its fingerprint against the provider’s published
+fingerprints or with your server administrator, then connect from your host
+terminal to record it in `known_hosts`. Factory never accepts an unknown key
+for you. See [GitHub fingerprints](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/githubs-ssh-key-fingerprints).
+
+## Full SSH access
+
+Configure destinations as above, then **Import and unlock** with your existing
+account key. The sandbox gets that account’s Git permissions, including access to
+other repositories on the configured server and any protection bypass rights.
+For other SSH servers and custom ports, see [SSH setup](ssh.md#ssh-setup).
+
+## Restrict contributions to `pi-*` branches
+
+Use a separate automation account with write access only to the required
+repository, then import that account’s SSH key. Configure these rules on the
+server before granting the sandbox access. Factory does not verify the rules.
+
+### GitHub
+
+Open **Settings → Rules → Rulesets → New ruleset**. Set each ruleset to **Active**:
+
+| Target | Rules |
+| --- | --- |
+| All branches, excluding `pi-*` | Restrict creations, updates and deletions. Give bypass only to the human maintainers who need to update these branches. |
+| Branches matching `pi-*` | Restrict deletions and block force pushes. |
+| All tags | Restrict creations, updates and deletions. Give bypass only to the human maintainers who need to publish tags. |
+
+Never give the automation account a bypass role, team or direct grant. Check
+organization rules too. These controls require Pro/Team/Enterprise for private
+repositories; public repositories support them on Free.
+
+### GitLab
+
+Under **Settings → Repository → Branch rules**, protect `*`: allow pushes and
+merges only by Maintainers. Add `pi-*` with **Allowed to push and merge** set to
+Developers + Maintainers, **Allowed to merge** set to Maintainers, and force push
+disabled. Give the automation account the Developer role. Protect tags matching
+`*` with creation restricted to Maintainers.
+
+GitLab applies the most permissive matching rule, so inspect overlapping branch
+rules. Do not add a deploy key to a protected branch’s allowed-push list.
+
+### Check and use
+
+Test with a disposable repository first: push `pi-test`, then confirm that pushes
+to `main`, new non-`pi-*` branches, tags, force pushes and branch deletion fail.
+The sandbox can change any branch covered by the permitted pattern.
+
+After pushing, ask Pi for a comparison link and PR description. Open the link in
+your signed-in browser and create the request:
+
+```text
+https://github.com/OWNER/PROJECT/compare/main...pi-feature?expand=1
+```
+
+For GitLab, open **Code → Merge requests → New merge request** and select the
+source and target branches. Factory does not provide an authenticated PR API to
+the agent. Signing into `gh` inside the sandbox would expose that credential.
+
+## CI access
+
+A permitted push can run agent-modified code in CI, including changes to workflow
+files and build scripts. For a repository dedicated to agent work, the simplest
+setup is to disable Actions/CI until a maintainer reviews the change.
+
+If CI must run, keep secret-bearing jobs behind maintainer approval and prevent
+unreviewed code from reaching them. A read-only `GITHUB_TOKEN` does not protect
+other secrets. On GitLab, protected `pi-*` branches can receive protected variables;
+marking variables protected is insufficient here.
 
 [GitHub deploy keys](https://docs.github.com/en/authentication/connecting-to-github-with-ssh/managing-deploy-keys) ·
-[GitLab deploy keys](https://docs.gitlab.com/user/project/deploy_keys/)
-
-## Allowing contributions
-
-Use a dedicated automation identity with access only to the intended repository.
-Protect branches on the server; an instruction in `AGENTS.md` or a Git hook inside
-the workspace can be changed by the agent.
-
-For a policy that permits pushes only to `pi-*` branches:
-
-| Service | Server configuration |
-| --- | --- |
-| GitHub | An active branch ruleset targeting all branches except `pi-*`, restricting creation, updates and deletion. Grant bypass only to the human maintainers who need it, never the automation identity. Add rules preventing force pushes and deletion on `pi-*`, and restrict creation, updates and deletion of all tags. |
-| GitLab | Protect `*` against pushes and merges by the automation identity. Add a `pi-*` rule permitting that identity to push, while retaining human-only merges and disabling force pushes. Protect tags separately. Audit overlapping rules: GitLab usually applies the most permissive match. |
-
-A personal SSH key inherits your permissions, including any bypass rights.
-A write-enabled deploy key is not a replacement for this policy. Test the
-identity against a disposable repository before granting it production access.
-
-GitHub rulesets cover public repositories on Free, and private repositories on
-Pro, Team or Enterprise Cloud. GitLab protected branches are available on all
-tiers; selecting individual users or groups can require a paid tier.
-
 [GitHub rulesets](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/available-rules-for-rulesets) ·
-[GitLab protection rules](https://docs.gitlab.com/user/project/repository/branches/protection_rules/)
-
-## Pull requests and API credentials
-
-SSH authenticates Git operations. Creating a GitHub pull request through its API
-requires separate API authentication. Factory does not currently provide a
-repository API credential companion. Signing into `gh` or placing a token in the
-sandbox makes that credential accessible to its processes.
-
-For a credential companion, GitHub Apps provide selected-repository access and
-short-lived installation tokens. GitLab project access tokens provide a project
-identity with chosen roles and scopes. Neither credential type alone expresses
-“push only `pi-*` and open requests, but never merge”. That requires server rules
-and restrictions on the API operations exposed to the sandbox.
-
-[GitHub installation tokens](https://docs.github.com/en/apps/creating-github-apps/authenticating-with-a-github-app/authenticating-as-a-github-app-installation) ·
-[GitLab project tokens](https://docs.gitlab.com/user/project/settings/project_access_tokens/)
-
-## CI permissions
-
-A permitted push or pull request can start CI before anything is merged.
-Even unchanged workflow files may execute an agent-modified test or build script.
-Keep privileged jobs and secrets behind maintainer approval, or disable automation
-for the repository used by the agent. On GitLab, a protected `pi-*` branch can
-make protected variables available to its branch pipelines; marking a variable
-protected does not by itself exclude agent branches.
-
-Forks can separate contribution code from upstream privileges. Check the repository’s
-fork workflow policy: GitHub `pull_request_target` jobs can access base-repository
-secrets, and GitLab maintainers can run fork pipelines in the parent project.
-Do not run unreviewed contribution code in a privileged job.
-
-[GitHub workflow security](https://docs.github.com/en/actions/reference/security/secure-use) ·
-[GitLab fork pipelines](https://docs.gitlab.com/ci/pipelines/merge_request_pipelines/)
+[GitLab branch rules](https://docs.gitlab.com/user/project/repository/branches/protection_rules/)

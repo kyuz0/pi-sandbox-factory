@@ -8,7 +8,7 @@ from textual.widgets.option_list import Option
 from textual.widgets import Button, Collapsible, Footer, Header, Input, Label, OptionList, Select, Static
 
 from . import editor_settings
-from .tui_widgets import Checkbox
+from .tui_widgets import Checkbox, Feedback
 
 
 class EditorFields(Vertical):
@@ -59,7 +59,7 @@ class EditorFields(Vertical):
                 with Vertical(classes='setting'):
                     yield Label('HTTPS private key file on this host')
                     yield Input(self.value.get('private_key', ''), id='editor-private-key')
-                yield Static('Use a certificate trusted by the connecting browser for the listen address.', classes='setting-help')
+                    yield Static('Use a certificate trusted by the connecting browser for the listen address.', classes='setting-help')
 
     def on_mount(self):
         self.sync()
@@ -139,7 +139,7 @@ class EditorScreen(Screen):
             state = self.app.state_root / self.sandbox_name
             yield EditorFields(editor_settings.load(state), desktop_allowed=not (state / 'browser-editor.enabled').exists())
             yield Static('Saving stops a running browser editor. Use Open on the sandbox list to reopen it.', classes='setting-help')
-            yield Static('', id='editor-error', classes='error', markup=False)
+            yield Feedback('', id='editor-error', classes='error', markup=False)
         with Horizontal(classes='wizard-actions'):
             yield Button('Back', id='editor-back')
             yield Button('Save', id='editor-save', variant='primary')

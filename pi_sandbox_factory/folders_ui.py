@@ -8,13 +8,13 @@ from textual.screen import ModalScreen
 from textual.widgets import Button, Input, Label, Static
 
 from . import folders
-from .tui_widgets import Checkbox
+from .tui_widgets import Checkbox, Feedback
 
 
 class FolderEditor(ModalScreen):
     DEFAULT_CSS = '''
     FolderEditor { align: center middle; background: #000000 70%; }
-    FolderEditor > Vertical { width: 70; max-width: 95%; height: 24; max-height: 95%; padding: 1 2; background: $panel; border: solid $primary; }
+    FolderEditor > Vertical { width: 70; max-width: 95%; height: 28; max-height: 95%; padding: 1 2; background: $panel; border: solid $primary; }
     FolderEditor #folder-fields { height: 1fr; min-height: 5; }
     FolderEditor Static { height: auto; }
     FolderEditor Input { margin-bottom: 1; }
@@ -34,11 +34,12 @@ class FolderEditor(ModalScreen):
             with VerticalScroll(id='folder-fields'):
                 yield Label('Folder on your computer')
                 yield Input((self.row or {}).get('source', ''), placeholder='~/Documents/reference', id='folder-source')
-                yield Label('Name under /mnt · leave empty to use the folder name')
-                yield Input((self.row or {}).get('name', ''), id='folder-name')
+                with Vertical(classes='setting'):
+                    yield Label('Name under /mnt · leave empty to use the folder name')
+                    yield Input((self.row or {}).get('name', ''), id='folder-name')
+                    yield Static('', id='folder-preview', markup=False, classes='setting-help')
                 yield Checkbox('Read-only', value=(self.row or {}).get('read_only', True), id='folder-read-only')
-                yield Static('', id='folder-preview', markup=False)
-                yield Static('', id='folder-error', classes='error', markup=False)
+            yield Feedback('', id='folder-error', classes='error', markup=False)
             with Horizontal(classes='dialog-actions'):
                 yield Button('Cancel', id='folder-cancel')
                 yield Button('Save folder', id='folder-save', variant='primary')
@@ -69,7 +70,7 @@ class FolderEditor(ModalScreen):
             except (ValueError, OSError) as error:
                 feedback = self.query_one('#folder-error', Static)
                 feedback.update(str(error))
-                self.call_after_refresh(feedback.scroll_visible, animate=False)
+                self.query_one('#folder-fields').scroll_home(animate=False)
 
     def action_cancel(self):
         self.dismiss(None)
@@ -79,11 +80,11 @@ class FolderFields(Vertical):
     DEFAULT_CSS = '''
     FolderFields { height: auto; }
     FolderFields #folder-rows { height: auto; }
-    FolderFields .mount-row { height: auto; margin: 1 0; }
+    FolderFields .mount-row { height: auto; margin: 0 0 1 0; padding: 1 2; background: #24292f; }
     FolderFields .mount-row Static { height: auto; }
-    FolderFields .mount-buttons { height: auto; }
+    FolderFields .mount-buttons { height: auto; margin-top: 1; }
     FolderFields Button { margin-right: 1; }
-    FolderFields .mount-help { margin: 1 0; }
+    FolderFields .mount-help { margin: 0; }
     FolderFields #working-directory { margin-bottom: 1; }
     '''
 
@@ -98,8 +99,9 @@ class FolderFields(Vertical):
         yield Input(self.config.get('working_directory', '.'), placeholder='.', id='working-directory')
         yield Label('Additional host folders')
         yield Vertical(id='folder-rows')
-        yield Button('Add folder…', id='folder-add')
-        yield Static('Removing a mount leaves its host files intact. Separately mounted filesystems inside an added folder are not included.', markup=False, classes='setting-help mount-help')
+        with Vertical(classes='setting'):
+            yield Button('Add folder…', id='folder-add')
+            yield Static('Separately mounted filesystems inside an added folder are not included.', markup=False, classes='setting-help mount-help')
 
     async def on_mount(self):
         await self.refresh_rows()

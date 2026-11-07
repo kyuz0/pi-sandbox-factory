@@ -7,7 +7,7 @@ import unittest
 from unittest.mock import patch
 
 from pi_sandbox_factory import sandbox
-from pi_sandbox_factory.sandbox_tui import Cockpit, Confirm, NewSandbox, SettingsForm, Operation, DEFAULT_SETTINGS, Service
+from pi_sandbox_factory.sandbox_tui import Cockpit, Confirm, NewSandbox, SettingsForm, Operation, DEFAULT_SETTINGS, Service, SettingsMenu
 from textual.widgets import Input, Button, DataTable, Checkbox, TextArea, OptionList
 
 class FakeService:
@@ -45,10 +45,10 @@ class TUITests(unittest.TestCase):
         await app.workers.wait_for_complete()
         await pilot.pause()
 
-    async def settings_page(self, app, pilot, index=2):
+    async def settings_page(self, app, pilot, action="configuration"):
         await pilot.click('#settings');await pilot.pause()
         menu=app.screen.query_one('#settings-actions',OptionList)
-        menu.highlighted=index;menu.focus()
+        menu.highlighted=next(i for i, (_, key) in enumerate(SettingsMenu.ACTIONS) if key == action);menu.focus()
         await pilot.press('enter');await pilot.pause()
 
     async def delete_menu(self, app, pilot):
@@ -66,7 +66,8 @@ class TUITests(unittest.TestCase):
                     app.show_update('2099.1.1.1')
                 await pilot.pause()
                 title=app.query_one('#title-banner')
-                self.assertEqual(title.region.height,1 if size[0]==80 else 9)
+                self.assertEqual(title.content_region.height,1 if size[0]==80 else 9)
+                self.assertEqual(title.styles.padding.top,1)
                 self.assertFalse(app.query_one('#application-update-run',Button).disabled)
                 self.assertLess(app.query_one('#new').region.bottom,size[1])
                 self.assertLess(app.query_one('#more').region.bottom,size[1])
@@ -146,7 +147,7 @@ class TUITests(unittest.TestCase):
         app=Cockpit(self.root,service)
         async with app.run_test(size=(100,36)) as pilot:
             await self.ready(app,pilot)
-            await self.settings_page(app,pilot,index=3)
+            await self.settings_page(app,pilot,action="advisors")
             self.assertIsInstance(app.screen,AdvisorsScreen)
             self.assertTrue(app.screen.query_one('#advisor-login-codex',Button).disabled)
             self.assertLess(app.screen.query_one('#advisor-login-codex',Button).region.bottom, 34)
@@ -228,7 +229,7 @@ class TUITests(unittest.TestCase):
         app = Cockpit(self.root, FakeService(self.records))
         async with app.run_test(size=(100,36)) as pilot:
             await self.ready(app, pilot)
-            await self.settings_page(app, pilot, index=3)
+            await self.settings_page(app, pilot, action="advisors")
             self.assertFalse(app.screen.query_one('#advisor-login-codex', Button).disabled)
             self.assertTrue(app.screen.query_one('#advisor-login-agy', Button).disabled)
             self.assertTrue(app.screen.query_one('#advisor-login-claude', Button).disabled)
@@ -242,7 +243,7 @@ class TUITests(unittest.TestCase):
         app=Cockpit(self.root,service)
         async with app.run_test(size=(80,24)) as pilot:
             await self.ready(app,pilot)
-            await self.settings_page(app,pilot,index=3)
+            await self.settings_page(app,pilot,action="advisors")
             self.assertFalse(app.screen.query_one('#advisor-login-claude',Button).disabled)
             self.assertTrue(app.screen.query_one('#advisor-login-codex',Button).disabled)
             app.screen.query_one('#advisor-claude-model',Input).value='claude-sonnet-test'
@@ -254,11 +255,52 @@ class TUITests(unittest.TestCase):
             self.assertEqual(service.calls[0][2]['claude_effort'],'high')
             await pilot.press('q')
 
+    async def test_repository_setup_and_key_display(self):
+        from pi_sandbox_factory.sandbox_tui import SSHScreen
+        from pi_sandbox_factory.repository_ui import RepositorySetup, PublicKey
+        from textual.widgets import Collapsible
+        for size in ((80, 24), (120, 40), (220, 50)):
+            service = FakeService(self.records)
+            app = Cockpit(self.root, service)
+            async with app.run_test(size=size) as pilot:
+                await self.ready(app, pilot)
+                await app.push_screen(SSHScreen(self.records[0]))
+                self.assertTrue(app.screen.query_one('#ssh-generate-key', Button).disabled)
+                await app.push_screen(RepositorySetup(), app.screen.add_repository)
+                await pilot.pause()
+                app.screen.query_one('#repository-url', Input).value = 'https://github.com/team/project'
+                await pilot.pause()
+                button = app.screen.query_one('#repository-add', Button)
+                self.assertGreaterEqual(button.region.x, 0)
+                self.assertLess(button.region.bottom, size[1])
+                await pilot.click('#repository-add');await pilot.pause()
+                self.assertEqual(app.screen.query_one('#ssh-hosts', TextArea).text, 'repository git github.com 22')
+                # Existing aliases must not silently switch hosts.
+                app.screen.add_repository({'line': 'repository git gitlab.com 22'})
+                self.assertEqual(app.screen.query_one('#ssh-hosts', TextArea).text, 'repository git github.com 22')
+                with patch.object(service, 'ssh_key', create=True, return_value='ssh-ed25519 AAAA fixture'):
+                    await app.push_screen(PublicKey('alpha', generate=True))
+                    await pilot.pause();await app.workers.wait_for_complete();await pilot.pause()
+                    self.assertEqual(app.screen.query_one('#key-public', TextArea).text, 'ssh-ed25519 AAAA fixture')
+                    self.assertFalse(app.screen.query_one('#key-copy', Button).disabled)
+                    self.assertLess(app.screen.query_one('#key-copy').region.bottom, size[1])
+                    with patch.object(app, 'copy_to_clipboard') as copy_key:
+                        await pilot.click('#key-copy')
+                        copy_key.assert_called_once_with('ssh-ed25519 AAAA fixture')
+                    await pilot.press('escape')
+                with patch.object(service, 'ssh_key', create=True, side_effect=ValueError('Unlock first')):
+                    await app.push_screen(PublicKey('alpha'))
+                    await pilot.pause();await app.workers.wait_for_complete();await pilot.pause()
+                    self.assertTrue(app.screen.query_one('#key-copy', Button).disabled)
+                    self.assertIn('Unlock first', str(app.screen.query_one('#key-status').render()))
+                    await pilot.press('escape')
+                await pilot.press('escape')
+
     async def test_ssh_settings_keep_key_import_separate(self):
         from pi_sandbox_factory.sandbox_tui import SSHScreen
         service=FakeService(self.records);app=Cockpit(self.root,service)
         async with app.run_test(size=(100,36)) as pilot:
-            await self.ready(app,pilot);await self.settings_page(app,pilot,index=4)
+            await self.ready(app,pilot);await self.settings_page(app,pilot,action="ssh-settings")
             self.assertIsInstance(app.screen,SSHScreen)
             self.assertTrue(app.screen.query_one('#ssh-import-key',Button).disabled)
             self.assertEqual(app.screen.query_one('#ssh-key-file',Input).value,'')
@@ -403,7 +445,7 @@ class TUITests(unittest.TestCase):
             self.assertEqual(service.calls[0][2]['local_model_ports'],'8080')
             await pilot.click('#operation-back');await self.ready(app,pilot)
             app.query_one(DataTable).move_cursor(row=1);await pilot.pause()
-            await self.settings_page(app,pilot,index=1)
+            await self.settings_page(app,pilot,action="models")
             await pilot.click('#provider-preview');await self.ready(app,pilot)
             self.assertEqual(service.calls[-1],['provider','beta','local','preview',None])
             await pilot.press('q')
@@ -417,7 +459,7 @@ class TUITests(unittest.TestCase):
                 self.assertLessEqual(b.region.right,80,name);self.assertLessEqual(b.region.bottom,23,name)
             self.assertEqual(len(app.query('#home Button')),7)
             app.save_screenshot(filename='sandbox-home-declutter.svg',path='/tmp')
-            await self.settings_page(app,pilot,index=0)
+            await self.settings_page(app,pilot,action="network-settings")
             self.assertLessEqual(app.screen.query_one('#apply-network',Button).region.bottom,23)
             app.save_screenshot(filename='sandbox-network-declutter.svg',path='/tmp')
             await pilot.press('escape');await pilot.pause()
@@ -466,7 +508,7 @@ class TUITests(unittest.TestCase):
         async with app.run_test(size=(100,42)) as pilot:
             await self.ready(app,pilot)
             app.query_one(DataTable).move_cursor(row=1)
-            await self.settings_page(app,pilot,index=0)
+            await self.settings_page(app,pilot,action="network-settings")
             field=app.screen.query_one('#allowlist',TextArea)
             legacy='local-model.internal:8000\npypi.org:443\nregistry.npmjs.org:443\ngithub.com:443'
             field.load_text(legacy)

@@ -368,3 +368,33 @@ Windows 11, WSL 2.7.10, Ubuntu 26.04, Podman 5.7 and Windows Edge 157;
 | Background operation | Both editors remained reachable with no Ubuntu terminal or launcher open for 90 seconds |
 
 Model replies in these checks came from synthetic fixtures.
+
+## Repository SSH access
+
+Run `tests/test_ssh.py` and the TUI suite, then exercise the actual SSH companion:
+
+```sh
+.venv/bin/python tests/repository_ssh_container.py --dev-image YOUR_FACTORY_DEV_IMAGE
+```
+
+The disposable SSH Git server checks generated-key persistence, refusal to replace
+keys, private-volume isolation, clone and push behaviour under read-only,
+restricted-branch and full-write server policies. Its policies are test fixtures,
+not a verification of GitHub or GitLab settings. It deletes its containers and
+volumes afterward.
+
+For a live service check, use a disposable repository and follow
+[repository setup](docs/repository-access.md). Verify clone succeeds and push fails
+with a read-only deploy key. With a separate automation account, test `pi-*` pushes,
+forbidden refs, force pushes and deletions against the configured server rules.
+Do not modify production repository policies for testing.
+
+## TUI visual review
+
+Run `./.venv/bin/python tests/render_tui.py /tmp/factory-ui` to capture offline
+fixtures at 80×24, 120×40 and 220×50. Open the SVGs in a browser; `coverage.json`
+lists each screen and state. The fixtures include expanded settings, populated
+fields and errors. Review every image with Claude Opus before committing UI changes,
+using the layout rules in `AGENTS.md`. Re-render corrected views; passing tests alone
+is insufficient. Use `--size 80x24 --monochrome` for the monochrome check, or
+`--only STATE` to repeat a corrected view. Also exercise keyboard focus and scrolling.

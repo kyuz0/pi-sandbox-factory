@@ -9,10 +9,14 @@ For authenticated Git operations with an isolated private key, use SSH.
 
 ## SSH setup
 
-1. Open **Settings → SSH**. Import aliases from your host's SSH configuration, or enter one destination per line: `alias username hostname port`.
+For GitHub or GitLab, use **Add repository…** and follow [repository setup](repository-access.md).
+
+1. Open **Settings → SSH and repositories**. Import aliases from your host's SSH configuration, or enter one destination per line: `alias username hostname port`.
 2. Supply trusted host keys through your existing `known_hosts` file, then **Apply**. Applying destinations restarts the sandbox processes and preserves the workspace and private home.
-3. Return to **SSH → Host identity and private key**, select a key outside the workspace, and choose **Import key and unlock**. Enter its passphrase directly in your terminal.
+3. Return to **SSH and repositories → SSH key**, select a key outside the workspace, and choose **Import and unlock**. Enter its passphrase directly in your terminal.
 4. Use the alias from the sandbox, for example `ssh build 'hostname && uptime'`. With the inner command sandbox enabled, Pi uses `bash_escalate`, subject to manual or automatic approval.
+
+Generate creates an unencrypted key inside the private companion volume and refuses to replace an existing key. Import replaces the companion’s saved key.
 
 Keys are loaded for eight hours. Use **Unlock existing key** after expiry or after restarting a companion with an encrypted key. Unencrypted keys load automatically when the companion starts.
 
@@ -21,6 +25,8 @@ CLI key management after configuring destinations:
 ```sh
 pi-sandbox-factory ssh-import-key NAME --key-file ~/.ssh/id_ed25519
 pi-sandbox-factory ssh-unlock NAME
+pi-sandbox-factory ssh-generate-key NAME
+pi-sandbox-factory ssh-public-key NAME
 ```
 
 For GitHub, configure an alias such as `github-project`, username `git`, hostname `github.com`, port `22`, and its trusted host keys. Import a key with the repository access you need. A read-only deploy key limits access to one repository.

@@ -23,6 +23,7 @@ Implementation and shipped assets live in `pi_sandbox_factory/`:
 - `hosted_models.py`, `models_ui.py`, `providers/hosted-models.mjs`: native Pi hosted-provider setup and model selection.
 - `inference.py`, `containers/inference/`: credential companion, fixed routes and streaming proxy.
 - `sandbox_advisors.py`, `sandbox_ssh.py`: credential companions.
+- `repository_ui.py`: SSH repository setup and public-key controls; repository permissions are enforced by the Git server.
 - `advisor_credentials.py`, `advisors_ui.py`: explicit host sign-in copies and advisor selection.
 - `containers/`: images, bootstrap and extension pins; `profiles/base/`: generic profile.
 
@@ -100,6 +101,18 @@ Do not solve VM mount failures with recursive ownership changes or wider host mo
 - Review rendered screens at 80×24, 120×40 and 220×50, including expanded sections, long
   paths, errors and keyboard focus. Check monochrome checkbox states too. Geometry
   tests complement visual inspection; neither replaces the other.
+
+Visual review is a hard gate for TUI changes. Capture every screen and its expanded,
+populated and error states at the sizes above; review the images with Claude Opus.
+Check shared left edges, panel padding, button padding, label/control/help grouping,
+scrolling and visible actions. Fix every deviation before committing. A passing test
+suite or a general approval without screen-by-screen findings does not satisfy this gate.
+Prefer shared layout rules over per-screen spacing overrides. Contextual buttons need
+two columns of inner padding and separation from surrounding prose; modal actions use
+the same responsive height as page actions. Indentation must express a parent/child
+relationship, never compensate for unrelated alignment errors. In Textual CSS, use
+complete margin values when overriding one side; a more specific side override can
+clear the other margins. Verify the rendered gap, not just the stylesheet.
 
 ## Changes and docs
 

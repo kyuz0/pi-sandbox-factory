@@ -1082,8 +1082,10 @@ def main():
         'delete': 'Remove both containers, private volumes, and saved state; keep the host workspace',
         'configure': 'Check or refresh enabled providers',
         'advisor-import': 'Copy a host sign-in into the advisor container',
+        'ssh-generate-key': 'Generate a repository key inside the SSH companion',
+        'ssh-public-key': 'Show the unlocked SSH public key',
     }
-    for command in ('update', 'build', 'up', 'down', 'delete', 'recreate', 'open', 'configure', 'shell', 'pi', 'exec', 'check', 'policy', 'network', 'web-key', 'communication-key', 'advisor-login', 'advisor-import', 'advisor-check', 'ssh-import-key', 'ssh-unlock', 'browser-editor'):
+    for command in ('update', 'build', 'up', 'down', 'delete', 'recreate', 'open', 'configure', 'shell', 'pi', 'exec', 'check', 'policy', 'network', 'web-key', 'communication-key', 'advisor-login', 'advisor-import', 'advisor-check', 'ssh-import-key', 'ssh-unlock', 'ssh-generate-key', 'ssh-public-key', 'browser-editor'):
         cmd = sub.add_parser(command, **({'help': descriptions[command]} if command in descriptions else {}))
         cmd.add_argument('name')
         if command == 'browser-editor':
@@ -1182,6 +1184,8 @@ def main():
         build(config)
     elif args.command == 'ssh-import-key':
         sandbox_ssh.import_key(config, state, args.key_file)
+    elif args.command in ('ssh-generate-key', 'ssh-public-key'):
+        print(sandbox_ssh.repository_key(config, state, generate=args.command == 'ssh-generate-key'))
     elif args.command == 'ssh-unlock':
         sandbox_ssh.unlock(config, state)
     elif args.command == 'advisor-check':

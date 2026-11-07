@@ -7,7 +7,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends openssh-client 
     && mkdir -p /private /run/ssh-access \
     && chown sshaccess:sshaccess /private /run/ssh-access \
     && chmod 700 /private /run/ssh-access
-COPY service.py unlock.py /opt/ssh-access/
+COPY service.py unlock.py key.py /opt/ssh-access/
 ENV SSH_AUTH_SOCK=/run/ssh-access/agent.sock
 USER sshaccess
 ENTRYPOINT ["/usr/bin/tini", "--", "python3", "/opt/ssh-access/service.py"]
