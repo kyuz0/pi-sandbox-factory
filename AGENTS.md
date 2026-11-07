@@ -65,7 +65,9 @@ extension changes, not just mocked APIs. Never restart a user's sandbox to test.
 - Path inputs and Browse buttons share a three-row height. Put dependent options
   one row below, indented two columns. Use the shared checkbox from `tui_widgets.py`.
 - Give inputs persistent labels; placeholders are examples, not labels. Use the
-  same title style and left edge across screens, and limit forms to 112 columns.
+  same title style and left edge across screens. Full-page forms and action bars
+  use the available terminal width with consistent side padding; constrain modal
+  dialogs separately.
 - Align page Back/Cancel left and the primary action right, at the form edges.
   Group dialog actions on the right, Cancel before Save. Keep contextual actions
   beside their object. Use three-row page action buttons at 32 terminal rows or
@@ -80,7 +82,7 @@ extension changes, not just mocked APIs. Never restart a user's sandbox to test.
 - Put common tasks in the visible Settings menu. A shortcut should open and focus
   the existing form, not duplicate its save logic. Keep optional setup collapsed
   and show its state in the heading. Disable fields whose controlling option is off.
-- Review rendered screens at 80×24 and 120×40, including expanded sections, long
+- Review rendered screens at 80×24, 120×40 and 220×50, including expanded sections, long
   paths, errors and keyboard focus. Check monochrome checkbox states too. Geometry
   tests complement visual inspection; neither replaces the other.
 

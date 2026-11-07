@@ -1841,7 +1841,7 @@ class Cockpit(App):
     Footer { background: #34383d; }
     .title { color: #f2b544; text-style: bold; margin: 0 0 1 0; }
     Label { margin: 0; height: auto; }
-    .form { padding: 1 3; max-width: 112; }
+    .form { width: 100%; padding: 1 3; }
     NewSandbox .form { padding: 0 3; }
     NewSandbox #new-title { margin-bottom: 0; }
     CreateFromSandbox .title, CreateFromSandbox #copy-source { margin-bottom: 0; }
@@ -1869,7 +1869,7 @@ class Cockpit(App):
     Button:focus { text-style: bold underline; }
     Collapsible { margin-bottom: 1; padding: 0; border: none; }
     .buttons { height: 1; min-height: 1; margin: 1 0; }
-    .wizard-actions { dock: bottom; height: 3; padding: 1 3; margin-bottom: 1; max-width: 112; }
+    .wizard-actions { dock: bottom; height: 3; padding: 1 3; margin-bottom: 1; width: 100%; }
     .settings-actions { height: 5; padding: 1 3; }
     .action-buttons { height: 1; }
     .wizard-actions Button { min-width: 12; padding: 0 2; }
@@ -1901,7 +1901,7 @@ class Cockpit(App):
     #sandboxes { height: 1fr; min-height: 5; }
     #details { height: auto; min-height: 3; padding: 1; }
     #home-error { height: auto; color: #b75b52; }
-    #operation-body { width: 100%; max-width: 112; padding: 1 2; }
+    #operation-body { width: 100%; padding: 1 2; }
     #operation-title { height: auto; text-style: bold; margin-bottom: 1; }
     #operation-status { height: 1; color: #f2b544; margin-bottom: 1; }
     #operation-status.complete { color: #4f8a62; }

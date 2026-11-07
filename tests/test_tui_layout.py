@@ -85,6 +85,26 @@ class TUILayoutTests(unittest.TestCase):
                 await pilot.press('escape')
                 await pilot.press('q')
 
+    async def test_review_uses_terminal_width_with_padded_actions(self):
+        for size in ((80, 24), (120, 40), (220, 50)):
+            app = self.app()
+            async with app.run_test(size=size) as pilot:
+                await self.ready(app, pilot)
+                await app.push_screen(SettingsForm(self.draft()))
+                app.screen.query_one('#folders-section', Collapsible).collapsed = False
+                await pilot.pause()
+                form = app.screen.query_one('.form')
+                actions = app.screen.query_one('.wizard-actions')
+                primary = actions.query_one('Button.-primary', Button)
+                self.assertEqual(form.region.width, size[0])
+                self.assertEqual(actions.region.width, size[0])
+                self.assertEqual(actions.content_region.x, 3)
+                self.assertEqual(primary.region.right, size[0] - 3)
+                self.assertLess(primary.region.bottom,
+                                app.screen.query_one('Footer').region.y)
+                await pilot.press('escape')
+                await pilot.press('q')
+
     async def test_folder_and_confirmation_dialogs_cancel_with_escape(self):
         app = self.app()
         async with app.run_test(size=(80, 24)) as pilot:
