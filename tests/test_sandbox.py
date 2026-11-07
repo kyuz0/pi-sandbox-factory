@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 import subprocess
 import sqlite3
+import sys
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -229,6 +230,11 @@ class ProfileTests(unittest.TestCase):
 
 
 class CreationInterruptTests(LifecycleTestCase):
+    def setUp(self):
+        super().setUp()
+        engine = patch.object(sandbox.host_platform, "check_engine", return_value=None)
+        engine.start(); self.addCleanup(engine.stop)
+
     def test_interrupt_during_either_source_fetch_cleans_state_and_allows_retry(self):
         profile = sandbox.load_profile('base')
         for interrupt_at in (1, 2):
@@ -262,7 +268,7 @@ class CreationInterruptTests(LifecycleTestCase):
             state = Path(tmp) / 'interrupted-demo'
             (state / 'profiles/source-snapshot').mkdir(parents=True)
             (state / '.profile-interrupted').mkdir()
-            subprocess.run(['python3', str(sandbox.ROOT.parent / 'sandbox.py'), '--state-dir', tmp,
+            subprocess.run([sys.executable, str(sandbox.ROOT.parent / 'sandbox.py'), '--state-dir', tmp,
                             'delete', state.name], check=True, capture_output=True)
             self.assertFalse(state.exists())
             state.mkdir()
@@ -491,8 +497,11 @@ class ListTests(unittest.TestCase):
 
 
 class RecoveryTests(LifecycleTestCase):
+    """Linux container recovery; VM preflights have separate host-adapter tests."""
     def setUp(self):
         super().setUp()
+        system = patch("platform.system", return_value="Linux")
+        system.start(); self.addCleanup(system.stop)
         self.config = {'name': 'demo', 'engine': 'podman', 'workspace': '/tmp'}
         self.dev, self.proxy, _, _ = sandbox.names(self.config)
 

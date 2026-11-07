@@ -18,7 +18,17 @@ Launcher tests cover Open with, terminal handoff and return, browser-editor defa
 startup failure and the configured working folder. Editor tests cover password
 generation, masked saved credentials, connection validation and settings changes
 without container recreation.
-These tests use fixtures and no account credentials.
+These tests use fixtures and no account credentials. On macOS, place test fixtures
+under your home directory: the default system temporary directory is intentionally
+excluded from sandbox workspaces.
+
+```sh
+mkdir -p "$HOME/.cache/pi-sandbox-factory-tests"
+TMPDIR="$HOME/.cache/pi-sandbox-factory-tests" .venv/bin/python -m unittest discover -s tests -p 'test_*.py'
+```
+
+Use `~/Projects` for container integration workspaces on macOS so Podman Machine
+can share them.
 
 ## Package installation
 

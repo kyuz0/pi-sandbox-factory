@@ -38,7 +38,8 @@ class CredentialTests(unittest.TestCase):
             with self.assertRaises(ValueError) as error: auth.read_host('codex')
             self.assertNotIn('secret', str(error.exception))
 
-    def test_antigravity_reads_only_its_keyring_entry(self):
+    @patch("platform.system", return_value="Linux")
+    def test_antigravity_reads_only_its_keyring_entry(self, _system):
         with patch.object(auth.subprocess, 'run', return_value=SimpleNamespace(returncode=0, stdout='{"token":"synthetic"}')) as run:
             self.assertEqual(json.loads(auth.read_host('agy')), {'token':'synthetic'})
             self.assertEqual(run.call_args.args[0], ['secret-tool','lookup','service','gemini','username','antigravity'])

@@ -43,7 +43,8 @@ class CopySettingsTests(unittest.TestCase):
             engine='docker', allowlist=None, allow_domain=['example.com:443'], advisor=['claude'],
             omit_skill=list(omit))
         state = self.root / 'target'
-        with patch.object(sandbox, 'choose_engine', return_value='docker'), \
+        with patch.object(sandbox.host_platform, 'check_engine', return_value=None), \
+             patch.object(sandbox, 'choose_engine', return_value='docker'), \
              patch.object(sandbox.os, 'getuid', return_value=1000), \
              patch.object(sandbox.os, 'getgid', return_value=1000), \
              patch.object(model_providers.registry, 'resolve', side_effect=AssertionError('Must use saved packages')):

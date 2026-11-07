@@ -1,9 +1,10 @@
 # Windows and macOS
 
 The manager runs in WSL2 on Windows and natively on macOS with Podman Machine.
-Both run the same Linux containers as the Linux installation. Windows and macOS
-hardware validation is pending; [the platform checks](../TESTING.md#platform-checks)
-cover the remaining tests.
+Both run the same Linux containers as the Linux installation. Apple Silicon has
+been tested on an M1 with macOS 27 and Podman 6.1.4: container creation, Pi/Pendant,
+browser tools, editor authentication, network isolation and folder permissions.
+Windows hardware validation is pending. See [platform checks](../TESTING.md#platform-checks).
 
 ## Windows
 

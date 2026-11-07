@@ -2,6 +2,7 @@
 import argparse
 import json
 import os
+import platform
 from pathlib import Path
 import subprocess
 import sys
@@ -30,7 +31,8 @@ def cid():
 
 
 original_id = cid()
-labels = {r['source']: subprocess.check_output(['ls', '-Zd', r['source']], text=True) for r in config['extra_folders']}
+labels = ({r['source']: subprocess.check_output(['ls', '-Zd', r['source']], text=True)
+           for r in config['extra_folders']} if platform.system() == 'Linux' else {})
 inside('sh', '-c', 'printf PRIVATE_KEEP > /home/node/folder-private-marker')
 result = inside('touch', '/mnt/reference/outer-denied', check=False)
 assert result.returncode != 0 and 'Read-only' in result.stderr, result
@@ -39,7 +41,9 @@ inside('sh', '-c', 'printf HOST_OWNER_OK > /mnt/output/owner.txt')
 assert (Path(output['source']) / 'owner.txt').stat().st_uid == os.getuid()
 for source, label in labels.items():
     assert subprocess.check_output(['ls', '-Zd', source], text=True) == label
-print('PASS outer read-only enforcement, refused remount, host ownership and unchanged SELinux labels', flush=True)
+print('PASS outer read-only enforcement, refused remount and host ownership', flush=True)
+if labels:
+    print('PASS unchanged SELinux labels', flush=True)
 
 sandbox.apply_settings(config, state, {'working_directory': '.'})
 assert cid() == original_id
