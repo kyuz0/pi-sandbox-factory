@@ -138,7 +138,7 @@ pi-sandbox-factory network NAME --allowlist /path/to/allowlist.txt \
 ```
 
 For SSH hosts or authenticated Git access with an isolated key, see
-[SSH and GitHub](ssh.md).
+[SSH and Git repositories](ssh.md).
 
 ### Included command-line tools
 

@@ -1,4 +1,4 @@
-# SSH and GitHub
+# SSH and Git repositories
 
 ## GitHub over HTTPS
 
@@ -47,4 +47,12 @@ flowchart LR
 
 The development container receives sockets and public host configuration. The private key file stays in the companion. OpenSSH constrains its use to the configured users and trusted host identities. Each sandbox holds one imported key; use separate sandboxes for separate keys.
 
-SSH grants the remote account's permissions. Configure those permissions for the work you intend to allow. Removing all destinations disables access; deleting the sandbox removes its private key copy and companion volumes. Your original key and workspace remain on the host.
+A process in the sandbox can use the signing socket while the key is unlocked,
+including a malicious extension. Destination constraints restrict the SSH server
+and username; they do not restrict repositories, branches or Git commands. The Git
+server enforces those permissions. Use a repository deploy key or a dedicated
+automation identity rather than your personal key. See
+[repository permissions](repository-access.md).
+
+Removing all destinations disables access; deleting the sandbox removes its private
+key copy and companion volumes. Your original key and workspace remain on the host.

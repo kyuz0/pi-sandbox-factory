@@ -60,5 +60,5 @@ pi-sandbox-factory provider add company git@git.example.com:team/plugins.git --s
 
 - [Create a profile](docs/profiles.md) or [provider](docs/providers.md).
 - [Browser editor](docs/browser-editor.md), [web search](docs/web-access.md) and [Slack](docs/communications.md).
-- [Isolation and architecture](docs/architecture.md), [approvals](docs/approvals.md), [SSH](docs/ssh.md) and [advisors](docs/advisors.md).
+- [Isolation and architecture](docs/architecture.md), [approvals](docs/approvals.md), [SSH](docs/ssh.md), [repository permissions](docs/repository-access.md) and [advisors](docs/advisors.md).
 - [Development and tests](TESTING.md), [agent guide](AGENTS.md).

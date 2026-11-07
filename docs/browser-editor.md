@@ -79,8 +79,10 @@ and grant only what you intend to share. The launcher checks Host and Origin on
 HTTP and WebSocket requests. Local access is passwordless by default; enable a password on a shared computer. With a password
 enabled, code-server authenticates both HTTP and WebSocket sessions.
 
-The container network policy controls backend traffic. Browser-side requests,
-including extension gallery requests, use the host browser's network.
+The container network policy controls backend traffic, including extension package
+downloads. Gallery searches and other browser-side requests can use the host
+browser’s network. Seeing an extension in search does not mean its package can
+be downloaded inside the sandbox.
 
 [Developer checks](../TESTING.md#browser-editor) cover Pendant, hostile
 extension probes, login protection and session cleanup.
