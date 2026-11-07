@@ -16,6 +16,8 @@ import sys
 import tempfile
 import time
 
+from . import host_platform
+
 HELPER = '/opt/betterwright/viewer.mjs'
 ID = r'[a-f0-9]{32}'
 
@@ -220,8 +222,8 @@ class Viewer:
             self.connections.discard(task)
 
     async def serve(self, ready, stopping):
-        address = '127.' + '.'.join(str(secrets.randbelow(254) + 1) for _ in range(3))
-        server = await asyncio.start_server(self.handle, address, 0, limit=16384)
+        address = host_platform.automatic_address()
+        server = await asyncio.start_server(self.handle, host_platform.listen_address(address), 0, limit=16384)
         self.host = address + ':' + str(server.sockets[0].getsockname()[1])
         proc = await asyncio.create_subprocess_exec(
             self.engine, 'exec', '-i', '--user', 'node', self.container, 'node', HELPER,
@@ -262,8 +264,8 @@ def ensure_viewer(engine, container):
     started = subprocess.check_output([engine, 'inspect', '--format', '{{.State.StartedAt}}', container], text=True).strip()
     # Child holds the lock and acknowledges only after descriptor delivery.
     import selectors
-    proc = subprocess.Popen([sys.executable, str(Path(__file__).resolve()), engine, container,
-                             str(runtime / (container + '.lock')), started],
+    proc = subprocess.Popen(host_platform.python_command('pi_sandbox_factory.browser_viewer', engine, container,
+                             str(runtime / (container + '.lock')), started),
                             stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
                             stderr=subprocess.STDOUT, start_new_session=True, close_fds=True)
     with selectors.DefaultSelector() as selector:

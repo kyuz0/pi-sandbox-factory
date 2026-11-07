@@ -244,7 +244,7 @@ same disposable sandbox to check token-only updates without recreation, removal
 of a duplicate npm registration, disabled tools in Pendant, network-rule removal,
 and credentials surviving disable/re-enable.
 
-## Browser editor prototype
+## Browser editor
 
 Follow [the browser editor guide](docs/browser-editor.md) for the real-model smoke
 check. Confirm dark mode, Explorer on the left, Pendant in the right secondary
@@ -311,3 +311,38 @@ Delete the disposable sandbox after stopping the launcher:
 ```sh
 .venv/bin/pi-sandbox-factory --state-dir /tmp/pi-browser-boundary-check/state delete browser-check
 ```
+
+
+## Platform checks
+
+Run the Python and Node suites on Linux before publishing platform changes.
+`test_host_platform.py` checks platform selection, WSL paths, private-folder
+rejection, Podman connection/version validation and architecture selection with
+fixtures. It does not establish that Windows or macOS works on real hardware.
+
+On Windows 11 with WSL2 Ubuntu 26.04, and on an Apple Silicon Mac with rootless
+Podman Machine, install from [platform setup](docs/platforms.md) and check:
+
+1. Create a default sandbox from the TUI. Open the browser editor; confirm dark
+   mode, trusted workspace, Pendant on the right and a responding fixture/local model.
+   Reopen it, stop the editor, restart it and confirm its URL stays stable.
+2. Open a second sandbox. Confirm its hostname differs and its login cookie is
+   not sent to the first. Check WebSocket connection, clipboard and file downloads
+   in the target browser. Open Pi CLI alongside the editor.
+3. Use a workspace subfolder and two extra folders: read-only and writable. Check
+   host-to-container and container-to-host changes, file watching and unchanged
+   host ownership. Attempt writes to the read-only mount from the outer container.
+4. Run the browser and model fixture recipes above. An allowed endpoint must work;
+   an unselected destination and a redirect to it must fail. Open the browser
+   viewer, interact with the synthetic form and read that state through Pi.
+5. Restart WSL or Podman Machine, then reopen the sandbox. On macOS, switching to
+   another Podman connection must produce an error before managing its containers.
+   Verify a folder outside the VM shares produces an actionable startup error.
+6. Sign in to one advisor with disposable test credentials; check its status and
+   recovery after logout. Never include credentials in results or fixtures.
+
+For Windows, check WSL-native projects first, then a specific `/mnt/c` project.
+Test an SSH-forwarded model in WSL and, separately, a Windows-local model with
+mirrored networking. For macOS, check localhost model access, native ARM64 images
+and Chromium interaction. A Windows cloud VM needs nested virtualization for WSL2;
+use a Mac with hardware virtualization available for Podman Machine.

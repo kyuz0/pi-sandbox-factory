@@ -13,7 +13,7 @@ import urllib.error
 import urllib.request
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from pi_sandbox_factory import sandbox
+from pi_sandbox_factory import sandbox, host_platform
 from pi_sandbox_factory.browser_viewer import ensure_viewer
 
 parser = argparse.ArgumentParser(description=__doc__)
@@ -33,7 +33,7 @@ def relay_pids():
     result = []
     for line in subprocess.check_output(['ps','-eo','pid,args'],text=True).splitlines():
         fields = line.split()
-        if len(fields) >= 5 and fields[2].endswith('/browser_viewer.py') and fields[4] == cid:
+        if "run_module('pi_sandbox_factory.browser_viewer'" in line and f' {engine} {cid} ' in line:
             result.append(int(fields[0]))
     return result
 
@@ -48,7 +48,10 @@ def link():
         "import {viewerLink} from '/opt/betterwright/viewer.mjs'; console.log(await viewerLink('" + session + "'));").stdout.strip()
 
 def fetch(url, headers=None):
-    with http.open(urllib.request.Request(url,headers=headers or {}),timeout=30) as response:
+    parsed = urllib.parse.urlsplit(url)
+    headers = {'Host': parsed.netloc, **(headers or {})}
+    wire_url = url.replace(parsed.hostname, host_platform.listen_address(parsed.hostname), 1)
+    with http.open(urllib.request.Request(wire_url, headers=headers), timeout=30) as response:
         return response.read().decode()
 
 def refused(url, headers=None):
@@ -67,6 +70,7 @@ if (!result.ok) throw Error(JSON.stringify(result));
 await writeFile('/tmp/viewer-lifecycle-url', await browser.viewerLink());
 setInterval(()=>{},1000);
 ''')
+inside('rm', '-f', '/tmp/viewer-lifecycle-url')
 subprocess.run([engine,'exec','-d',container,'node','/tmp/viewer-lifecycle.mjs'],check=True)
 wait(lambda: inside('test','-f','/tmp/viewer-lifecycle-url',check=False).returncode == 0, 'Browser did not start')
 url = inside('cat','/tmp/viewer-lifecycle-url').stdout.strip()
@@ -84,7 +88,7 @@ refused(url.replace(url.split('/')[5], '0'*64))
 # Keep a real WebSocket open during SIGTERM; shutdown must not wait for the UI.
 parsed = urllib.parse.urlsplit(url)
 target = re.search(r'devtools/page/([A-F0-9]+)',page)[1]
-ws = socket.create_connection((parsed.hostname,parsed.port),timeout=10)
+ws = socket.create_connection((host_platform.listen_address(parsed.hostname),parsed.port),timeout=10)
 ws.sendall((f'GET {parsed.path}devtools/page/{target} HTTP/1.1\r\nHost: {parsed.netloc}\r\n'
             f'Origin: http://{parsed.netloc}\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n'
             'Sec-WebSocket-Version: 13\r\nSec-WebSocket-Key: aaaaaaaaaaaaaaaaaaaaaa==\r\n\r\n').encode())

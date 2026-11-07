@@ -1,29 +1,16 @@
 # Browser editor
 
 The browser editor runs Pendant and its Node extensions inside the sandbox.
-It is the default on x86_64 Linux with rootless Podman. Pi CLI and host VS Code
-remain available through **Open with…**.
-
-## Try the prototype branch
-
-```sh
-git clone --branch codex/browser-editor-prototype \
-  https://github.com/kyuz0/pi-sandbox-factory.git pi-browser-editor
-cd pi-browser-editor
-python3 -m venv .venv
-.venv/bin/python -m pip install -e .
-.venv/bin/pi-sandbox-factory --state-dir ~/.local/state/pi-browser-editor
-```
-
-For a checkout of this branch you already have, run `git pull` and repeat the
-package-install command before launching the manager.
+It is the default with rootless Podman on Linux, Windows through WSL2, and macOS
+through Podman Machine. Pi CLI and host VS Code remain available through **Open with…**.
+See [platform setup](platforms.md) before creating your first sandbox.
 
 ## Open a sandbox
 
 Run `pi-sandbox-factory`, choose **New sandbox**, select your project folder and
 model connection, then **Create and start**. The browser opens automatically unless
 you clear **Open selected editor after creation**. The first launch downloads a
-pinned code-server release (226 MiB) into the existing development container.
+pinned code-server release for the container’s architecture into the existing development container.
 
 The selected workspace opens trusted, in dark mode, with Pendant in the right
 secondary sidebar. Choose its tab, select your model and start a conversation.
@@ -94,10 +81,10 @@ enabled, code-server authenticates both HTTP and WebSocket sessions.
 
 The container network policy applies to backend traffic. Browser-side requests use
 the host browser's network, including browser-side extension gallery requests, so this is **not a browser network allowlist**. Container
-isolation also depends on the host kernel and runtime; this prototype does not
+isolation also depends on the host kernel and runtime; it does not
 claim protection against a container or browser escape.
 
-[Developer checks](../TESTING.md#browser-editor-prototype) cover Pendant, hostile
+[Developer checks](../TESTING.md#browser-editor) cover Pendant, hostile
 extension probes, login protection and session cleanup.
 
 ## References

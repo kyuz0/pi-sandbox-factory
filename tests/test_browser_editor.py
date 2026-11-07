@@ -1,6 +1,7 @@
 """Boundary checks for the browser editor relay."""
 import asyncio
 import hashlib
+import json
 import sys
 from pathlib import Path
 import tempfile
@@ -202,6 +203,16 @@ class ShutdownChecks(unittest.IsolatedAsyncioTestCase):
                     while 'Browser editor:' not in output.getvalue():
                         await asyncio.sleep(.01)
                 await asyncio.wait_for(ready(), 5)
+                info = json.loads((state / 'browser-editor-runtime.json').read_text())
+                self.assertEqual((state / 'browser-editor-runtime.json').stat().st_mode & 0o777, 0o600)
+                for command, expected in [('stop wrong-token', b''), ('status ' + info['token'], b'ready\n')]:
+                    control_reader, control_writer = await asyncio.open_unix_connection(str(editor.host_platform.control_path(state)))
+                    control_writer.write((command + '\n').encode())
+                    await control_writer.drain()
+                    self.assertEqual(await control_reader.read(), expected)
+                    control_writer.close()
+                    await control_writer.wait_closed()
+                    self.assertFalse(task.done())
                 authority = output.getvalue().split('http://')[1].splitlines()[0]
                 host, port = authority.split(':')
                 reader, writer = await asyncio.open_connection(host, int(port))

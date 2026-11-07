@@ -1,7 +1,7 @@
 ## Optional Betterwright browser
 
 Use the native `browser` tool for Playwright JavaScript, page interaction and
-screenshots. Betterwright, Bun, BetterChromium, Linux libraries, fonts and FFmpeg
+screenshots. Betterwright, Bun, Chromium, Linux libraries, fonts and FFmpeg
 are already installed. Do not download a browser or start a separate agent.
 Browser calls follow the selected Pi approval policy.
 Ad-blocking rules are seeded from the image's build-time snapshot.

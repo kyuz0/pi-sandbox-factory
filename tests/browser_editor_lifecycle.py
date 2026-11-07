@@ -11,13 +11,14 @@ import sys
 import tempfile
 from urllib.parse import urlencode, urlsplit
 
-from pi_sandbox_factory import browser_editor, editor_settings
+from pi_sandbox_factory import browser_editor, editor_settings, host_platform
 
 
 def request(url, path='/?folder=/workspace', *, method='GET', body=None, headers=None, context=None):
     target = urlsplit(url)
+    headers = {'Host': target.netloc, **(headers or {})}
     connection = (http.client.HTTPSConnection(target.hostname, target.port, context=context, timeout=20)
-                  if context else http.client.HTTPConnection(target.hostname, target.port, timeout=20))
+                  if context else http.client.HTTPConnection(host_platform.listen_address(target.hostname), target.port, timeout=20))
     try:
         connection.request(method, path, body, headers or {})
         response = connection.getresponse()

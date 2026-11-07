@@ -62,7 +62,10 @@ class Preferences(unittest.TestCase):
             settings.remember_connection(state, {'address': '127.0.0.1'}, '127.0.0.1', 5555)
             self.assertEqual(settings.connection(state, settings.DEFAULTS), (address, 0))
 
-    def test_unsupported_platform_defaults_to_desktop(self):
-        with patch('platform.machine', return_value='aarch64'):
+    def test_supported_architectures_and_engine_choice(self):
+        for arch in ('x86_64', 'aarch64', 'arm64'):
+            with patch('platform.machine', return_value=arch):
+                self.assertEqual(settings.default_mode(), 'browser')
+        with patch('platform.machine', return_value='unsupported'):
             self.assertEqual(settings.default_mode(), 'desktop')
         self.assertEqual(settings.default_mode('docker'), 'desktop')

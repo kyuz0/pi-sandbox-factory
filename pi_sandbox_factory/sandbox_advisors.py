@@ -142,8 +142,9 @@ def up(config, state):
         args = [engine, 'run', '-d', '--name', name, '--label', f'{core.LABEL}={config["name"]}',
                 '--security-opt=no-new-privileges', '--cap-drop=ALL', '--pids-limit=256']
         if name == proxy:
+            args += core.host_platform.gateway_labels()
             args += ['--cap-add=CHOWN', '--cap-add=SETUID', '--cap-add=SETGID', '--cap-add=DAC_OVERRIDE', '--memory=256m',
-                     '-v', f'{target / "squid.conf"}:/etc/squid/sandbox.conf:ro,Z', '-v', f'{egress}:/run/egress:z', core.image_names(config)[1]]
+                     '-v', f'{target / "squid.conf"}:/etc/squid/sandbox.conf:{core.host_platform.bind_mode()}', '-v', f'{egress}:/run/egress:z', core.image_names(config)[1]]
         else:
             args += ['--network=none', '--memory=2g', '--security-opt=label=disable',
                      '--user', f'{config["uid"]}:{config["gid"]}',

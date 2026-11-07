@@ -32,4 +32,6 @@ class UpdateTests(unittest.TestCase):
         with patch.object(sandbox_tui.Cockpit,'run',return_value=updates.RELAUNCH), patch.object(sandbox_tui.os,'execv') as execute:
             sandbox_tui.launch('/tmp/factory-test-state')
         argv=execute.call_args.args[1]
-        self.assertEqual(argv[1:],['-m','pi_sandbox_factory','--state-dir','/tmp/factory-test-state','tui'])
+        self.assertEqual(argv[1:3], ['-I', '-c'])
+        self.assertIn("run_module('pi_sandbox_factory',", argv[3])
+        self.assertEqual(argv[4:], ['--state-dir', '/tmp/factory-test-state', 'tui'])

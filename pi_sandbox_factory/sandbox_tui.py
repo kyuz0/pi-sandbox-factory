@@ -19,7 +19,7 @@ from .folders_ui import FolderFields
 from .communications_ui import CommunicationsForm
 from .tui_widgets import Checkbox
 from . import sandbox_skills
-from . import registry, model_providers, updates, web_access, network_groups, communications
+from . import host_platform, registry, model_providers, updates, web_access, network_groups, communications
 from .sandbox_options import DEFAULTS, SKILLS, PROFILE_SKILLS, options, endpoint_rule, memory_limit, write_json
 
 try:
@@ -123,7 +123,7 @@ class Service:
         self.state = Path(state)
 
     def command(self, *args):
-        return [sys.executable, '-m', 'pi_sandbox_factory', '--state-dir', str(self.state), *args]
+        return host_platform.python_command('pi_sandbox_factory', '--state-dir', str(self.state), *args)
 
     def inventory(self):
         result = subprocess.run(self.command('list', '--json'), capture_output=True, text=True, check=True)
@@ -1488,8 +1488,8 @@ class NewSandbox(Screen):
                 workspace_text = self.query_one('#workspace', Input).value.strip()
                 if not workspace_text:
                     raise ValueError('Choose a workspace folder.')
-                workspace = Path(workspace_text).expanduser().resolve()
-                if workspace in (Path('/'), Path.home()):
+                workspace = host_platform.local_path(workspace_text).resolve()
+                if host_platform.comparison_path(workspace) in (Path('/'), host_platform.comparison_path(Path.home())):
                     raise ValueError('Choose a project folder, not your home folder or filesystem root.')
                 if not workspace.exists():
                     if not self.query_one('#mkdir', Checkbox).value:
@@ -1539,7 +1539,7 @@ class SettingsForm(Screen):
             with Vertical(classes='setting'):
                 yield Label('Host model ports · comma-separated ports or ranges')
                 yield Input(value.get('local_model_ports') or '8000', id='model-ports')
-                yield Static('Inside the sandbox, local-model.internal reaches these ports on your computer.', classes='setting-help')
+                yield Static(('Inside the sandbox, local-model.internal reaches these ports inside WSL.' if host_platform.is_wsl() else 'Inside the sandbox, local-model.internal reaches these ports on your computer.'), classes='setting-help')
             configured=value.get('model_providers',{'local':{}})
             if isinstance(configured,list):configured={r['name']:r.get('settings',{}) for r in configured}
             saved_rows={r['name']:r for r in value.get('model_providers',[]) if isinstance(r,dict)}
@@ -1716,7 +1716,7 @@ class SettingsForm(Screen):
         if not self.editing:
             draft['editor'] = self.query_one(EditorFields).collect()
             if draft['editor']['mode'] == 'browser' and editor_settings.default_mode(self.query_one('#engine', Select).value) != 'browser':
-                raise ValueError('Browser editor requires rootless Podman on x86_64 Linux. Choose Pi CLI or VS Code on host.')
+                raise ValueError('Browser editor requires rootless Podman on Linux, WSL2 or macOS. Choose Pi CLI or VS Code on host.')
         draft.update(network=self.query_one('#network', Select).value, memory=memory_limit(inp('memory')),
                      subagents=check('subagents'), options=options(selected), engine=self.query_one('#engine', Select).value,
                      env_file=inp('env-file') or None, pi_config=inp('pi-config') or None,
@@ -2243,5 +2243,5 @@ class Cockpit(App):
 
 def launch(state_root):
     if Cockpit(state_root).run() == updates.RELAUNCH:
-        os.execv(sys.executable, [sys.executable, '-m', 'pi_sandbox_factory',
-                                 '--state-dir', str(state_root), 'tui'])
+        os.execv(sys.executable, host_platform.python_command('pi_sandbox_factory',
+                                 '--state-dir', str(state_root), 'tui'))

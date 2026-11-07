@@ -1,5 +1,4 @@
 """Host-side editor preferences, independent of container images and credentials."""
-import secrets
 import re
 import ssl
 from argon2 import PasswordHasher
@@ -8,6 +7,7 @@ import json
 from pathlib import Path
 
 from .sandbox_options import write_json
+from . import host_platform
 
 MODES = {'browser': 'Browser editor', 'pi': 'Pi CLI', 'desktop': 'VS Code on host'}
 DEFAULTS = {'mode': 'browser', 'address': '', 'port': 0, 'password_hash': '', 'certificate': '', 'private_key': ''}
@@ -26,6 +26,8 @@ def validate(value=None):
         raise ValueError('Enter an IP address assigned to this computer, such as 127.0.0.1') from None
     if address.is_unspecified or address.is_multicast:
         raise ValueError('Choose a specific interface IP address instead of a wildcard address')
+    if (host_platform.is_mac() or host_platform.is_wsl()) and address.is_loopback and str(address) not in ('127.0.0.1', '::1'):
+        raise ValueError('Use automatic addressing or 127.0.0.1 on macOS and WSL.')
     result['address'] = str(address) if result['address'] else ''
     if type(result['port']) is not int or not 0 <= result['port'] <= 65535:
         raise ValueError('Port must be 0 (automatic) or a number from 1 to 65535')
@@ -92,7 +94,7 @@ def connection(state, value):
     saved = json.loads(path.read_text()) if path.exists() else {}
     address = value['address'] or saved.get('automatic_address')
     if not address:
-        address = '127.' + '.'.join(str(secrets.randbelow(254) + 1) for _ in range(3))
+        address = host_platform.automatic_address()
     port = value['port'] or (saved.get('port', 0) if saved.get('address') == address else 0)
     return address, port
 
@@ -111,4 +113,4 @@ def authority(address, port):
 def default_mode(engine='podman'):
     import platform
     import os
-    return 'browser' if engine in ('podman', 'auto') and platform.system() == 'Linux' and platform.machine() == 'x86_64' and os.geteuid() else 'desktop'
+    return 'browser' if engine in ('podman', 'auto') and platform.system() in ('Linux', 'Darwin') and platform.machine() in ('x86_64', 'aarch64', 'arm64') and os.geteuid() else 'desktop'

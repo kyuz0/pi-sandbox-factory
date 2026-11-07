@@ -2,7 +2,7 @@
 
 Run Pi through Pendant in the browser editor, in your terminal, or in host VS Code. Each sandbox has its own workspace selection, private home, model configuration and editor state.
 
-Requirements: Linux, Python 3.10+, rootless Podman or Docker. The browser editor requires x86_64 and rootless Podman. Host VS Code requires `code` on PATH. Host-loopback model access currently requires rootless Podman. Build steps download application dependencies; model servers and model files are managed separately.
+Requirements: Python 3.10+ and rootless Podman. Use [WSL2 on Windows or Podman Machine on macOS](platforms.md). Linux also supports Docker with Pi CLI or host VS Code. The browser editor requires an amd64 or arm64 Podman container. Host VS Code needs `code` on PATH. Host-loopback model access requires rootless Podman. Build steps download application dependencies; model servers and model files are managed separately.
 
 Install and update with [pipx](../README.md#install). Run `pi-sandbox-factory`
 to open the manager. The version appears beside the title; `--version` prints it

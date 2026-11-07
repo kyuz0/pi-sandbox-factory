@@ -16,6 +16,7 @@ Implementation and shipped assets live in `pi_sandbox_factory/`:
 - `updates.py`: GitHub tags, installed version and pipx upgrade detection.
 - `editor_settings.py` and `editor_ui.py`: client choice, private connection settings and shared controls.
 - `browser_editor.py` and `containers/editor/launch.py`: code-server, browser connections and process supervision.
+- `host_platform.py`: WSL/macOS adapters, Podman Machine checks and host browser launching.
 - `browser_viewer.py`: authenticated loopback viewer and container-bound lifetime.
 - `registry.py`: Git/local packages, revisions and installation.
 - `model_providers.py` and `providers/`: provider image layer and container runner.
@@ -58,6 +59,13 @@ folder configuration. The managed global `AGENTS.md` block adds context without
 replacing project instructions. Folder grants never become workstation defaults.
 Keep the UI usable at 80×24. Test actual shipped Pendant workers for bootstrap or
 extension changes, not just mocked APIs. Never restart a user's sandbox to test.
+
+Host-specific behavior belongs in `host_platform.py`. Windows runs inside WSL2;
+macOS uses a local rootless Podman Machine. Keep native Linux routing unchanged.
+Use container architecture for binary downloads, not the Python host architecture.
+Browser supervisors must work without `fork`, `/proc` or Linux pidfds on the host.
+Keep generated browser origins separate per sandbox and validate Host and Origin.
+Do not solve VM mount failures with recursive ownership changes or wider host mounts.
 
 ## Terminal layout and navigation
 

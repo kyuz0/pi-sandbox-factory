@@ -3,9 +3,11 @@ import json
 import os
 from pathlib import Path
 import re
+from . import host_platform
 
 
 def overlaps(first, second):
+    first, second = map(host_platform.comparison_path, (first, second))
     return first == second or first in second.parents or second in first.parents
 
 
@@ -41,33 +43,35 @@ def validate(rows, workspace, state_root, *, saved=False, private_paths=()):
     if not isinstance(rows, list):
         raise ValueError('Extra folders must be a list.')
     result = []
-    home = Path.home().resolve()
+    home = host_platform.comparison_path(Path.home())
     protected = [Path(state_root).resolve(), *(Path(p).resolve() for p in private_paths if p)]
-    system = [Path(p) for p in ('/etc', '/usr', '/boot', '/proc', '/sys', '/dev', '/run', '/var/lib', '/var/log', '/var/lock')]
+    system = [host_platform.comparison_path(p) for p in ('/etc', '/usr', '/boot', '/proc', '/sys', '/dev', '/run', '/var/lib', '/var/log', '/var/lock')]
     for row in rows:
         if not isinstance(row, dict) or set(row) - {'source', 'name', 'read_only'}:
             raise ValueError('Each extra folder needs a source, name and read_only setting.')
         raw = row.get('source', '')
         if not isinstance(raw, str) or not raw or (',' in raw or '"' in raw or any(ord(c) < 32 or ord(c) == 127 for c in raw)):
             raise ValueError('Choose a host folder whose path contains no commas, double quotes or control characters.')
-        path = Path(raw).expanduser()
+        path = host_platform.local_path(raw)
         try:
             source = path.resolve(strict=True)
         except OSError:
             raise ValueError(f'Host folder is missing: {path}. Edit it in Settings → Folders.') from None
         if ',' in str(source) or '"' in str(source) or any(ord(c) < 32 or ord(c) == 127 for c in str(source)):
             raise ValueError('Host folder paths cannot contain commas, double quotes or control characters.')
+        host_platform.validate_data_path(source)
         if not source.is_dir():
             raise ValueError(f'Host folder is not a directory: {path}')
-        if (source.is_relative_to('/tmp') or source.is_relative_to('/var/tmp')) and source.stat().st_uid != os.getuid():
+        if (source.is_relative_to(Path('/tmp').resolve()) or source.is_relative_to(Path('/var/tmp').resolve())) and source.stat().st_uid != os.getuid():
             raise ValueError('Temporary host folders must belong to your user account.')
         if saved and source != path:
             raise ValueError(f'Host folder changed location: {path}. Edit it in Settings → Folders.')
-        if source == home or source in home.parents or source in (Path('/tmp'), Path('/var')):
+        compared = host_platform.comparison_path(source)
+        if compared == home or compared in home.parents or source in (Path('/tmp').resolve(), Path('/var').resolve()):
             raise ValueError('Choose a specific data folder, not a filesystem root or your whole home.')
-        if any(overlaps(source, p) for p in protected) or any(source == p or p in source.parents for p in system):
+        if any(overlaps(source, p) for p in protected) or any(compared == p or p in compared.parents for p in system):
             raise ValueError('System folders and private sandbox state cannot be mounted as data folders.')
-        if source.is_relative_to(home) and source.relative_to(home).parts[0].startswith('.'):
+        if compared.is_relative_to(home) and compared.relative_to(home).parts[0].startswith('.'):
             raise ValueError('Hidden home folders contain private application state; choose a data folder.')
         if overlaps(source, Path(workspace).resolve()) or any(overlaps(source, Path(r['source'])) for r in result):
             raise ValueError('Extra folders must not overlap the workspace or another extra folder.')

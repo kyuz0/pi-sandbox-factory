@@ -7,6 +7,7 @@ import os
 import sys
 import time
 import select
+import socket
 from pathlib import Path
 import re
 import secrets
@@ -14,13 +15,19 @@ import signal
 import subprocess
 import urllib.request
 
-from . import editor_settings
+from . import editor_settings, host_platform
 from .sandbox_options import write_json
 
 VERSION = '4.145.2'
 SHA256 = '2f6db6c3e8b733dd6b3aeee83532e148b2bae2e392353ba85452d03572348962'
-ARCHIVE = f'code-server-{VERSION}-linux-amd64.tar.gz'
-URL = f'https://github.com/coder/code-server/releases/download/v{VERSION}/{ARCHIVE}'
+ARM64_SHA256 = 'e867a34416e2da4a83496b09580001893e7a4e5bb58a0624c4fcd22819e7d53d'
+
+def release(arch):
+    if arch not in ('x86_64', 'aarch64', 'arm64'):
+        raise ValueError('The browser editor requires an amd64 or arm64 container')
+    target = 'amd64' if arch == 'x86_64' else 'arm64'
+    archive = f'code-server-{VERSION}-linux-{target}.tar.gz'
+    return archive, SHA256 if target == 'amd64' else ARM64_SHA256
 INSTALL = f'/opt/pi-browser-editor-{VERSION}'
 SOCKET = '/home/node/.local/share/pi-browser-editor/editor.sock'
 
@@ -35,24 +42,26 @@ def active(state):
             return True
 
 
-def checked_archive(cache, supplied=None):
+def checked_archive(cache, supplied=None, arch='x86_64'):
+    archive, checksum = release(arch)
+    url = f'https://github.com/coder/code-server/releases/download/v{VERSION}/{archive}'
     cache.mkdir(parents=True, exist_ok=True, mode=0o700)
-    path = Path(supplied).expanduser().resolve() if supplied else cache / ARCHIVE
+    path = Path(supplied).expanduser().resolve() if supplied else cache / archive
     if not path.exists():
         if supplied:
             raise ValueError('Browser editor archive does not exist')
-        print(f'Downloading code-server {VERSION} (226 MiB)…', flush=True)
-        temporary = cache / (ARCHIVE + '.' + secrets.token_hex(8))
+        print(f'Downloading code-server {VERSION} for {arch}…', flush=True)
+        temporary = cache / (archive + '.' + secrets.token_hex(8))
         try:
-            with urllib.request.urlopen(URL, timeout=60) as response, temporary.open('xb') as output:
+            with urllib.request.urlopen(url, timeout=60) as response, temporary.open('xb') as output:
                 while block := response.read(1024 * 1024):
                     output.write(block)
-            verify_archive(temporary)
+            verify_archive(temporary, checksum)
             temporary.replace(path)
         finally:
             temporary.unlink(missing_ok=True)
     try:
-        verify_archive(path)
+        verify_archive(path, checksum)
     except ValueError:
         if not supplied:
             path.unlink(missing_ok=True)
@@ -60,12 +69,12 @@ def checked_archive(cache, supplied=None):
     return path
 
 
-def verify_archive(path):
+def verify_archive(path, checksum=None):
     digest = hashlib.sha256()
     with path.open('rb') as source:
         while block := source.read(1024 * 1024):
             digest.update(block)
-    if digest.hexdigest() != SHA256:
+    if digest.hexdigest() != (checksum or SHA256):
         raise ValueError('Browser editor archive checksum does not match the pinned release')
 
 
@@ -230,15 +239,48 @@ async def serve(container, cwd, preferences, state, ready=None):
     context = editor_settings.tls_context(preferences)
     relay.scheme = 'https' if context else 'http'
     try:
-        server = await asyncio.start_server(relay.handle, address, port, ssl=context, limit=16384)
+        server = await asyncio.start_server(relay.handle, host_platform.listen_address(address), port, ssl=context, limit=16384)
     except OSError:
         if preferences['port'] or not port:
             raise
-        server = await asyncio.start_server(relay.handle, address, 0, ssl=context, limit=16384)
+        server = await asyncio.start_server(relay.handle, host_platform.listen_address(address), 0, ssl=context, limit=16384)
     port = server.sockets[0].getsockname()[1]
     relay.host = editor_settings.authority(address, port)
     editor = None
+    control = None
+    heartbeat = None
+    control_path = host_platform.control_path(state)
+    token = secrets.token_hex(32)
+
+    async def keep_control_socket():
+        # Keep long-running editors reachable when the OS expires old /tmp files.
+        while True:
+            os.utime(control_path, None)
+            os.utime(control_path.parent, None)
+            await asyncio.sleep(3600)
+
+    async def request_stop(reader, writer):
+        try:
+            command = await asyncio.wait_for(reader.readline(), 2)
+            action, supplied = command.strip().split(b' ', 1)
+            if secrets.compare_digest(supplied, token.encode()):
+                if action == b'status':
+                    writer.write(b'ready\n')
+                    await writer.drain()
+                elif action == b'stop':
+                    writer.write(b'stopping\n')
+                    await writer.drain()
+                    task.cancel()
+        except (ValueError, OSError, asyncio.TimeoutError):
+            pass
+        finally:
+            writer.close()
+
     try:
+        control_path.unlink(missing_ok=True)
+        control = await asyncio.start_unix_server(request_stop, str(control_path))
+        control_path.chmod(0o600)
+        heartbeat = asyncio.create_task(keep_control_socket())
         helper = (Path(__file__).parent / 'containers/editor/launch.py').read_text()
         editor = await asyncio.create_subprocess_exec('podman', 'exec', '-i', '--user', 'node',
             container, 'python3', '-u', '-c', helper, stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE, start_new_session=True)
@@ -252,7 +294,7 @@ async def serve(container, cwd, preferences, state, ready=None):
         editor_settings.remember_connection(state, preferences, address, port)
         url = relay.scheme + '://' + relay.host
         write_json(state / 'browser-editor-runtime.json', {
-            'pid': os.getpid(), 'start': process_start(os.getpid()), 'url': url,
+            'pid': os.getpid(), 'token': token, 'url': url,
             'container': container, 'preferences': preferences,
         })
         if ready:
@@ -265,6 +307,13 @@ async def serve(container, cwd, preferences, state, ready=None):
             raise ValueError('Browser editor stopped; see the error above')
     finally:
         (state / 'browser-editor-runtime.json').unlink(missing_ok=True)
+        if heartbeat:
+            heartbeat.cancel()
+            await asyncio.gather(heartbeat, return_exceptions=True)
+        if control:
+            control.close()
+            await control.wait_closed()
+            control_path.unlink(missing_ok=True)
         server.close()
         await relay.close()
         await server.wait_closed()
@@ -280,7 +329,8 @@ async def serve(container, cwd, preferences, state, ready=None):
 def open_browser_editor(config, state, archive=None, background=False, open_tab=True):
     from . import sandbox, folders
     if config['engine'] != 'podman':
-        raise ValueError('The browser editor prototype requires rootless Podman on x86_64 Linux')
+        raise ValueError('The browser editor requires rootless Podman')
+    host_platform.check_engine(config['engine'], config.get('podman_connection'))
     current = sandbox.inspect(config, sandbox.names(config)[0])
     if not current or not current['State']['Running']:
         raise ValueError('Start the sandbox before opening its browser editor')
@@ -300,13 +350,12 @@ def open_browser_editor(config, state, archive=None, background=False, open_tab=
             raise ValueError('Browser editor settings changed. Stop it from Actions and reopen it.') from None
         rootless = subprocess.check_output(['podman', 'info', '--format', '{{.Host.Security.Rootless}}'], text=True).strip()
         if rootless != 'true':
-            raise ValueError('The browser editor prototype requires rootless Podman')
+            raise ValueError('The browser editor requires rootless Podman')
         arch = subprocess.check_output(['podman', 'exec', container, 'uname', '-m'], text=True).strip()
-        if arch != 'x86_64':
-            raise ValueError('The browser editor prototype currently supports x86_64 only')
+        release(arch)
         binary = INSTALL + '/bin/code-server'
         if subprocess.run(['podman', 'exec', container, 'test', '-x', binary]).returncode:
-            path = checked_archive(state.parent / '.browser-editor-downloads', archive)
+            path = checked_archive(state.parent / '.browser-editor-downloads', archive, arch)
             staging = INSTALL + '.install-' + secrets.token_hex(8)
             subprocess.run(['podman', 'exec', '--user', '0', container,
                             'mkdir', '-m', '755', staging], check=True)
@@ -323,7 +372,7 @@ def open_browser_editor(config, state, archive=None, background=False, open_tab=
         if config.get('local_model_ports') or config.get('model_providers'):
             sandbox.initialize_models(config)
         if background:
-            start_background(container, folders.container_cwd(config), preferences, state, open_tab)
+            start_background(container, folders.container_cwd(config), preferences, state, open_tab, lock.fileno())
         else:
             try:
                 asyncio.run(serve(container, folders.container_cwd(config), preferences, state))
@@ -331,84 +380,86 @@ def open_browser_editor(config, state, archive=None, background=False, open_tab=
                 print('\nBrowser editor stopped.')
 
 
-def process_start(pid):
-    try:
-        return Path(f'/proc/{pid}/stat').read_text().rsplit(')', 1)[1].split()[19]
-    except (OSError, IndexError):
-        return None
-
-
 def runtime(state):
     try:
         value = json.loads((state / 'browser-editor-runtime.json').read_text())
-        return value if active(state) and process_start(value['pid']) == value['start'] else None
+        if active(state) and control_request(state, 'status', value['token']) == b'ready\n':
+            return value
+        return None
     except (OSError, ValueError, KeyError):
         return None
+
+
+def control_request(state, action, token):
+    with socket.socket(socket.AF_UNIX) as client:
+        client.settimeout(2)
+        client.connect(str(host_platform.control_path(state)))
+        client.sendall((action + ' ' + token + '\n').encode())
+        return client.recv(32)
 
 
 def stop(state):
     value = runtime(state)
     if not value:
+        if active(state):
+            raise ValueError('Browser editor is starting or its control connection is unavailable; see browser-editor.log')
         return
-    try:
-        fd = os.pidfd_open(value['pid'])
-    except ProcessLookupError:
-        return
-    try:
-        if process_start(value['pid']) == value['start']:
-            signal.pidfd_send_signal(fd, signal.SIGTERM)
-            if not select.select([fd], [], [], 15)[0]:
-                raise ValueError('Browser editor is still stopping; see browser-editor.log')
-    finally:
-        os.close(fd)
+    if control_request(state, 'stop', value['token']) != b'stopping\n':
+        raise ValueError('Browser editor did not acknowledge shutdown; see browser-editor.log')
+    deadline = time.monotonic() + 15
+    while active(state) and time.monotonic() < deadline:
+        time.sleep(.05)
+    if active(state):
+        raise ValueError('Browser editor is still stopping; see browser-editor.log')
 
 
 def show_url(url, open_tab=True):
     print('Browser editor: ' + url, flush=True)
-    if open_tab and (os.environ.get('DISPLAY') or os.environ.get('WAYLAND_DISPLAY')):
-        import shutil
-        if shutil.which('xdg-open'):
-            subprocess.Popen(['xdg-open', url], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                             stdin=subprocess.DEVNULL, start_new_session=True)
+    if open_tab:
+        host_platform.open_url(url)
 
 
-def start_background(container, cwd, preferences, state, open_tab):
-    """Fork after installation; the child inherits the locked editor descriptor."""
+def start_background(container, cwd, preferences, state, open_tab, lock_fd):
+    """Exec a supervisor with the existing lock; never fork a threaded TUI."""
     read_fd, write_fd = os.pipe()
-    sys.stdout.flush()
-    sys.stderr.flush()
-    pid = os.fork()
-    if pid == 0:
-        os.close(read_fd)
-        os.setsid()
-        with open(os.devnull, 'r') as source, (state / 'browser-editor.log').open('w') as log:
-            os.dup2(source.fileno(), 0)
-            os.dup2(log.fileno(), 1)
-            os.dup2(log.fileno(), 2)
-        def ready(url):
-            os.write(write_fd, (url + '\n').encode())
-            os.close(write_fd)
-        try:
-            asyncio.run(serve(container, cwd, preferences, state, ready))
-        except (KeyboardInterrupt, asyncio.CancelledError):
-            pass
-        except Exception:
-            import traceback
-            traceback.print_exc()
-        finally:
-            sys.stdout.flush()
-            sys.stderr.flush()
-            os._exit(0)
-    os.close(write_fd)
     try:
+        with (state / 'browser-editor.log').open('w') as log:
+            process = subprocess.Popen(host_platform.python_command('pi_sandbox_factory.browser_editor',
+                container, cwd, str(state), str(write_fd), str(lock_fd)),
+                stdin=subprocess.PIPE, stdout=log, stderr=log, start_new_session=True,
+                pass_fds=(write_fd, lock_fd))
+        os.close(write_fd)
+        write_fd = None
+        process.stdin.write(json.dumps(preferences).encode())
+        process.stdin.close()
         if not select.select([read_fd], [], [], 75)[0]:
-            os.kill(pid, signal.SIGTERM)
-            os.waitpid(pid, 0)
+            process.terminate()
+            process.wait(timeout=15)
             raise ValueError('Browser editor did not become ready; see browser-editor.log')
         url = os.read(read_fd, 4096).decode().strip()
         if not url.startswith(('http://', 'https://')):
-            os.waitpid(pid, 0)
+            process.wait(timeout=15)
             raise ValueError('Browser editor failed to start; see ' + str(state / 'browser-editor.log'))
         show_url(url, open_tab)
     finally:
         os.close(read_fd)
+        if write_fd is not None:
+            os.close(write_fd)
+
+
+def main():
+    container, cwd, state, ready_fd, lock_fd = sys.argv[1:]
+    # Keep the inherited descriptor alive for the entire supervisor lifetime.
+    with os.fdopen(int(lock_fd), 'a+'):
+        preferences = editor_settings.validate(json.load(sys.stdin))
+        def ready(url):
+            os.write(int(ready_fd), (url + '\n').encode())
+            os.close(int(ready_fd))
+        try:
+            asyncio.run(serve(container, cwd, preferences, Path(state), ready))
+        except (KeyboardInterrupt, asyncio.CancelledError):
+            pass
+
+
+if __name__ == '__main__':
+    main()

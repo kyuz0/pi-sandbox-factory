@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""Native Linux Docker/Podman sandbox; no Compose or host Python packages needed."""
+"""Pi development containers managed with Podman or Docker."""
 import argparse
 from . import sandbox_skills
 from . import sandbox_extensions
 from . import sandbox_advisors
 from . import sandbox_ssh
-from . import registry, model_providers, browser_viewer, folders
+from . import registry, model_providers, browser_viewer, folders, host_platform
 from contextlib import closing
 import hashlib
 import ipaddress
@@ -122,7 +122,7 @@ def run(argv, capture=False, check=True, **kwargs):
 
 
 def directory(value):
-    path = Path(value).expanduser().resolve(strict=True)
+    path = host_platform.local_path(value).resolve(strict=True)
     if not path.is_dir():
         raise ValueError(f'Not a directory: {path}')
     if any(c in str(path) for c in ':,\n\r'):
@@ -290,6 +290,7 @@ def base_tag(config):
 
 
 def build(config):
+    host_platform.check_engine(config['engine'], config.get('podman_connection'))
     dev, proxy = image_names(config)
     profile = selected_profile(config)
     if tree_digest(Path(profile['path'])) != profile['digest']:
@@ -335,6 +336,7 @@ def build(config):
 
 
 def inspect(config, name):
+    host_platform.check_engine(config['engine'], config.get('podman_connection'), full=False)
     result = run([config['engine'], 'container', 'inspect', name], capture=True,
                  check=False, stderr=subprocess.DEVNULL)
     if result.returncode:
@@ -501,6 +503,9 @@ def up(config, state):
     rules = parse_rules((state / 'allowlist.txt').read_text())
     if restricted and config.get('pi_config'):
         validate_models(Path(config['pi_config']), rules, strict=False)
+    if host_platform.needs_mount_check(config):
+        prepare_options(config, state)
+        host_platform.check_mounts(config, state, image_names(config)[0])
     sandbox_advisors.up(config, state)
     sandbox_ssh.up(config, state)
     for name in active:
@@ -515,12 +520,12 @@ def up(config, state):
             args = [
                 '--cap-drop=ALL', '--cap-add=CHOWN', '--cap-add=SETUID', '--cap-add=SETGID',
                 '--cap-add=DAC_OVERRIDE', '--memory=256m',
-                '-v', f'{state / "squid.conf"}:/etc/squid/sandbox.conf:ro,Z',
+                '-v', f'{state / "squid.conf"}:/etc/squid/sandbox.conf:{host_platform.bind_mode()}',
                 '-v', f'{socket_volume}:/run/egress:z',
             ]
+            args += host_platform.gateway_labels()
             if config.get('local_model_gateway'):
-                args += ['--network=pasta:--map-host-loopback,169.254.1.2',
-                         '--add-host=local-model.internal:169.254.1.2']
+                args += host_platform.model_gateway_args()
             if any(host == 'host.docker.internal' for host, _ in rules):
                 args += ['--add-host=host.docker.internal:host-gateway']
             run(base + args + [proxy_image])
@@ -542,8 +547,8 @@ def up(config, state):
                 args += ['--memory=' + memory_limit(config['memory'])]
             if 'options' in config:
                 prepare_options(config, state)
-                args += ['-v', f'{state / "runtime-config"}:/opt/pi-security/config:ro,Z',
-                         '-v', f'{state / "options.json"}:/opt/sandbox/options.json:ro,Z']
+                args += ['-v', f'{state / "runtime-config"}:/opt/pi-security/config:{host_platform.bind_mode()}',
+                         '-v', f'{state / "options.json"}:/opt/sandbox/options.json:{host_platform.bind_mode()}']
             if restricted:
                 args += ['-v', f'{socket_volume}:/run/egress:ro']
             if config.get('pi_config'):
@@ -694,14 +699,15 @@ def create(args, state):
     if mode == 'allowlist' and not (args.allowlist or args.allow_domain or selected_options['website_groups'] or selected_options['web_access']['enabled'] or any(selected_options['communications'].values())):
         raise ValueError('Allowlist networking requires an allowed destination, website category or search service')
     workspace = directory(args.workspace)
+    host_platform.validate_data_path(workspace)
     shared = directory(args.pi_config) if args.pi_config else None
-    if workspace == Path('/') or workspace == Path.home():
+    if host_platform.comparison_path(workspace) in (Path('/'), host_platform.comparison_path(Path.home())):
         raise ValueError('Select a project directory, not / or your home directory')
     pairs = [(workspace, state)]
     if shared:
         pairs += [(workspace, shared), (shared, state)]
     for first, second in pairs:
-        if first == second or first in second.parents or second in first.parents:
+        if folders.overlaps(first, second):
             raise ValueError('Workspace, shared Pi config, and sandbox state must be separate, non-nested directories')
     policy_text = (Path(args.allowlist).expanduser().read_text() if args.allowlist
                    else '\n'.join(args.allow_domain) + '\n')
@@ -713,6 +719,7 @@ def create(args, state):
     if state.exists():
         raise ValueError(f'Sandbox already exists: {state}; choose a new name')
     engine = choose_engine(args.engine)
+    connection = host_platform.check_engine(engine)
     uid, gid = (1000, 1000) if engine == 'podman' else (os.getuid(), os.getgid())
     if engine == 'podman':
         result = run([engine, 'info', '--format', '{{.Host.Security.Rootless}}'], capture=True)
@@ -723,6 +730,8 @@ def create(args, state):
     config = dict(name=args.name, engine=engine, uid=uid, gid=gid, workspace=str(workspace),
                   pi_config=str(shared) if shared else None, env_file=env_file, memory=memory_limit(args.memory),
                   network=mode, subagents=getattr(args, 'subagents', False))
+    if connection:
+        config['podman_connection'] = connection
     config['working_directory'] = folders.working_directory(workspace, getattr(args, 'working_directory', '.'))
     config['extra_folders'] = folders.validate(
         json.loads(Path(args.folders_file).read_text()) if getattr(args, 'folders_file', None) else [],
@@ -1057,7 +1066,7 @@ def main():
     new.add_argument('--editor', choices=['browser', 'pi', 'desktop'], help='Client to open (default: browser on supported hosts)')
     new.add_argument('--open', action='store_true', help='Open the selected editor after startup; requires --start')
     descriptions = {
-        'browser-editor': 'Open the browser editor prototype (rootless Podman, x86_64)',
+        'browser-editor': 'Open the browser editor (rootless Podman)',
         'update': 'Validate, build and apply saved settings by recreating containers',
         'up': 'Resume containers and recover stale runtime or gateway state',
         'delete': 'Remove both containers, private volumes, and saved state; keep the host workspace',

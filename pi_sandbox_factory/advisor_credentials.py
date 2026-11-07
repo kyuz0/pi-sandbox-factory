@@ -4,13 +4,15 @@ import os
 from pathlib import Path
 import subprocess
 
-from . import sandbox_advisors
+from . import sandbox_advisors, host_platform
 
 LABELS = {'codex': 'Codex (OpenAI)', 'claude': 'Claude (Anthropic)', 'agy': 'Antigravity (Google)'}
 
 
 def read_host(provider):
     """Read only the selected provider's login; never import settings or sessions."""
+    if host_platform.is_mac() and provider == 'agy':
+        raise ValueError(f'{LABELS[provider]} uses the macOS keychain. Use the advisor sign-in button to sign in inside its container.')
     try:
         if provider == 'agy':
             result = subprocess.run(['secret-tool', 'lookup', 'service', 'gemini', 'username', 'antigravity'],
@@ -35,6 +37,8 @@ def read_host(provider):
             return json.dumps({'claudeAiOauth': value['claudeAiOauth']})
         raise ValueError('Choose Codex, Claude or Antigravity.')
     except (OSError, subprocess.TimeoutExpired, json.JSONDecodeError):
+        if host_platform.is_mac() and provider == 'claude':
+            raise ValueError('Importing Claude’s macOS keychain sign-in is not supported. Use the advisor sign-in button instead.') from None
         raise ValueError(f'Cannot read the host {LABELS[provider]} sign-in. Use the advisor sign-in button instead.') from None
 
 
