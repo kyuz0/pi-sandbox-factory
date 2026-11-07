@@ -251,7 +251,8 @@ For synthetic host-file probes, create a disposable sandbox without desktop VS C
 check_root=/tmp/pi-browser-boundary-check
 .venv/bin/python tests/browser_editor_check.py prepare --root "$check_root"
 .venv/bin/pi-sandbox-factory --state-dir "$check_root/state" create browser-check \
-  --workspace "$check_root/workspace" --folders-file "$check_root/folders.json" --start
+  --workspace "$check_root/workspace" --folders-file "$check_root/folders.json" \
+  --allow-domain local-model.internal:8000 --start
 .venv/bin/pi-sandbox-factory --state-dir "$check_root/state" browser-editor browser-check
 ```
 

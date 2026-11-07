@@ -21,7 +21,8 @@ python3 -m venv .venv
 mkdir -p ~/pi-browser-test
 .venv/bin/pi-sandbox-factory --state-dir ~/.local/state/pi-browser-editor \
   create browser-test \
-  --workspace ~/pi-browser-test --local-model-ports 8000 --start
+  --workspace ~/pi-browser-test --local-model-ports 8000 \
+  --allow-domain local-model.internal:8000 --start
 .venv/bin/pi-sandbox-factory --state-dir ~/.local/state/pi-browser-editor \
   browser-editor browser-test
 ```
