@@ -40,6 +40,7 @@ RUN curl -fSL --retry 3 \
     && unzip -q /tmp/pendant.vsix 'extension/*' -d /opt/pendant \
     && rm /tmp/pendant.vsix \
     && mv /opt/pendant/extension "/opt/pendant/cdervis.vscode-pi-${PENDANT_VERSION}"
+COPY editor-startup/ /opt/editor-extensions/pi-sandbox-factory.editor-startup-1.0.0/
 COPY check-pendant.py /opt/sandbox/check-pendant.py
 RUN python3 /opt/sandbox/check-pendant.py "${PENDANT_VERSION}"
 COPY entrypoint.sh /usr/local/bin/sandbox-entrypoint

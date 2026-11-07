@@ -34,9 +34,9 @@ for item in Path('/proc').glob('[0-9]*/cmdline'):
 extensions = root / 'extensions'
 extensions.mkdir(exist_ok=True)
 for target in extensions.iterdir():
-    if target.is_symlink() and str(target.readlink()).startswith('/opt/pendant/') and not target.exists():
+    if target.is_symlink() and str(target.readlink()).startswith(('/opt/pendant/', '/opt/editor-extensions/')) and not target.exists():
         target.unlink()
-for source in Path('/opt/pendant').iterdir():
+for source in [*Path('/opt/pendant').iterdir(), *Path('/opt/editor-extensions').glob('*')]:
     target = extensions / source.name
     if not target.exists():
         target.symlink_to(source, target_is_directory=True)

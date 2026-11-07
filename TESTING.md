@@ -258,7 +258,8 @@ and credentials surviving disable/re-enable.
 
 Follow [the browser editor guide](docs/browser-editor.md) for the real-model smoke
 check. Confirm dark mode, Explorer on the left, Pendant in the right secondary
-sidebar, a shell tool writing a workspace file, and conversation persistence after
+sidebar with its composer loaded **without clicking the Pendant tab**, a shell
+tool writing a workspace file, and conversation persistence after
 restarting the editor. Use **Actions → Stop browser editor** and verify that its
 terminal processes also exit. Stopping the container must close the loopback listener. Neither action
 should stop unrelated sandboxes or Pi CLI sessions.
@@ -266,6 +267,17 @@ should stop unrelated sandboxes or Pi CLI sessions.
 On a fresh launch and after restarting, `/workspace` must open
 without a trust prompt or Restricted Mode. Check that Manage Workspace Trust says
 “You trust this folder”. Opening `/tmp` instead must still request trust.
+
+For an automated startup check, install Playwright in your test environment and
+run `playwright install chromium`. Start a fresh disposable browser editor, then:
+
+```sh
+python tests/browser_editor_startup.py 'PRINTED_URL/?folder=/workspace' --screenshot /tmp/pendant-startup.png
+```
+
+The check waits for the actual Pendant composer without selecting its tab. Inspect
+the screenshot for dark mode and right-side placement. Also check a fresh host
+VS Code profile when changing extension startup behavior.
 
 For synthetic host-file probes, create a disposable sandbox without desktop VS Code:
 

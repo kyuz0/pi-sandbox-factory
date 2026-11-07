@@ -1034,7 +1034,7 @@ class ModelsScreen(Screen):
         yield Header()
         with VerticalScroll(classes='form'):
             yield Label('Models · '+self.record['name'],classes='title')
-            yield Static('Check or refresh installed provider plugins here. For OpenRouter and other built-in services, use /login in Pi or Pendant. Custom API endpoints use ~/.pi/agent/models.json inside the sandbox.')
+            yield Static('Check or refresh installed provider plugins here. For OpenRouter or a custom endpoint, open Pendant → Sign in. Pi CLI uses /login; both clients share the sandbox’s model configuration.')
             if not rows:
                 yield Static('No provider plugins are enabled. Add one in Configuration.', id='no-model-providers')
             with Vertical(id='provider-controls') as controls:

@@ -215,7 +215,7 @@ for server in ('.vscode-server', '.vscode-server-insiders'):
     base = Path('/home/node') / server
     extensions = base / 'extensions'
     extensions.mkdir(parents=True, exist_ok=True)
-    for source in Path('/opt/pendant').iterdir():
+    for source in [*Path('/opt/pendant').iterdir(), *Path('/opt/editor-extensions').glob('*')]:
         target = extensions / source.name
         if not target.exists():
             shutil.copytree(source, target)

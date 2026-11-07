@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 import subprocess
 import sqlite3
+import shutil
 import sys
 import tempfile
 import unittest
@@ -717,12 +718,13 @@ class EditorTests(unittest.TestCase):
 class BootstrapTests(unittest.TestCase):
     def bootstrap(self, root, subagents=False):
         script = (sandbox.ROOT / 'containers/dev/bootstrap.py').read_text()
+        shutil.copytree(sandbox.ROOT / 'containers/dev/editor-startup', root / 'editor-extensions/pi-sandbox-factory.editor-startup-1.0.0', dirs_exist_ok=True)
         for relative in ('sandbox/profile.md', 'recall/node_modules/pi-compaction-recall/src/index.ts'):
             target = root / relative
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_text('Profile guidance' if relative.endswith('profile.md') else '')
         for original, relative in (('/home/node', 'home'), ('/pi-config', 'shared'), ('/opt/pendant', 'pendant'),
-                                   ('/opt/pi-security', 'security'),
+                                   ('/opt/pi-security', 'security'), ('/opt/editor-extensions', 'editor-extensions'),
                                    ('/opt/betterwright', 'betterwright'),
                                    ('/opt/pi-compaction-recall', 'recall'),
                                    ('/opt/rpiv-ask-user-question', 'ask'),
