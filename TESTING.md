@@ -254,6 +254,10 @@ run `playwright install chromium`. Start a fresh disposable browser editor, then
 python tests/browser_editor_startup.py 'PRINTED_URL/?folder=/workspace' --screenshot /tmp/pendant-startup.png
 ```
 
+Use `--cdp http://HOST:PORT` to attach to an existing Chromium or Edge debugging
+session. For WSL, drive Windows Edge so the check includes Windows localhost
+forwarding. Keep the debugging listener on loopback and use a disposable browser profile.
+
 The check waits for the actual Pendant composer without selecting its tab. Inspect
 the screenshot for dark mode and right-side placement. Also check a fresh host
 VS Code profile when changing extension startup behavior.
@@ -333,8 +337,9 @@ Podman Machine, install from [platform setup](docs/platforms.md) and check:
 4. Run the browser and model fixture recipes above. An allowed endpoint must work;
    an unselected destination and a redirect to it must fail. Open the browser
    viewer, interact with the synthetic form and read that state through Pi.
-5. Restart WSL or Podman Machine, then reopen the sandbox. On macOS, switching to
-   another Podman connection must produce an error before managing its containers.
+5. Close the launcher and all Ubuntu terminals; verify the editor still responds
+   after 90 seconds. Restart WSL or Podman Machine, then reopen the sandbox.
+   On macOS, switching to another Podman connection must produce an error before managing its containers.
    Verify a folder outside the VM shares produces an actionable startup error.
 6. Sign in to one advisor with disposable test credentials; check its status and
    recovery after logout. Never include credentials in results or fixtures.
@@ -344,3 +349,22 @@ Test an SSH-forwarded model in WSL and, separately, a Windows-local model with
 mirrored networking. For macOS, check localhost model access, native ARM64 images
 and Chromium interaction. A Windows cloud VM needs nested virtualization for WSL2;
 use a Mac with hardware virtualization available for Podman Machine.
+
+## Windows verification
+
+Windows 11, WSL 2.7.10, Ubuntu 26.04, Podman 5.7 and Windows Edge 157;
+24 GB assigned to Windows, 12 GB to WSL. The 7 November 2026 run passed:
+
+| Check | Result |
+| --- | --- |
+| Python unit suite | 242 passed on Windows/WSL and Linux |
+| Node unit suite | 24 passed on Windows/WSL |
+| Installed Pi and Pendant | Questions, folder context, permissions, browser tools and Lite recall passed |
+| Windows Edge | Pendant loaded automatically in dark mode; typing worked for WSL and C: workspaces |
+| Editor lifecycle | Restart, password login, HTTPS, Host/Origin checks and anonymous WebSocket rejection passed |
+| Browser viewer | Session isolation, reconnect, key rotation and container-stop cleanup passed |
+| Folder lifecycle | Starting-folder edits, mount removal and read-only changes preserved files and private state |
+| Windows-local models | Mirrored networking, restricted gateway access and model/context discovery passed |
+| Background operation | Both editors remained reachable with no Ubuntu terminal or launcher open for 90 seconds |
+
+Model replies in these checks came from synthetic fixtures.

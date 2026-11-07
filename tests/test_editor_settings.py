@@ -49,8 +49,9 @@ class Preferences(unittest.TestCase):
         self.assertEqual(settings.copy_choice(value), settings.DEFAULTS)
         self.assertEqual(settings.authority('::1', 8000), '[::1]:8000')
 
+    @patch("platform.release", return_value="6.12")
     @patch("platform.system", return_value="Linux")
-    def test_private_loopback_address_and_port_reused(self, _system):
+    def test_private_loopback_address_and_port_reused(self, _system, _release):
         with tempfile.TemporaryDirectory() as folder:
             state = Path(folder)
             address, port = settings.connection(state, settings.DEFAULTS)

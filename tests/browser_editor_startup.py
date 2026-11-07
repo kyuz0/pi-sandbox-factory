@@ -4,9 +4,10 @@ import time
 from playwright.sync_api import sync_playwright
 
 
-def check(url, screenshot):
+def check(url, screenshot, cdp=None):
     with sync_playwright() as playwright:
-        browser = playwright.chromium.launch(headless=True)
+        browser = (playwright.chromium.connect_over_cdp(cdp) if cdp
+                   else playwright.chromium.launch(headless=True))
         try:
             page = browser.new_page(viewport={'width': 1440, 'height': 1000})
             page.goto(url)
@@ -35,5 +36,6 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('url', help='URL of a fresh disposable browser editor, including its folder query')
     parser.add_argument('--screenshot', required=True)
+    parser.add_argument('--cdp', help='Existing Chromium/Edge debugging URL, for testing the host browser from WSL')
     args = parser.parse_args()
-    check(args.url, args.screenshot)
+    check(args.url, args.screenshot, args.cdp)

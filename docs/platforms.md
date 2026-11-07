@@ -4,17 +4,39 @@ The manager runs in WSL2 on Windows and natively on macOS with Podman Machine.
 Both run the same Linux containers as the Linux installation. Apple Silicon has
 been tested on an M1 with macOS 27 and Podman 6.1.4: container creation, Pi/Pendant,
 browser tools, editor authentication, network isolation and folder permissions.
-Windows hardware validation is pending. See [platform checks](../TESTING.md#platform-checks).
+Windows 11 has been tested with WSL2, Ubuntu 26.04 and Podman 5.7.
+See [platform checks](../TESTING.md#platform-checks).
 
 ## Windows
 
-Install Ubuntu 26.04 in WSL2 from PowerShell:
+Use Windows 11 with virtualization enabled. For browser-enabled sandboxes, the
+recommended setup is 24 GB RAM and at least 30 GB free on the drive holding Ubuntu.
+A Windows VM also needs nested virtualization enabled.
+
+In **PowerShell as Administrator**:
 
 ```powershell
 wsl --install Ubuntu-26.04
+wsl --update
 ```
 
-Then, inside Ubuntu:
+Restart Windows if prompted. Open Ubuntu and create your Linux username and password.
+
+In PowerShell, open `notepad "$env:USERPROFILE\.wslconfig"` and add:
+
+```ini
+[general]
+instanceIdleTimeout=-1
+
+[wsl2]
+memory=12GB
+```
+
+This keeps background containers running after you close the terminal and gives
+WSL 12 GB RAM. Merge these entries if the file already exists. Run `wsl --shutdown`
+from PowerShell, then reopen Ubuntu. See [WSL settings](https://learn.microsoft.com/en-us/windows/wsl/wsl-config).
+
+Inside **Ubuntu**:
 
 ```sh
 sudo apt update
@@ -22,28 +44,27 @@ sudo apt install podman passt uidmap git pipx
 pipx ensurepath
 pipx install git+https://github.com/kyuz0/pi-sandbox-factory.git
 mkdir -p ~/Projects
-pi-sandbox-factory
 ```
 
-Open a new Ubuntu terminal if the command is not found. Keep projects under
-`~/Projects` for Linux filesystem permissions and performance. You can select
-individual Windows project folders through `/mnt/c/...`, or paste a `C:\...` path.
-Their mount permissions are checked before launch. Changes made by Windows apps
-may not trigger Linux file watchers; keep projects in WSL when using watch builds.
-Install and run Linux Podman inside this distribution; a separate Windows Podman
-Machine is not needed. The browser editor opens in your Windows browser. Pi CLI
-runs in the WSL terminal.
+Reopen Ubuntu, then run `pi-sandbox-factory`. Choose **New sandbox**, a folder
+under `~/Projects`, then **Create and start**. The editor opens in your Windows
+browser. Pi CLI runs in the Ubuntu terminal. Update with
+`pipx upgrade pi-sandbox-factory`.
+
+Use Linux Podman inside Ubuntu; Docker Desktop and Windows Podman Machine are
+not required. Projects under `~/Projects` have normal Linux permissions and file
+watching. You can also select a Windows project through `/mnt/c/...` or paste a
+`C:\...` path; use polling if a build tool needs to detect edits by Windows apps.
+
+For OpenRouter, Azure, Bedrock or Together, use **Settings → Models**; see
+[model setup](providers.md#hosted-services).
 
 **Connect to models on this host** refers to WSL. Run the model there, or create
 its SSH tunnel there, for example `ssh -N -L 8000:localhost:8000 MODEL_HOST`.
 For a model running directly on Windows, Windows 11 mirrored networking lets WSL
-reach Windows through localhost. Add this to `%UserProfile%\.wslconfig`, then run
-`wsl --shutdown` from PowerShell and reopen Ubuntu:
-
-```ini
-[wsl2]
-networkingMode=mirrored
-```
+reach Windows through localhost. Add `networkingMode=mirrored` to the existing
+`[wsl2]` section in `%UserProfile%\.wslconfig`, then run `wsl --shutdown` from
+PowerShell and reopen Ubuntu.
 
 This restarts all WSL distributions. See [Microsoft’s WSL networking guide](https://learn.microsoft.com/en-us/windows/wsl/networking)
 and [Ubuntu’s installation guide](https://ubuntu.com/wsl/docs/latest/howto/install-ubuntu-wsl2/).

@@ -876,9 +876,10 @@ class FoldersScreen(Screen):
         elif event.button.id == 'folders-apply':
             try:
                 selected = self.query_one(FolderFields).collect()
+                service = self.app.service
                 def apply():
                     self.app.pop_screen()
-                    self.app.push_screen(Operation('Updating folders', lambda log: self.app.service.folders(self.record['name'], selected, log)))
+                    self.app.push_screen(Operation('Updating folders', lambda log: service.folders(self.record['name'], selected, log)))
                 if selected['extra_folders'] != self.record['config'].get('extra_folders', []):
                     self.app.push_screen(Confirm('Apply folder mounts? This recreates the sandbox and interrupts running processes.', 'Apply and recreate'), lambda yes: apply() if yes else None)
                 else:
@@ -951,10 +952,11 @@ class SSHScreen(Screen):
                 old_text = '\n'.join(f'{h["alias"]} {h["user"]} {h["hostname"]} {h["port"]}' for h in old['hosts'])
                 settings = (self.imported[1] if self.imported and self.imported[0] == text else
                             old if text == old_text else sandbox_ssh.parse_hosts(text, self.query_one('#ssh-known-hosts', Input).value))
+                service = self.app.service
                 def apply(yes):
                     if not yes: return
                     self.app.pop_screen()
-                    self.app.push_screen(Operation('SSH destinations · ' + name, lambda log: self.app.service.ssh_settings(name, settings, log)))
+                    self.app.push_screen(Operation('SSH destinations · ' + name, lambda log: service.ssh_settings(name, settings, log)))
                 self.app.push_screen(Confirm('Apply SSH destinations?\nActive sandbox processes restart. Workspace and private key are preserved.\nThe key will be restricted to these users and trusted host identities.', 'Apply'), apply)
         except (OSError, ValueError, subprocess.SubprocessError) as error:
             self.notify(safe_text(error), severity='error')
@@ -1041,14 +1043,15 @@ class AdvisorsScreen(Screen):
                 self.notify(str(error), severity='error')
                 return
             imports = self.query_one(AdvisorChoices).imports()
+            service = self.app.service
             def apply(yes):
                 if not yes:
                     return
                 self.app.pop_screen()
                 def setup(log):
-                    self.app.service.advisors(name, settings, log)
+                    service.advisors(name, settings, log)
                     for provider in imports:
-                        self.app.service.run(['advisor-import', name, provider], log)
+                        service.run(['advisor-import', name, provider], log)
                 self.app.push_screen(Operation('Advisors · ' + name, setup))
             self.app.push_screen(Confirm('Apply advisor settings?\nActive sandbox processes restart. Workspace and private home are preserved.'
                                          + ('\nSelected host sign-ins replace the saved advisor logins.' if imports else ''), 'Apply'), apply)
@@ -1840,9 +1843,10 @@ class SettingsForm(Screen):
                     self.app.pop_screen()
                     self.notify('Defaults saved for future sandboxes.')
                 elif self.editing and draft.get('_communication_keys') and not key and self.configuration_unchanged(draft):
+                    service = self.app.service
                     self.app.pop_screen()
                     self.app.push_screen(Operation('Saving Slack credentials', lambda log:
-                        self.app.service.save_communication_keys(draft['name'], draft['_communication_keys'], log)))
+                        service.save_communication_keys(draft['name'], draft['_communication_keys'], log)))
                 elif self.editing:
                     self.app.push_screen(Confirm('Apply settings to ' + draft['name'] + '?\n'
                         'This recreates its containers and interrupts active processes.\n'

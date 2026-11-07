@@ -164,6 +164,31 @@ class TUITests(unittest.TestCase):
             self.assertEqual(service.calls[0][2]['agy_model'],'')
             await pilot.press('q')
 
+    async def test_advisor_worker_can_start_after_settings_screen_closes(self):
+        from pi_sandbox_factory.sandbox_tui import AdvisorsScreen
+        service = FakeService(self.records)
+        service.advisors = lambda name, settings, log: service.calls.append(['advisors', name])
+        app = Cockpit(self.root, service)
+        # Hold the worker until Textual has removed the settings screen.
+        with patch.object(Operation, 'on_mount', return_value=None):
+            async with app.run_test(size=(100, 36)) as pilot:
+                await self.ready(app, pilot)
+                screen = AdvisorsScreen(self.records[0])
+                await app.push_screen(screen)
+                await pilot.pause()
+                screen.query_one('#advisor-codex', Checkbox).value = True
+                await pilot.click('#advisor-apply')
+                await pilot.pause()
+                await pilot.click('#yes')
+                await self.ready(app, pilot)
+                self.assertIsNone(screen.parent)
+                operation = app.screen
+                self.assertIsInstance(operation, Operation)
+                operation.execute()
+                await self.ready(app, pilot)
+                self.assertFalse(operation.failed)
+                self.assertEqual(service.calls, [['advisors', 'alpha']])
+
     async def test_models_without_provider_plugins(self):
         from pi_sandbox_factory.sandbox_tui import ModelsScreen
         from textual.widgets import Select
