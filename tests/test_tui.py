@@ -164,6 +164,40 @@ class TUITests(unittest.TestCase):
             self.assertEqual(service.calls[0][2]['agy_model'],'')
             await pilot.press('q')
 
+    async def test_models_without_provider_plugins(self):
+        from pi_sandbox_factory.sandbox_tui import ModelsScreen
+        from textual.widgets import Select
+        self.records[0]['config']['model_providers'] = []
+        service = FakeService(self.records)
+        app = Cockpit(self.root, service)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await self.ready(app, pilot)
+            await app.push_screen(ModelsScreen(self.records[0]))
+            await pilot.pause()
+            self.assertIs(app.screen.query_one('#model-provider', Select).value, Select.NULL)
+            for action in ('status', 'preview', 'refresh', 'auth'):
+                self.assertTrue(app.screen.query_one('#provider-' + action, Button).disabled)
+            self.assertFalse(app.screen.query_one('#configuration', Button).disabled)
+            self.assertEqual(service.calls, [])
+            await pilot.press('escape')
+            self.assertNotIsInstance(app.screen, ModelsScreen)
+
+    async def test_models_refresh_selected_provider(self):
+        from pi_sandbox_factory.sandbox_tui import ModelsScreen
+        from textual.widgets import Select
+        self.records[0]['config']['model_providers'] = [
+            {'name': 'local', 'manifest': {'description': 'Local models'}}]
+        service = FakeService(self.records)
+        app = Cockpit(self.root, service)
+        async with app.run_test(size=(120, 40)) as pilot:
+            await self.ready(app, pilot)
+            await app.push_screen(ModelsScreen(self.records[0]))
+            await pilot.pause()
+            self.assertEqual(app.screen.query_one('#model-provider', Select).value, 'local')
+            await pilot.click('#provider-refresh')
+            await self.ready(app, pilot)
+            self.assertEqual(service.calls, [['provider', 'alpha', 'local', 'refresh', None]])
+
     async def test_saved_codex_advisor_enables_login(self):
         self.records[0]['config']['advisors'] = {'providers': ['codex']}
         app = Cockpit(self.root, FakeService(self.records))

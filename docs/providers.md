@@ -8,6 +8,47 @@ models on selected host ports using Pi Local Model Manager.
 Provider packages can also include a Pi extension to refresh the model list during
 a conversation.
 
+## OpenRouter and other built-in services
+
+Pi already includes OpenRouter; it does not need a Factory provider plugin.
+
+1. In Factory, open **Settings → Network** and add `openrouter.ai:443` to
+   **Allowed destinations**, then apply. During creation, use the **Network** section.
+2. In Pi or Pendant, run `/login openrouter` and enter your API key.
+3. Use `/model` to choose an OpenRouter model.
+
+The key is saved in the sandbox's private Pi home and is shared by Pi and Pendant.
+For other built-in services, use `/login` to select the provider and allow its API
+hostname under Network.
+
+## Custom API endpoints
+
+Edit `/home/node/.pi/agent/models.json` inside the sandbox. Add your provider under
+`providers`, preserving existing entries:
+
+```json
+{
+  "providers": {
+    "my-service": {
+      "baseUrl": "https://models.example.com/v1",
+      "api": "openai-completions",
+      "models": [{ "id": "your-model-id" }]
+    }
+  }
+}
+```
+
+Use the endpoint's actual API type and model ID, and set its documented context,
+output and input capabilities. Add its hostname and port in **Settings → Network**.
+Store its credential using `/login` after the provider has loaded; reopen `/model`
+to reload the catalogue. Pi's [model configuration reference](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/docs/models.md)
+explains the available fields. An unauthenticated endpoint can use a dummy `apiKey`
+value in its provider entry if it requires no credential.
+
+Factory's **Settings → Models** manages installed provider plugins. It does not
+currently offer an endpoint-entry form. Use a plugin for repeatable configuration
+or custom discovery across sandboxes.
+
 ## Install and select
 
 ```sh

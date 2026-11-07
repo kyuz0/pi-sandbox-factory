@@ -1034,18 +1034,24 @@ class ModelsScreen(Screen):
         yield Header()
         with VerticalScroll(classes='form'):
             yield Label('Models · '+self.record['name'],classes='title')
-            yield Static('Choose a model source to check or refresh. Add sources and edit their settings in Configuration.')
-            yield Label('Model provider')
-            yield Select([(r['manifest'].get('description',r['name']),r['name']) for r in rows],id='model-provider',allow_blank=not rows,value=rows[0]['name'] if rows else Select.BLANK)
-            yield Label('Provider credential · when required')
-            yield Input(password=True,id='provider-key')
-            with Horizontal(classes='buttons'):
-                yield Button('Status',id='provider-status')
-                yield Button('Preview',id='provider-preview')
-                yield Button('Refresh',id='provider-refresh')
-            with Horizontal(classes='buttons'):
-                yield Button('Configure credentials',id='provider-auth')
-                yield Button('Configuration…',id='configuration')
+            yield Static('Check or refresh installed provider plugins here. For OpenRouter and other built-in services, use /login in Pi or Pendant. Custom API endpoints use ~/.pi/agent/models.json inside the sandbox.')
+            if not rows:
+                yield Static('No provider plugins are enabled. Add one in Configuration.', id='no-model-providers')
+            with Vertical(id='provider-controls') as controls:
+                controls.display = bool(rows)
+                with Vertical(classes='setting'):
+                    yield Label('Model provider')
+                    yield Select([(r['manifest'].get('description',r['name']),r['name']) for r in rows],id='model-provider',allow_blank=not rows,value=rows[0]['name'] if rows else Select.NULL,disabled=not rows)
+                with Vertical(classes='setting'):
+                    yield Label('Provider credential · when required')
+                    yield Input(password=True,id='provider-key',disabled=not rows)
+                with Horizontal(classes='buttons'):
+                    yield Button('Status',id='provider-status',disabled=not rows)
+                    yield Button('Preview',id='provider-preview',disabled=not rows)
+                    yield Button('Refresh',id='provider-refresh',disabled=not rows)
+                with Horizontal(classes='buttons'):
+                    yield Button('Configure credentials',id='provider-auth',disabled=not rows)
+            yield Button('Configuration…',id='configuration')
         with Horizontal(classes='wizard-actions'):
             yield Button('Back',id='models-back')
         yield Footer()
@@ -1057,7 +1063,7 @@ class ModelsScreen(Screen):
             if action=='configuration':self.app.perform(action)
             return
         selected=self.query_one('#model-provider',Select).value
-        if selected is Select.BLANK:return
+        if selected is Select.NULL:return
         key=self.query_one('#provider-key',Input).value if action=='provider-auth' else None
         if action=='provider-auth' and not key.strip():self.notify('Enter the provider credential first.',severity='error');return
         self.query_one('#provider-key',Input).value=''
@@ -1121,7 +1127,7 @@ class PackagesScreen(Screen):
 
     async def show_packages(self):
         kind=self.query_one('#package-kind',Select).value
-        if kind is Select.BLANK:return
+        if kind is Select.NULL:return
         self.query_one('#package-install',Button).label='Install '+kind+'…'
         listing=self.query_one('#package-list',Vertical)
         await listing.remove_children()
@@ -1893,7 +1899,7 @@ class Cockpit(App):
     Collapsible Button { background: #34383d; }
     Collapsible Button:hover { background: #454b52; }
     Button { height: 1; border: none; margin-right: 1; min-width: 8; }
-    #custom-profile-fields, #network-rules-fields { height: auto; }
+    #custom-profile-fields, #network-rules-fields, #provider-controls { height: auto; }
     #home > .buttons { margin: 0; }
     #home > .buttons Label { width: 1fr; }
     #network-error { height: auto; color: #b75b52; }
