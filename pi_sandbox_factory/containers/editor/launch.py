@@ -64,6 +64,20 @@ with sqlite3.connect(storage) as database:
                          'viewContainerLocations': {'workbench.view.extension.pendant-container': 2},
                          'viewLocations': {}, 'viewContainerBadgeEnablementStates': {},
                      })))
+# The selected workspace is trusted; other container folders keep normal trust checks.
+trust_store = Path('/home/node/.vscode-oss-shared/sharedStorage/state.vscdb')
+trust_store.parent.mkdir(parents=True, exist_ok=True)
+with sqlite3.connect(trust_store) as database:
+    database.execute('CREATE TABLE IF NOT EXISTS ItemTable (key TEXT UNIQUE ON CONFLICT REPLACE, value BLOB)')
+    key = 'content.trust.model.key'
+    row = database.execute('SELECT value FROM ItemTable WHERE key = ?', (key,)).fetchone()
+    trust = json.loads(row[0]) if row else {'uriTrustInfo': []}
+    uri = {'scheme': 'vscode-remote', 'authority': settings['authority'], 'path': '/workspace'}
+    entries = trust['uriTrustInfo']
+    if not any(all(entry['uri'].get(k) == v for k, v in uri.items()) and entry.get('trusted') for entry in entries):
+        entries.append({'uri': uri, 'trusted': True})
+    database.execute('INSERT OR REPLACE INTO ItemTable (key, value) VALUES (?, ?)', (key, json.dumps(trust)))
+
 config = root / 'config.yaml'
 config.write_text(json.dumps({'hashed-password': settings['password_hash']}) + '\n')
 config.chmod(0o600)

@@ -245,6 +245,10 @@ restarting the launcher. Open a terminal before Ctrl+C and verify that its proce
 also exits. Stopping the container must close the loopback listener. Neither action
 should stop unrelated sandboxes or Pi CLI sessions.
 
+On a fresh launch and after restarting at a new address, `/workspace` must open
+without a trust prompt or Restricted Mode. Check that Manage Workspace Trust says
+“You trust this folder”. Opening `/tmp` instead must still request trust.
+
 For synthetic host-file probes, create a disposable sandbox without desktop VS Code:
 
 ```sh
@@ -263,7 +267,7 @@ Leave the launcher running. In another terminal at this checkout:
   --root /tmp/pi-browser-boundary-check --container pi-sandbox-factory-browser-check
 ```
 
-Open the printed URL, sign in, trust the generated workspace and reload the page.
+Open the printed URL, sign in and reload the page.
 Both probe extensions write JSON results into the workspace. Then run:
 
 ```sh

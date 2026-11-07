@@ -171,7 +171,7 @@ async def serve(container, cwd, password):
         editor = await asyncio.create_subprocess_exec('podman', 'exec', '-i', '--user', 'node',
             container, 'python3', '-u', '-c', helper, stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE, start_new_session=True)
         editor.stdin.write((json.dumps({'binary': INSTALL + '/bin/code-server',
-                                      'cwd': cwd, 'password_hash': hashlib.sha256(password.encode()).hexdigest()}) + '\n').encode())
+                                      'cwd': cwd, 'authority': relay.host, 'password_hash': hashlib.sha256(password.encode()).hexdigest()}) + '\n').encode())
         await editor.stdin.drain()
         ready = await asyncio.wait_for(editor.stdout.readline(), 60)
         if ready != b'ready\n':

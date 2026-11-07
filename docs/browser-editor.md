@@ -35,7 +35,7 @@ providers use the [usual model configuration](usage.md).
 
 1. Open the printed URL in a separate browser profile and enter the printed
    password. Keep the launcher terminal open.
-2. Trust your test workspace when prompted. The editor starts in dark mode;
+2. The selected workspace opens trusted. The editor starts in dark mode;
    Pendant belongs in the secondary sidebar on the right. Select its tab if needed.
 3. In Pendant, select your model and ask: “Create a small HTML page in this folder
    with a button that counts clicks.” Confirm that the files appear in Explorer
@@ -46,9 +46,9 @@ providers use the [usual model configuration](usage.md).
    stop, including active Pendant runs and scheduled prompts; the sandbox stays running. Run the `browser-editor` command again
    and sign in at the new URL. Open Pendant and resume the saved conversation.
 
-Each launch creates a new browser origin and password. VS Code may ask you to
-trust the workspace again. Editor settings and Pi conversations remain in the
-sandbox's private home. Your chosen theme and sidebar arrangement are preserved.
+Each launch creates a new browser origin and password. The launcher trusts
+`/workspace` and its subfolders at that address automatically. Editor settings and
+Pi conversations remain in the sandbox's private home. Your chosen theme and sidebar arrangement are preserved.
 A sandbox opened this way is marked for browser use: the Factory refuses desktop
 VS Code attachment afterward. Use a separate sandbox for the desktop editor so
 extensions left in container state cannot regain the desktop client API bridge.
