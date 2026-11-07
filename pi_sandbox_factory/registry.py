@@ -96,6 +96,20 @@ def manifest(kind, path):
                 "secret",
             ):
                 raise ValueError("Provider settings must declare text or secret fields")
+        if "inference" in data:
+            route = data["inference"]
+            if not isinstance(route, dict) or not isinstance(route.get("origin"), str):
+                raise ValueError("Inference needs an HTTPS origin and fixed operations")
+            origin = urlsplit(route["origin"])
+            if origin.scheme != "https" or not origin.hostname or origin.username or origin.password or origin.path not in ("", "/") or origin.query or origin.fragment:
+                raise ValueError("Inference origin must be HTTPS without a path or credentials")
+            base = route.get("basePath", "")
+            if not isinstance(base,str) or (base and not re.fullmatch(r"/[A-Za-z0-9/_-]+",base)) or "//" in base:
+                raise ValueError("Inference basePath must be a fixed API path")
+            if route.get("auth",{}).get("type") not in ("bearer","header"):
+                raise ValueError("Provider plugins support bearer or API-key header authentication")
+            if not isinstance(route.get("operations"),list) or not route["operations"]:
+                raise ValueError("Declare the inference and discovery operations")
         for key in ("extensions", "skills"):
             if not isinstance(data.get(key, []), list) or any(
                 not isinstance(entry, str) or not entry for entry in data.get(key, [])

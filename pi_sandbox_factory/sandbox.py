@@ -5,6 +5,7 @@ from . import sandbox_skills
 from . import sandbox_extensions
 from . import sandbox_advisors
 from . import sandbox_ssh
+from . import inference
 from . import registry, model_providers, browser_viewer, folders, host_platform
 from contextlib import closing
 import hashlib
@@ -198,8 +199,9 @@ def squid_config(rules, groups=None):
 
 
 def network_policy(config, rules):
+    from . import hosted_models
     selected = options(config.get('options'))
-    combined = list(dict.fromkeys(rules + web_access.destinations(selected['web_access']) + communications.destinations(selected['communications'])))
+    combined = list(dict.fromkeys(rules + web_access.destinations(selected['web_access']) + communications.destinations(selected['communications']) + hosted_models.destinations(config.get('hosted_connections', {}))))
     return squid_config(combined, config.get('website_groups', {}))
 
 
@@ -331,6 +333,7 @@ def build(config):
         model_providers.build(config, tools, target)
         tools = target
     sandbox_ssh.build(config)
+    inference.build(config)
     sandbox_advisors.build(config)
     sandbox_skills.build(config, dev, SimpleNamespace(run=run, tree_digest=tree_digest), base_image=tools)
 
@@ -428,7 +431,7 @@ def restart_existing(config, name):
     current = inspect(config, name)
     if not current or current['State']['Running']:
         raise ValueError(f'Could not stop {name} safely; inspect with {config["engine"]} logs {name}')
-    run([config['engine'], 'start', name])
+    run([config['engine'], 'start', name], capture=True, stderr=subprocess.PIPE)
 
 
 def resume_existing(config, name, current):
@@ -482,6 +485,7 @@ def up(config, state):
     restricted = network_mode(config) == 'allowlist'
     sandbox_advisors.check_ownership(config)
     sandbox_ssh.check_ownership(config)
+    inference.check_ownership(config)
     # Verify both ownership labels before starting or recovering either one.
     current = {name: inspect(config, name) for name in (proxy, dev)}
     if restricted:
@@ -508,6 +512,7 @@ def up(config, state):
         host_platform.check_mounts(config, state, image_names(config)[0])
     sandbox_advisors.up(config, state)
     sandbox_ssh.up(config, state)
+    inference.up(config, state)
     for name in active:
         if current[name]:
             resume_existing(config, name, current[name])
@@ -543,6 +548,7 @@ def up(config, state):
             args += folders.mounts(config)
             args += sandbox_advisors.mounts(config)
             args += sandbox_ssh.mounts(config, state)
+            args += inference.mounts(config)
             if config.get('memory'):
                 args += ['--memory=' + memory_limit(config['memory'])]
             if 'options' in config:
@@ -605,8 +611,10 @@ def down(config, remove=False):
         inspect(config, name)
     sandbox_advisors.check_ownership(config)
     sandbox_ssh.check_ownership(config)
+    inference.check_ownership(config)
     sandbox_advisors.down(config, remove=remove)
     sandbox_ssh.down(config, remove=remove)
+    inference.down(config, remove=remove)
     for name in names(config)[:2]:
         if inspect(config, name):
             run([config['engine'], 'rm', '-f', name] if remove
@@ -622,6 +630,7 @@ def delete(config, state):
         raise ValueError('Refusing to delete state containing the host workspace')
     sandbox_advisors.check_ownership(config)
     sandbox_ssh.check_ownership(config)
+    inference.check_ownership(config)
     # Verify ownership of both containers before removing either one.
     for name in names(config)[:2]:
         inspect(config, name)
@@ -634,6 +643,7 @@ def delete(config, state):
             run([config['engine'], 'volume', 'rm', volume])
     sandbox_advisors.delete_volumes(config)
     sandbox_ssh.delete_volumes(config)
+    inference.delete_volumes(config)
     shutil.rmtree(state)
     print(f'Deleted {config["name"]}: containers, private volumes, and saved state. Host workspace preserved.')
 
@@ -696,8 +706,6 @@ def create(args, state):
     if mode == 'unrestricted' and (args.allowlist or args.allow_domain):
         raise ValueError('--network unrestricted cannot be combined with an allowlist')
     selected_options = options(json.loads(Path(args.options_file).read_text()) if getattr(args, 'options_file', None) else None)
-    if mode == 'allowlist' and not (args.allowlist or args.allow_domain or selected_options['website_groups'] or selected_options['web_access']['enabled'] or any(selected_options['communications'].values())):
-        raise ValueError('Allowlist networking requires an allowed destination, website category or search service')
     workspace = directory(args.workspace)
     host_platform.validate_data_path(workspace)
     shared = directory(args.pi_config) if args.pi_config else None
@@ -748,6 +756,8 @@ def create(args, state):
         values = json.loads(Path(args.providers_file).read_text()) if getattr(args,'providers_file',None) else {name:{} for name in (getattr(args,'model_provider',None) or ['local'])}
         config['model_providers'] = model_providers.prepare(values, state, saved=reuse.get('model_providers', []))
         model_providers.validate_network(config, rules)
+        if mode == 'allowlist' and not (args.allowlist or args.allow_domain or selected_options['website_groups'] or selected_options['web_access']['enabled'] or any(selected_options['communications'].values()) or inference.enabled(config)):
+            raise ValueError('Add an allowed destination, model provider, website category or search service.')
         config['profile'] = snapshot_profile(profile, state)
         config['common'] = snapshot_profile(common_profile(), state)
         config['extra_skills'] = []

@@ -17,6 +17,8 @@ from .advisors_ui import AdvisorChoices
 from .editor_ui import EditorFields, EditorScreen, OpenWith
 from .folders_ui import FolderFields
 from .communications_ui import CommunicationsForm
+from .models_ui import HostedProviders
+from . import hosted_models
 from .tui_widgets import Checkbox
 from . import sandbox_skills
 from . import host_platform, registry, model_providers, updates, web_access, network_groups, communications
@@ -206,14 +208,44 @@ class Service:
             if draft['subagents']:
                 args += ['--subagents']
             self.run(args, log)
+        pending = draft.get('_hosted_changes', {})
+        if pending:
+            config = self.config(name)
+            config['hosted_connections'] = {p: hosted_models.connection(v) for p,v in pending.items()}
+            write_json(state / 'config.json', config)
+            (state / 'squid.conf').write_text(sandbox.network_policy(config, sandbox.parse_rules(draft['allowlist'])))
         editor_settings.save(state, draft.get('editor', editor_settings.DEFAULTS))
         self.run(['build', name], log)
         self.run(['up', name], log)
         self.setup(name, draft, key, log)
+        for value in pending.values():
+            self.hosted_save(name, value)
+            log(hosted_models.PROVIDERS[value['provider']] + ' connection saved.')
         for provider in draft.get('_advisor_imports', []):
             self.run(['advisor-import', name, provider], log)
         if draft.get('advisors', {}).get('providers'):
             log('Advisors added. Open Settings → Advisors to sign in or check the copied sign-ins.')
+
+    def hosted_request(self, name, action, **values):
+        config = self.config(name)
+        if action == 'status':
+            from . import inference
+            connected = inference.credentials(config, self.state / name, {'status': True})['configured'] if inference.enabled(config) else []
+            return {'providers': [{'provider': provider, 'configured': provider in connected, 'has_key': provider in connected, **value}
+                                  for provider, value in config.get('hosted_connections', {}).items()]}
+        return hosted_models.request(config, action, **values)
+
+    def hosted_save(self, name, value):
+        return hosted_models.save(self.config(name), self.state / name, value)
+
+    def hosted_remove(self, name, provider):
+        return hosted_models.remove(self.config(name), self.state / name, provider)
+
+    def hosted_select(self, name, provider, model, **values):
+        return hosted_models.select(self.config(name), provider, model, **values)
+
+    def hosted_test(self, name, provider, model, **values):
+        return hosted_models.select(self.config(name), provider, model, test=True, **values)
 
     def save_communication_keys(self, name, changes, log):
         if changes:
@@ -1027,14 +1059,15 @@ class AdvisorsScreen(Screen):
 
 class ModelsScreen(Screen):
     BINDINGS=[('escape','back','Back')]
-    def __init__(self,record):
-        super().__init__();self.record=record
+    def __init__(self,record,finished=None):
+        super().__init__();self.record=record;self.finished=finished
     def compose(self):
         rows=self.record['config'].get('model_providers',[{'name':'local','manifest':{}}])
         yield Header()
         with VerticalScroll(classes='form'):
             yield Label('Models · '+self.record['name'],classes='title')
-            yield Static('Check or refresh installed provider plugins here. For OpenRouter or a custom endpoint, open Pendant → Sign in. Pi CLI uses /login; both clients share the sandbox’s model configuration.')
+            yield HostedProviders(self.record['name'])
+            yield Label('Installed provider plugins', classes='title')
             if not rows:
                 yield Static('No provider plugins are enabled. Add one in Configuration.', id='no-model-providers')
             with Vertical(id='provider-controls') as controls:
@@ -1053,7 +1086,7 @@ class ModelsScreen(Screen):
                     yield Button('Configure credentials',id='provider-auth',disabled=not rows)
             yield Button('Configuration…',id='configuration')
         with Horizontal(classes='wizard-actions'):
-            yield Button('Back',id='models-back')
+            yield Button('Continue' if self.finished else 'Back',id='models-back',variant='primary' if self.finished else 'default')
         yield Footer()
     @on(Button.Pressed)
     def pressed(self,event):
@@ -1061,7 +1094,9 @@ class ModelsScreen(Screen):
         if action in ('configuration','models-back'):
             self.app.pop_screen()
             if action=='configuration':self.app.perform(action)
+            elif self.finished:self.finished()
             return
+        if action not in ('provider-status','provider-preview','provider-refresh','provider-auth'):return
         selected=self.query_one('#model-provider',Select).value
         if selected is Select.NULL:return
         key=self.query_one('#provider-key',Input).value if action=='provider-auth' else None
@@ -1552,7 +1587,11 @@ class SettingsForm(Screen):
             available=registry.choices('provider')
             available.update({name:row['manifest'].get('description',name) for name,row in saved_rows.items() if name not in available})
             self.provider_forms={}
-            with Collapsible(title='Additional providers',collapsed=True):
+            with Collapsible(title='Model services and providers',collapsed=True,id='hosted-section'):
+                if not self.editing and not self.defaults_mode:
+                    yield HostedProviders(changes=value.get('_hosted_changes'))
+                elif self.editing:
+                    yield Static('Configure hosted services in Settings → Models without recreating the sandbox.')
                 for name,label in available.items():
                     if name=='local':continue
                     info=saved_rows[name]['manifest'] if name in saved_rows else registry.manifest('provider',registry.resolve('provider',name))
@@ -1700,6 +1739,8 @@ class SettingsForm(Screen):
         draft['local_model_ports'] = inp('model-ports') if check('local-models') else None
         draft['model_providers'] = {'local':{}} if check('local-models') else {}
         provider_rules=[]
+        if not self.editing and not self.defaults_mode:
+            draft['_hosted_changes'] = dict(self.query_one(HostedProviders).changes)
         for name,info in self.provider_forms.items():
             if check('source-'+name):
                 settings={key:inp('source-'+name+'-'+key) for key,spec in info.get('settings',{}).items() if spec['type']!='secret'}
@@ -1742,7 +1783,7 @@ class SettingsForm(Screen):
             sandbox.configure_local_gateway({'engine':actual, 'network':draft['network']}, draft['local_model_ports'], rules)
         if draft['network'] == 'allowlist':
             rules += [r for r in sandbox.parse_rules('\n'.join(provider_rules)) if r not in rules]
-        if draft['network'] == 'allowlist' and not rules and not selected['website_groups'] and not selected['web_access']['enabled'] and not any(selected['communications'].values()):
+        if draft['network'] == 'allowlist' and not rules and not selected['website_groups'] and not selected['web_access']['enabled'] and not any(selected['communications'].values()) and not draft.get('_hosted_changes') and not draft.get('hosted_connections') and not any(self.provider_forms.get(name, {}).get('inference') for name in draft['model_providers']):
             raise ValueError('Add an allowed destination or enable host-local models.')
         draft['allowlist'] = '\n'.join(f'{host}:{port}' for host,port in rules)
         sandbox.validate_env(draft['env_file'])
@@ -1823,7 +1864,7 @@ class SettingsForm(Screen):
                 service.update(draft['name'], draft, key, log)
             else:
                 service.create(draft, key, log)
-            if draft.get('open_editor') and editor['mode'] != 'pi':
+            if draft.get('open_editor') and editor['mode'] != 'pi' and not draft.get('_hosted_changes'):
                 try:
                     service.run(['open', draft['name']], log)
                 except (OSError, ValueError) as error:
@@ -1832,8 +1873,16 @@ class SettingsForm(Screen):
         self.app.pop_screen()
         if not editing:
             self.app.pop_screen()
+        def open_after_models():
+            if not draft.get('open_editor'): return
+            if editor['mode'] == 'pi': self.app.interactive('pi', draft['name'])
+            else: self.app.push_screen(Operation('Opening '+draft['name'], lambda log: service.run(['open',draft['name']],log)))
+        def choose_models():
+            self.app.pop_screen()
+            self.app.push_screen(ModelsScreen({'name':draft['name'],'config':service.config(draft['name'])},finished=open_after_models))
         self.app.push_screen(Operation(('Updating ' if editing else 'Creating ') + draft['name'], task,
-            on_success=(lambda: self.app.interactive('pi', draft['name'])) if draft.get('open_editor') and editor['mode'] == 'pi' else None))
+            on_success=choose_models if draft.get('_hosted_changes') else
+            (lambda: self.app.interactive('pi', draft['name'])) if draft.get('open_editor') and editor['mode'] == 'pi' else None))
 
     def action_back(self):
         self.app.pop_screen()

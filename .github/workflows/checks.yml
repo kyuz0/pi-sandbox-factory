@@ -43,7 +43,8 @@ jobs:
           node-version: '22'
       - run: python -m pip install -e .
       - run: python -m unittest discover -s tests -p 'test_*.py'
-      - run: node --test tests/test_provider_runtime.mjs tests/test_web_search_policy.mjs
+      - run: npm ci --prefix pi_sandbox_factory/containers/inference --ignore-scripts
+      - run: node --test tests/test_provider_runtime.mjs tests/test_web_search_policy.mjs tests/test_inference_broker.mjs
       - run: |
           python -m pip wheel --no-deps . -w dist
           python -m venv /tmp/factory-package

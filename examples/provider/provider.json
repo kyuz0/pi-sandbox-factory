@@ -4,8 +4,30 @@
   "description": "One company-hosted OpenAI-compatible model",
   "entry": "adapter.mjs",
   "settings": {
-    "endpoint": {"type": "text", "label": "API base URL", "network": true},
-    "model": {"type": "text", "label": "Model ID"},
-    "key": {"type": "secret", "label": "API key"}
+    "model": {
+      "type": "text",
+      "label": "Model ID"
+    },
+    "key": {
+      "type": "secret",
+      "label": "API key"
+    }
+  },
+  "inference": {
+    "origin": "https://models.example.com",
+    "basePath": "/v1",
+    "auth": {
+      "type": "bearer"
+    },
+    "operations": [
+      {
+        "method": "GET",
+        "path": "/v1/models"
+      },
+      {
+        "method": "POST",
+        "path": "/v1/chat/completions"
+      }
+    ]
   }
 }

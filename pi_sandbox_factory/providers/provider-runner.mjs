@@ -13,7 +13,10 @@ try{
   const adapter=await import(pathToFileURL(join(provider.directory,provider.manifest.entry)));
   const settings=Object.fromEntries(Object.entries(provider.manifest.settings??{}).filter(([,s])=>s.type!=='secret').map(([key,s])=>[key,s.default??'']));
   Object.assign(settings,provider.settings);
-  const result=await locked(agentDir,()=>adapter.run({action:request.action,agentDir,settings,secret:request.secret}));
+  const route=provider.manifest.inference;
+  const endpoint=route?`http://127.0.0.1:19431/r/${provider.id}${route.basePath??''}`:undefined;
+  const secret=route?'factory-inference':request.secret;
+  const result=await locked(agentDir,()=>adapter.run({action:request.action,agentDir,settings,secret,endpoint}));
   if(!['ready','offline','needs-auth','error'].includes(result?.state)||typeof result.message!=='string')throw Error('Invalid provider result');
   process.stdout.write(JSON.stringify(result)+'\n');
 }catch{process.stderr.write('Provider operation failed. Check its settings and connection.\n');process.exitCode=1}

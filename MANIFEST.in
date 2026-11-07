@@ -4,3 +4,5 @@ recursive-include pi_sandbox_factory/providers *
 recursive-include pi_sandbox_factory/checks *
 recursive-include pi_sandbox_factory/network-catalog *
 global-exclude __pycache__ *.py[cod]
+
+prune pi_sandbox_factory/containers/inference/node_modules

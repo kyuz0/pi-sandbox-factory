@@ -18,7 +18,8 @@ from pi_sandbox_factory import sandbox
 class LifecycleTestCase(unittest.TestCase):
     """Core lifecycle fixtures exclude companions, tested in their own suites."""
     def setUp(self):
-        for module in (sandbox.sandbox_advisors, sandbox.sandbox_ssh):
+        patcher=patch.object(sandbox.inference,'up');patcher.start();self.addCleanup(patcher.stop)
+        for module in (sandbox.sandbox_advisors, sandbox.sandbox_ssh, sandbox.inference):
             for name in ('check_ownership', 'down', 'delete_volumes'):
                 patcher=patch.object(module,name)
                 patcher.start();self.addCleanup(patcher.stop)

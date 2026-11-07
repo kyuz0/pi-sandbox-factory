@@ -26,4 +26,4 @@ include-package-data = true
 pi_sandbox_factory = ["containers/**/*", "profiles/**/*", "providers/**/*", "checks/*", "network-catalog/*"]
 
 [tool.setuptools.exclude-package-data]
-"*" = ["**/__pycache__/*", "**/*.pyc", "**/*.pyo"]
+"*" = ["**/__pycache__/*", "**/*.pyc", "**/*.pyo", "containers/inference/node_modules/*"]

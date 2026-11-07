@@ -20,6 +20,8 @@ Implementation and shipped assets live in `pi_sandbox_factory/`:
 - `browser_viewer.py`: authenticated loopback viewer and container-bound lifetime.
 - `registry.py`: Git/local packages, revisions and installation.
 - `model_providers.py` and `providers/`: provider image layer and container runner.
+- `hosted_models.py`, `models_ui.py`, `providers/hosted-models.mjs`: native Pi hosted-provider setup and model selection.
+- `inference.py`, `containers/inference/`: credential companion, fixed routes and streaming proxy.
 - `sandbox_advisors.py`, `sandbox_ssh.py`: credential companions.
 - `advisor_credentials.py`, `advisors_ui.py`: explicit host sign-in copies and advisor selection.
 - `containers/`: images, bootstrap and extension pins; `profiles/base/`: generic profile.
@@ -34,9 +36,11 @@ Neither requires a new launcher branch for a particular company or use case.
 Keep private providers and specialist profiles outside this application. A plugin
 repository can contain several packages, each installed with `--subdir`.
 
-Git authentication happens on the host. Provider credentials stay in private
-container state. Profiles and adapters are trusted executable packages; the
-registry is not a security sandbox. Saved sandboxes use snapshots, not mutable
+Git authentication happens on the host. Managed inference credentials stay in a
+separate companion volume; never send them to provider adapters, Pi configuration,
+environment variables or editor containers. Adapters with an `inference` declaration
+receive a proxy endpoint and placeholder. Profiles and adapters are trusted executable
+packages; the registry is not a security sandbox. Saved sandboxes use snapshots, not mutable
 registry directories. Failed updates must preserve the running environment.
 
 Keep the inner command sandbox, outer container, gateway and credential companions

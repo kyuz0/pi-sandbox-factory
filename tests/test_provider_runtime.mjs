@@ -66,10 +66,21 @@ test('authoring example previews without writing and preserves other providers',
   global.fetch=async()=>({ok:true,status:200,json:async()=>({data:[{id:'test-model'}]})});
   const file=join(root,'models.json');await writeFile(file,JSON.stringify({providers:{other:{models:[{id:'keep'}]}}}));
   const before=await readFile(file,'utf8');
-  const request={agentDir:root,settings:{endpoint:'https://models.example.com/v1',model:'test-model'},secret:'fixture-key'};
+  const request={agentDir:root,settings:{model:'test-model'},endpoint:'http://127.0.0.1:19431/r/company/v1',secret:'factory-inference'};
   assert.equal((await run({...request,action:'preview'})).state,'ready');assert.equal(await readFile(file,'utf8'),before);
   assert.equal((await run({...request,action:'refresh'})).state,'ready');
   assert.equal(JSON.parse(await readFile(file,'utf8')).providers.other.models[0].id,'keep');
   global.fetch=async()=>({ok:false,status:401});
   assert.equal((await run({...request,action:'refresh'})).state,'needs-auth');
+});
+
+
+test('isolated provider receives a proxy endpoint and placeholder even if a caller supplies a secret',async t=>{
+  const f=await fixture(t, `export async function run({endpoint,secret}) {
+    if(endpoint!=='http://127.0.0.1:19431/r/test/v1'||secret!=='factory-inference')throw Error('bad isolation contract');
+    return {state:'ready',message:'proxy configured'}; }`);
+  const file=join(f.root,'providers.json');const data=JSON.parse(await readFile(file,'utf8'));
+  data[0].manifest.inference={basePath:'/v1'};await writeFile(file,JSON.stringify(data));
+  const reply=await f.run({id:'test',action:'refresh',secret:'must-not-reach-adapter'});
+  assert.equal(reply.code,0);assert(!reply.stdout.includes('must-not-reach-adapter'));
 });

@@ -1,0 +1,1 @@
+{"name":"factory-inference","private":true,"type":"module","dependencies":{"@smithy/signature-v4":"5.7.5","@aws-crypto/sha256-js":"5.2.0"}}

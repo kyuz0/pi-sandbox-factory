@@ -2,11 +2,11 @@
 
 ## Files and processes
 
-The terminal manager runs on the host and manages rootless Podman containers. VS Code runs on the host; its Dev Containers attachment runs Pendant and Pi against the development container. The selected host folder is mounted at `/workspace`, so edits are real changes to that folder.
+The terminal manager runs on the host and manages rootless Podman containers. The default browser editor runs its backend, Pendant and Pi inside the development container. Optional desktop VS Code runs on the host and attaches through Dev Containers. The selected host folder is mounted at `/workspace`, so edits are real changes to that folder.
 
 Desktop VS Code and its extensions remain trusted host software. A remote extension
 can use VS Code APIs that request client-side resources; Dev Containers alone is
-not isolation from malicious editor extensions. The opt-in [browser editor](browser-editor.md)
+not isolation from malicious editor extensions. The default [browser editor](browser-editor.md)
 runs the backend in the container and uses the browser filesystem permission boundary
 for client-side access.
 
@@ -19,6 +19,27 @@ The development container uses `--network=none`. HTTP clients use its inherited 
 For host-local models, the rootless Podman gateway uses pasta's host-loopback mapping. `local-model.internal:8000` reaches the host model server at port 8000. The discovery extension reads that server’s metadata and updates Pi’s model catalogue.
 
 Updating allowed destinations restarts only the gateway. Existing network requests may fail and need retrying. Changing networking mode or model-port configuration through Configuration recreates containers and interrupts their processes. Unrestricted mode instead gives the development container ordinary bridge networking.
+
+## Inference credentials
+
+```mermaid
+flowchart LR
+    PI[Pi / Pendant / browser-editor extensions] -->|local API, placeholder token| SOCKET[Read-only Unix socket mount]
+    SOCKET --> PROXY[Inference companion]
+    KEYS[Private credential volume] --> PROXY
+    PROXY -->|HTTPS with real authentication| API[Configured provider API]
+```
+
+The host manager imports keys directly into the companion. Its fixed HTTPS routes
+allow inference and required catalogue requests; it replaces client authentication,
+signs Bedrock requests and streams responses without changing their protocol.
+It exposes no TCP listener or credential-management HTTP API. Credentials are bound
+to the configured upstream origin. Changing that origin requires credential entry.
+
+The development container has no mount for the credential volume or container
+engine socket. Compromised agent or editor code can still make allowed inference
+requests and spend quota. Provider-side budgets and permissions limit that use.
+The host manager, container runtime and configured upstream service remain trusted.
 
 ## Commands, approval and skills
 

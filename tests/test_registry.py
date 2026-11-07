@@ -295,7 +295,7 @@ class RegistryTests(unittest.TestCase):
             inspect.assert_not_called()
 
     def test_runtime_error_is_not_reported_as_success(self):
-        config = {"name": "test", "engine": "podman", "model_providers": [{"name": "sample"}]}
+        config = {"name": "test", "engine": "podman", "model_providers": [{"name": "sample", "manifest": {}}]}
         with patch.object(
             sandbox,
             "run",

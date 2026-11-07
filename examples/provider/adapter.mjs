@@ -3,7 +3,7 @@ import {join} from 'node:path';
 
 // Example for a text-only model with a documented 128K context and 16K output.
 // Replace these limits and capabilities with those of your service.
-export async function run({action, agentDir, settings, secret}) {
+export async function run({action, agentDir, settings, secret, endpoint}) {
   const file = join(agentDir, 'models.json');
   let config;
   try { config = JSON.parse(await readFile(file, 'utf8')); }
@@ -12,8 +12,8 @@ export async function run({action, agentDir, settings, secret}) {
   const apiKey = secret || previous?.apiKey;
   if (!apiKey) return {state: 'needs-auth', message: 'Enter the company API key.'};
   if (action === 'status') return {state: 'ready', message: 'Credential saved; connectivity has not been checked.'};
-  if (!settings.endpoint || !settings.model) return {state: 'error', message: 'Set the endpoint and model ID in Configuration.'};
-  const response = await fetch(settings.endpoint.replace(/\/$/, '') + '/models', {
+  if (!endpoint || !settings.model) return {state: 'error', message: 'Set the model ID in Configuration.'};
+  const response = await fetch(endpoint.replace(/\/$/, '') + '/models', {
     headers: {Authorization: `Bearer ${apiKey}`}, redirect: 'error', signal: AbortSignal.timeout(30000)
   });
   if ([401, 403].includes(response.status)) return {state: 'needs-auth', message: 'The service rejected the key.'};
@@ -23,7 +23,7 @@ export async function run({action, agentDir, settings, secret}) {
   if (action === 'preview') return {state: 'ready', message: `Would configure ${settings.model}.`};
   config.providers ??= {};
   config.providers.company = {
-    baseUrl: settings.endpoint, api: 'openai-completions', apiKey,
+    baseUrl: endpoint, api: 'openai-completions', apiKey,
     models: [{id: settings.model, name: settings.model, input: ['text'], reasoning: false,
       contextWindow: 131072, maxTokens: 16384, cost: {input: 0, output: 0, cacheRead: 0, cacheWrite: 0}}]
   };

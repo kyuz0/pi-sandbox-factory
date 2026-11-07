@@ -72,17 +72,39 @@ For the wider security and scheduling scenarios, create a separate sandbox with
 The automatic mode is covered by `tests/test_approval_modes.py` and the security
 extension's own suite.
 
-For provider changes, install `examples/profile` as `reporting` and
-`examples/provider` as `company`. Create a disposable reporting sandbox with local
-discovery on 18082, company endpoint `http://local-model.internal:18084/v1`, model
-`fixture-model`, and both destinations allowed. Run:
+For local discovery and profile resources, install `examples/profile` as `reporting`,
+create a disposable reporting sandbox with local discovery on port 18082 and that
+port allowed, then run `tests/provider_container.py --name NAME`.
+It checks local discovery, preservation of unrelated models and the profile skill.
+
+## Hosted model connections
+
+The Python suite exercises provider forms at 80×24, 120×40 and 220×50, saved
+configuration, credential transport, endpoint validation and routing rollback.
+Run the broker and native-runtime checks:
 
 ```sh
-.venv/bin/python tests/provider_container.py --name YOUR_TEST_SANDBOX
+npm ci --prefix pi_sandbox_factory/containers/inference --ignore-scripts
+node --test tests/test_inference_broker.mjs tests/test_provider_runtime.mjs
+podman build -t localhost/factory-inference-check pi_sandbox_factory/containers/inference
+.venv/bin/python tests/inference_container.py --image localhost/factory-inference-check --dev-image YOUR_FACTORY_DEV_IMAGE
+.venv/bin/python tests/hosted_container.py --image YOUR_FACTORY_DEV_IMAGE --inference-image localhost/factory-inference-check
+.venv/bin/python tests/inference_lifecycle.py --dev-image YOUR_FACTORY_DEV_IMAGE
 ```
 
-This replaces the disposable catalogue with fixtures. It checks authentication,
-preview without writes, two provider catalogues, and the registered profile skill.
+These create and remove disposable offline containers. They check private credential
+storage, header replacement, fixed routes, redirects, cancellation, limits, restart
+persistence, and native Pi/Pendant streamed replies for OpenRouter, Together, Azure
+and Bedrock against a TLS fixture. Azure deployment mapping, Bedrock profile metadata
+and the actual Pendant worker's default model are exercised too. The lifecycle check
+uses the current development entrypoint and checks startup, key replacement without
+restarting containers, stopped-service recovery and deletion of credential volumes.
+
+For live verification, connect an account in **Settings → Models**, choose a model
+and use **Test selected model**. Repeat with the supported authentication methods;
+AWS IAM tests must include a session token when using temporary credentials. This
+sends a small billable request. Fixture results do not establish account permissions
+or real provider acceptance of a request.
 
 ## Runtime updates
 

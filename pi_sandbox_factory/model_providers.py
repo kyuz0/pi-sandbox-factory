@@ -133,7 +133,14 @@ def configure(config, action="refresh", provider=None, secret=None):
             print("Local models: select host ports in Configuration first.")
             continue
         request = {"id": row["name"], "action": action}
-        if secret is not None:
+        route = row["manifest"].get("inference")
+        if route:
+            if secret is not None:
+                from . import inference
+                inference.credentials(config, Path(config['state_path']), {
+                    'id':row['name'], 'origin':route['origin'], 'auth':route['auth']['type'],
+                    'credentials':{'key':secret}})
+        elif secret is not None:
             request["secret"] = secret
         result = sandbox.run(
             [
