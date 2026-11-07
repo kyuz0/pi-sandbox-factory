@@ -39,6 +39,23 @@ try:
    if core.run(['podman','exec',dev,'test','-f','/tmp/pi-sandbox-factory-ready'],capture=True,check=False).returncode==0:break
    time.sleep(.25)
   core.run(['podman','exec',dev,'node','/tmp/pendant-advisor-test.cjs','--advisor'])
+  # Use a second socket with synthetic replies to exercise images without an account.
+  fixture=core.ROOT.parent/'tests/advisor_images_fixture.mjs'
+  for container in (worker,dev):
+   core.run(['podman','cp',str(fixture),container+':/tmp/advisor-images-fixture.mjs'])
+  core.run(['podman','exec',worker,'node','/tmp/advisor-images-fixture.mjs','mount'])
+  core.run(['podman','exec','-d',worker,'node','/tmp/advisor-images-fixture.mjs','service'])
+  core.run(['podman','exec','-d',dev,'node','/tmp/advisor-images-fixture.mjs','model'])
+  for _ in range(100):
+   if core.run(['podman','exec',worker,'test','-S','/run/advisor/images.sock'],capture=True,check=False).returncode==0 and core.run(['podman','exec',dev,'curl','-fsS','http://127.0.0.1:18711/'],capture=True,check=False,stderr=subprocess.DEVNULL).returncode==0:break
+   time.sleep(.1)
+  else:raise RuntimeError('Advisor image fixture did not start')
+  env=['-e','PI_ADVISOR_SOCKET=/run/advisor/images.sock']
+  result=core.run(['podman','exec',*env,dev,'pi','--print','--provider','fixture','--model','fixture-model','--no-session','--approve','Attach advisor-image.png to the advisor and describe it.'],capture=True)
+  assert 'ADVISOR_IMAGES_DONE' in result.stdout,result.stdout
+  print('PASS actual Pi CLI: image tool schema, file read, companion byte transfer and reply')
+  core.run(['podman','exec',*env,dev,'node','/tmp/pendant-advisor-test.cjs','--advisor-images'])
+
  finally:core.run(['podman','rm','-f',dev])
 
  args=['podman','run','--rm','--network=none','--cap-drop=ALL','--security-opt=no-new-privileges','--security-opt=label=disable','--userns=keep-id:uid=1000,gid=1000','--user','1000:1000','-v',f'{socket}:/run/advisor:ro','--entrypoint','node',a.image(config),'--input-type=module','-e',"import{access}from'node:fs/promises';import{RemoteAdvisorService}from'/opt/advisor/lib/advisor/remote.mjs';try{await access('/home/node/credential-sentinel');throw Error('credential volume exposed')}catch(e){if(e.code!=='ENOENT')throw e}const c=new RemoteAdvisorService('/run/advisor/advisor.sock');const r=await c.state({sessionId:'peer',runIds:[]});if(r.runs.length)throw Error('unexpected runs');console.log('peer socket connected; credentials absent');"]

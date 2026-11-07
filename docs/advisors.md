@@ -70,6 +70,13 @@ Without an explicit `provider`, Pi uses the first enabled advisor in this order:
 Codex, Claude, Antigravity. Follow-ups keep the original provider and model;
 switching starts a new consultation with the context Pi supplies.
 
+## Images
+
+Ask Pi, for example: “Send `screenshots/settings.png` to Claude and review the layout.”
+All three advisors accept PNG, JPEG and WebP files: up to four images per request,
+5 MiB each and 10 MiB total. Pi can attach new images during follow-up conversations.
+Images in the chat are not automatically sent to an advisor.
+
 ## Where things run
 
 ```mermaid

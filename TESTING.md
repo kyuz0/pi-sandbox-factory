@@ -98,6 +98,9 @@ For advisor or SSH changes, run their unit suites and:
 .venv/bin/python tests/advisor_credentials_container.py
 ```
 
+The advisor check also sends a synthetic image through `advisor_ask` in both Pi
+and the actual Pendant worker, using a fixture companion without account access.
+
 Use a development image with the local model provider enabled. These check
 isolated launchers, synthetic credential imports, permissions and keyring
 persistence. With explicit authorization, add `--host-logins` to the credential

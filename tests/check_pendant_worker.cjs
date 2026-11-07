@@ -249,6 +249,14 @@ async function main() {
     }
     throw new Error('Live SSH session did not complete; inspect the saved session before retrying');
   }
+  if (process.argv.includes('--advisor-images')) {
+    await request({type:'session_set_model',provider:'fixture',modelId:'fixture-model',persist:false}, 'inventory');
+    await request({type:'session_prompt',text:'Attach advisor-image.png to the advisor and describe it.',images:[],source:'interactive'}, 'inventory');
+    const state=await waitForReply('inventory','ADVISOR_IMAGES_DONE');
+    assert(state.messages.some(m=>m.role==='toolResult'&&m.toolName==='advisor_ask'&&JSON.stringify(m.content).includes('ADVISOR_IMAGES_OK')),JSON.stringify(state.messages));
+    console.log('PASS actual Pendant: image tool schema, file read, companion byte transfer and reply');
+    return;
+  }
   if (process.argv.includes('--advisor')) {
     assert(commands.has('advisor'), 'Advisor command missing');
     for (const name of ['advisor_ask', 'advisor_status'])
