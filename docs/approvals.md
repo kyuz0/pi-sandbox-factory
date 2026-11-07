@@ -14,11 +14,9 @@ flowchart LR
     GRANT --> RUN[Execute inside the development container]
 ```
 
-The reviewer has no tools: it cannot inspect files, run shell commands or contact
-services. It makes one model request per approval. Earlier approvals are history,
-not permission for a different action. For example, “continue editing” does not
-cancel “keep changes local”; a later explicit request to push can change that
-permission. These are model judgments, not guarantees of correct decisions.
+The reviewer makes one model request per approval and has no tools. It judges the
+proposed action against the user’s instructions; earlier approvals do not authorize
+different actions.
 
 ## Conversation and limits
 
@@ -59,11 +57,5 @@ enabled. Project files cannot disable this context handling or choose another
 reviewer. Configure trusted settings through the image, not through agent-edited
 workspace files.
 
-After updating this checkout, use **Actions → Update sources and recreate…** for each existing sandbox
-to install the pinned extension, then reopen VS Code/Pi. Rebuilding interrupts
-container processes but keeps the workspace and persistent home. Existing running
-containers do not receive the extension update automatically.
-
-Approval only permits an exact command inside the development container. It
-does not bypass the outer network policy or expose companion credentials. See
-[Architecture and permissions](architecture.md) for those boundaries.
+For extension updates, see [Extensions](extensions.md). The outer container,
+network and credential boundaries are described in [Architecture](architecture.md).

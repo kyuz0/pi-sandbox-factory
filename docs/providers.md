@@ -1,11 +1,8 @@
 # Providers
 
-A provider connects Pi to a model service and configures the models it can use.
-You choose providers independently of the profile, so the same working environment
-can use local models or a hosted service.
-
-Provider packages can also include a Pi extension to refresh the model list during
-a conversation.
+Providers configure Pi’s models independently of the sandbox profile. A provider
+package supplies a discovery adapter and can include an extension for refreshing
+models during a conversation.
 
 ## Local inference servers
 
@@ -33,9 +30,8 @@ pi-sandbox-factory provider list
 pi-sandbox-factory provider show company
 ```
 
-For a provider in a shared plugin repository, add `--subdir FOLDER` when
-installing. Updates retain the selected folder and ref. The TUI's **Packages**
-screen exposes the same setting.
+Add `--subdir FOLDER` to install from a shared plugin repository. Updates retain
+that folder and ref. The same option is available in **Packages**.
 
 In **Configuration → Model services and providers**, enable the package and fill in
 its non-secret settings. Any declared development-container destinations are added to the form’s

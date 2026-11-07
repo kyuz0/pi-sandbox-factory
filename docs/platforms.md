@@ -45,8 +45,7 @@ reach Windows through localhost. Add this to `%UserProfile%\.wslconfig`, then ru
 networkingMode=mirrored
 ```
 
-This restarts all WSL distributions. The manager does not change Windows networking
-or firewall settings. See [Microsoft’s WSL networking guide](https://learn.microsoft.com/en-us/windows/wsl/networking)
+This restarts all WSL distributions. See [Microsoft’s WSL networking guide](https://learn.microsoft.com/en-us/windows/wsl/networking)
 and [Ubuntu’s installation guide](https://ubuntu.com/wsl/docs/latest/howto/install-ubuntu-wsl2/).
 
 ## macOS
@@ -70,7 +69,7 @@ mkdir -p ~/Projects
 
 Open a new Terminal window and run `pi-sandbox-factory`. Choose **New sandbox**,
 a project folder under `~/Projects`, then **Create and start**. The browser editor
-opens automatically. Pi and Pendant are installed inside the container.
+opens automatically.
 
 If a Podman Machine already exists, skip `machine init`. Use its rootless
 connection. Keep workspaces, additional folders and sandbox state under your Mac
@@ -85,7 +84,7 @@ After restarting your Mac, run `podman machine start` before opening the manager
 To update Factory, run `pipx upgrade pi-sandbox-factory`.
 
 **Connect to models on this host** reaches model servers on the Mac. For
-OpenRouter or a custom endpoint, follow [model setup](providers.md#openrouter-and-other-built-in-services).
+OpenRouter or a custom endpoint, follow [model setup](providers.md#hosted-services).
 Apple Silicon runs native ARM64 containers, including the editor and Chromium.
 
 ## Browser access and advisors

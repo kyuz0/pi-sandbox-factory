@@ -9,10 +9,8 @@ so the same profile can use local or hosted models.
 **Default Developer Sandbox** is the built-in profile (`base`). It includes Pi,
 Pendant, Node.js, Python, Git, document tools and the sandbox security components.
 
-Every profile extends the same shared base image. A custom profile only needs to
-add its own dependencies, skills and instructions; it does not need to reinstall
-Pi or Pendant. The container builder reuses cached base layers when they match.
-Profiles do not inherit another profile’s additions.
+Custom profiles extend that base image with their own dependencies, skills and
+instructions. They do not inherit other profiles’ additions.
 
 The profile’s Dockerfile starts with `ARG BASE_IMAGE` and `FROM ${BASE_IMAGE}`.
 The launcher supplies that image, then adds the selected browser support,
@@ -35,8 +33,7 @@ For a repository containing several plugins, select the folder:
 pi-sandbox-factory profile add reporting git@git.example.com:team/plugins.git --subdir reporting
 ```
 
-Updates reuse that folder. Only its files become the package's build inputs.
-The TUI's **Packages** screen has a matching plugin-subfolder field.
+Only the selected subfolder becomes the package’s build input; updates reuse it.
 Use `--ref TAG_OR_COMMIT` to pin it. Local Git repositories install their committed
 files; commit edits before updating. A plain folder installs its current files.
 
@@ -49,8 +46,8 @@ Update fetches the selected branch or ref. Recreate builds the updated profile
 before stopping the old containers, then preserves the workspace and private
 home. Close the editor first. Updating a pinned commit keeps that commit.
 
-`pi-sandbox-factory profile remove reporting` removes the registration. It does not delete
-saved sandboxes or their snapshots. Existing sandboxes can still start and build.
+`pi-sandbox-factory profile remove reporting` removes the registration while
+preserving existing sandboxes and their snapshots.
 **Packages** provides the same install, update and remove operations in the TUI.
 
 ## Write a profile

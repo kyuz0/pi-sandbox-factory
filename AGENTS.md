@@ -116,8 +116,9 @@ saved sandbox options. Its dependency lock lives in `containers/dev/compaction-r
 
 Write short, direct documentation explaining supported behavior and actual setup.
 Each sentence should explain an action, mechanism, contract or actionable limitation.
-Remove generic prerequisites, repeated explanations and statements that merely
-restate a control’s label.
+Keep prerequisites specific and examples runnable. Remove repeated explanations,
+generic cautions and statements that merely restate a control’s label. Link to
+an existing explanation instead of duplicating it.
 Keep private names, credentials, conversation history and investigation logs out of
 this public project. Add an example or test when it explains a contract better
 than another paragraph.

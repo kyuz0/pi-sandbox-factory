@@ -55,8 +55,7 @@ approve each Slack operation yourself. Omitting `chat:write` makes the Slack app
 read-only regardless of approval mode.
 
 Enabling Slack allows HTTPS to `slack.com` and `files.slack.com`. Links to other
-websites use your normal network rules. These hosts are accessible to all processes in the sandbox. View the service destinations under
-**Settings → Network**.
+websites use your normal network rules. View the allowed service destinations under **Settings → Network**.
 
 From a terminal, configure a running sandbox with masked prompts:
 

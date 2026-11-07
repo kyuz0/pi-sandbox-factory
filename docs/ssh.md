@@ -2,7 +2,8 @@
 
 ## GitHub over HTTPS
 
-In **Settings → Network**, enable **GitHub** and apply. This allows repository browsing, API requests, clones and release downloads over HTTPS. The preset covers `github.com`, `api.github.com`, `raw.githubusercontent.com`, `codeload.github.com`, `objects.githubusercontent.com` and `release-assets.githubusercontent.com` on port 443.
+Enable **GitHub** under **Settings → Network → Website categories** for repository
+browsing, API requests, clones and release downloads over HTTPS.
 
 For authenticated Git operations with an isolated private key, use SSH.
 

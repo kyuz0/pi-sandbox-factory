@@ -14,13 +14,11 @@ selected editor.
 | AWS Bedrock | Region and bearer token, or AWS access key and secret; session token for temporary credentials | Select the exact model/profile ID from the catalogue. For an account-specific inference profile, select its underlying model and enter the profile ID or ARN. |
 
 Pi’s catalogue supplies context limits, output limits, image support and reasoning
-settings. For Azure deployments and Bedrock inference profiles, select the underlying
-model so these settings match it. Bedrock profile ARNs must use the configured AWS
+settings. Bedrock profile ARNs must use the configured AWS
 region. For models absent from the catalogue, use Pendant’s custom-provider form
 or Pi’s `models.json`; see [custom providers](providers.md#hosted-services).
 
-**Test selected model** sends a short prompt to check the connection and selected
-model before you use it in a chat.
+Use **Test selected model** to check the connection with a short prompt.
 
 ## Credential isolation
 

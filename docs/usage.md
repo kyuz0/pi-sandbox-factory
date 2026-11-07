@@ -1,14 +1,9 @@
 # Usage
 
-Run Pi through Pendant in the browser editor, in your terminal, or in host VS Code. Each sandbox has its own workspace selection, private home, model configuration and editor state.
-
-Requirements: Python 3.10+ and rootless Podman. Use [WSL2 on Windows or Podman Machine on macOS](platforms.md). Linux also supports Docker with Pi CLI or host VS Code. The browser editor requires an amd64 or arm64 Podman container. Host VS Code needs `code` on PATH. Host-loopback model access requires rootless Podman. Build steps download application dependencies; model servers and model files are managed separately.
-
-Install and update with [pipx](../README.md#install). Run `pi-sandbox-factory`
-to open the manager. The version appears beside the title; `--version` prints it
-from the terminal. Update checks run in the background and stay quiet when GitHub
-is unreachable. The upgrade button is available for pipx installations; source
-checkouts use their usual Git and package-install workflow.
+Run `pi-sandbox-factory` to open the manager. See [installation](../README.md#install)
+and [platform setup](platforms.md) for prerequisites. `--version` prints the
+installed version. Pipx installations can update from the manager; source checkouts
+use Git and a package reinstall.
 
 Select **New sandbox**, choose a name and workspace, review settings, then create the sandbox. The base profile includes Pi, Pendant with built-in goals, and document tools. Install additional profiles through **Packages**, or select a custom profile folder.
 
@@ -32,11 +27,8 @@ the current terminal; exit Pi to return to the manager. You can use it alongside
 the browser editor. Both share files and model settings, with separate conversations,
 and start in the folder configured under **Settings → Folders**.
 
-The browser editor continues running when the manager closes. **Actions → Stop
-browser editor** stops it and its terminal/agent processes. Opening it again
-reuses its address and saved conversations. Use a separate sandbox for host VS Code
-after browser-editor use to preserve the extension isolation boundary.
-[Browser editor setup and access](browser-editor.md).
+Use a separate sandbox for host VS Code after browser-editor use.
+See [browser editor setup](browser-editor.md) for connection settings and access boundaries.
 
 Use **Settings** for configuration and **Actions** for start/stop, shell, logs,
 rebuild and deletion. Press **D** on the home screen to configure defaults for
@@ -63,8 +55,7 @@ to open the whole project. The rest of `/workspace` remains accessible.
 
 Use **Add folder…** to share another host directory. It appears at
 `/mnt/<folder-name>`, with a name you can edit. Folders start read-only; clear
-**Read-only** to allow changes to the host files. The form shows both paths and
-the access mode before you save. Choose specific data folders; system folders,
+**Read-only** to allow changes to the host files. System folders,
 private sandbox state and overlapping mounts are rejected.
 
 For an existing sandbox, open **Settings → Folders**. Changing mounts recreates
@@ -120,9 +111,9 @@ pi-sandbox-factory up example
 pi-sandbox-factory delete example
 ```
 
-CLI `delete` is an explicit destructive command; the TUI adds a confirmation dialog.
-
-Saved state defaults to `~/.local/state/pi-sandbox-factory`. Use `--state-dir PATH` before the command for an independent inventory. TUI defaults live in `~/.config/pi-sandbox-factory/cockpit.json` (or under `XDG_CONFIG_HOME`). Workspaces are user-selected folders outside source/state. Container names and ownership labels are specific to this application.
+Saved state lives in `~/.local/state/pi-sandbox-factory`. Pass `--state-dir PATH`
+before the command for a separate inventory. TUI defaults live in
+`~/.config/pi-sandbox-factory/cockpit.json` (or under `XDG_CONFIG_HOME`).
 
 ### Package downloads and website categories
 
@@ -156,8 +147,6 @@ Alongside Git, SSH, Python and Node.js, development containers include:
 - Downloads and networking: `curl`, `wget`, `ping`, `ip`, `ss`, `getent`, `dig`, `nslookup`, `nc`.
 - Text and files: `jq`, `less`, `nano`, `vi`, `file`, `ripgrep`, `rsync` and the standard shell utilities.
 - Archives: `tar`, `gzip`, `zip`, `unzip`, `bzip2`, `xz`.
-
-Existing sandboxes receive image changes through **Actions → Update sources and recreate…**.
 
 Restricted mode forwards allowed HTTP/HTTPS destinations through the gateway;
 external ICMP (`ping`) and direct DNS queries remain blocked. Use `curl` against

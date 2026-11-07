@@ -31,15 +31,9 @@ Search requests go to Exa. Reading `docs.python.org` goes directly to that host
 through the sandbox gateway. Exa can also include text from other sites in its
 search response. Hosted page-reader fallbacks are off.
 
-Search and stored search results run without automatic review. Direct page reads
-use `fetch_content`, which follows the selected approval mode. Search runs without
-background page downloads or summary workflows; Pi uses `fetch_content` when it
-needs the full page. Text supplied by the search service remains part of its response.
-
-Restricted networking is the default. With no categories selected, direct access
-uses only your individual host allowances and the search service endpoints.
-Choosing unrestricted networking removes the category-based destination limits;
-fetch approval remains a separate setting.
+Search and stored results skip approval review and do not trigger background page
+downloads. Direct reads use `fetch_content` and follow the selected approval mode,
+including when networking is unrestricted.
 
 ## Website categories
 
@@ -50,11 +44,9 @@ come from [UT1 Toulouse](https://dsi.ut-capitole.fr/blacklists/), through its
 [public mirror](https://github.com/olbat/ut1-blacklists): news, financial
 information, banking and library resources.
 
-Selecting a source trusts its category membership and future updates. The manager
-checks selected categories when starting a sandbox or applying network settings,
-at most once a day. Updates apply automatically. If a source is unavailable, it
-keeps the last available list and reports the failed refresh. A bundled list lets
-a first installation work offline.
+Selected categories update automatically on sandbox start or network changes,
+at most once a day. If the source is unavailable, the manager uses its cached or
+bundled list.
 
 Categories grant HTTP and HTTPS access, including the listed domains’ subdomains
 unless the source specifies an exact hostname. Category grants exclude private
@@ -67,16 +59,14 @@ connection’s hostname and port, not individual pages or what the site returns.
 
 ## Reuse your configuration
 
-**Save as default web access** saves the current providers, search mode and API
-keys for new sandboxes. It updates the same defaults used by the main Defaults
-screen. Existing sandboxes keep their settings.
+**Save as default web access** saves providers, search mode and API keys for new
+sandboxes.
 
 **Copy from sandbox…** loads another sandbox's web settings into the form.
 **Include search API keys** is selected initially when the source is running.
 A stopped sandbox can supply its settings; start it first if you want its keys.
 In an existing target sandbox, leaving this unchecked keeps that target's keys
 for matching providers and endpoints. In a new sandbox, it copies no keys.
-Review the provider rows, then apply the settings normally.
 
 Reusable keys are stored separately in
 `~/.config/pi-sandbox-factory/web-access-keys.json` with owner-only permissions
@@ -110,9 +100,7 @@ OpenAI supports an optional Responses endpoint URL and search model; SearXNG
 requires its server URL. The OpenAI search model is selected independently of
 Pi’s coding model.
 
-The optional **Browser · Betterwright** feature handles interactive navigation.
-Its requests follow the same network policy. Pi’s instructions explain the
-search/read distinction and how to report a blocked destination.
+For interactive navigation, enable [Browser · Betterwright](usage.md#see-and-interact-with-the-agents-browser).
 
 ## CLI configuration
 
@@ -138,4 +126,4 @@ pi-sandbox-factory network my-project --allowlist hosts.txt \
 ```
 
 An empty `--website-groups` removes all category grants. Omitting the flag preserves
-the selection. Search-service destinations are managed separately from category selections.
+the selection.

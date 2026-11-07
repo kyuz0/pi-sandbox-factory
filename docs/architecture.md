@@ -54,9 +54,14 @@ flowchart TD
     EXEC --> RESULT
 ```
 
-The default is an inner command sandbox with automatic approval review using the current Pi model. The reviewer keeps a separate, bounded conversation with original user instructions and the exact proposed action; it has no inspection tools. See [Automatic approval](approvals.md) for context handling, limits and updates. Manual mode asks the user instead. With the inner sandbox enabled and approval prompts disabled, commands requiring elevation are refused. Disabling the inner sandbox changes how ordinary shell commands are authorized; it does not remove container isolation or the outer network policy.
+By default, the current Pi model reviews commands that exceed the inner sandbox’s
+permissions. [Approval modes](approvals.md) also support human review or refusing
+elevation. An approved command keeps the development container’s user, mounts
+and network rules.
 
-An approved escalation runs one command in the development container under its existing user, mounts and network rules. The inner restrictions apply to shell commands; Pi and its extensions run in the development container.
+The inner sandbox restricts shell commands. Pi and its extensions run outside it,
+inside the development container. Disabling it leaves the outer container and
+network restrictions in place.
 
 Skills supply task instructions. Extensions add capabilities such as model discovery, questions and scheduled prompts. Pendant provides built-in goals. Browser support and subagents are optional. Scheduled prompts run only while their originating Pi session is open.
 
@@ -86,5 +91,4 @@ Opening the sandbox repairs a stopped viewer; stopping the container ends it.
 The viewer key rotates on restart. Session links are capabilities, visible in
 chat history. Sessions share the container Unix user, so their identifiers prevent
 accidental mix-ups rather than providing isolation against malicious container code.
-The DevTools frontend comes from the installed browser image. As with profiles and
-extensions, the viewer assumes that installed container software is trusted.
+The viewer trusts the DevTools frontend supplied by the installed browser image.

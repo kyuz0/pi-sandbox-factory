@@ -3,7 +3,7 @@
 The browser editor runs Pendant and its Node extensions inside the sandbox.
 It is the default with rootless Podman on Linux, Windows through WSL2, and macOS
 through Podman Machine. Pi CLI and host VS Code remain available through **Open with…**.
-See [platform setup](platforms.md) before creating your first sandbox.
+It supports amd64 and arm64 containers; see [platform setup](platforms.md).
 
 ## Open a sandbox
 
@@ -13,7 +13,7 @@ you clear **Open selected editor after creation**. The first launch downloads a
 pinned code-server release for the container’s architecture into the existing development container.
 
 The selected workspace opens trusted, in dark mode, with Pendant in the right
-secondary sidebar. Choose its tab, select your model and start a conversation.
+secondary sidebar. Select your model and start a conversation.
 Files in `/workspace` are your project files; additional mounts appear under `/mnt`.
 
 Closing the tab or manager leaves the editor running. **Open in browser** returns
@@ -64,7 +64,7 @@ pi-sandbox-factory browser-editor NAME --stop
 
 `open` uses the saved client. The `browser-editor` command without `--background`
 runs in the foreground; Ctrl+C stops it. `--no-open` prints the address without
-opening a tab. Both modes use the same saved connection settings.
+opening a tab.
 
 ## Access boundaries
 
@@ -79,10 +79,8 @@ and grant only what you intend to share. The launcher checks Host and Origin on
 HTTP and WebSocket requests. Local access is passwordless by default; enable a password on a shared computer. With a password
 enabled, code-server authenticates both HTTP and WebSocket sessions.
 
-The container network policy applies to backend traffic. Browser-side requests use
-the host browser's network, including browser-side extension gallery requests, so this is **not a browser network allowlist**. Container
-isolation also depends on the host kernel and runtime; it does not
-claim protection against a container or browser escape.
+The container network policy controls backend traffic. Browser-side requests,
+including extension gallery requests, use the host browser's network.
 
 [Developer checks](../TESTING.md#browser-editor) cover Pendant, hostile
 extension probes, login protection and session cleanup.

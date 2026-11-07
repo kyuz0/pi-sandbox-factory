@@ -4,10 +4,18 @@ Pi can ask Codex (OpenAI), Claude (Anthropic) or Antigravity (Google) for a seco
 
 ## Setup
 
-1. During **New sandbox → Review sandbox**, expand **Advisors** and select Codex (OpenAI), Claude (Anthropic) and/or Antigravity (Google). For an existing sandbox, use **Settings → Advisors**, select the providers, then **Apply**. This builds the companion and restarts the development container; your workspace and private home are preserved.
-2. To reuse a host login, select **Copy credentials from host** beneath that advisor before creating or applying. Otherwise, after creation or setup finishes, select **Back to sandboxes**, then reopen **Settings → Advisors**. Sign-in buttons become available only after the advisor has been added; ticking its checkbox alone does not enable login. Codex uses device login: follow the URL in your browser. Antigravity opens its terminal interface in remote-login mode; complete the displayed browser/code flow yourself. Claude uses `claude auth login`; complete its displayed sign-in flow. The manager temporarily gives the terminal to the CLI, so credentials are not collected by the form or operation log.
-3. Use **Check advisors** to check Codex/Claude login or display Antigravity's model catalogue and quota. For Antigravity, enter an exact Gemini model ID, its quota group and matching effort, then **Apply** again. You can leave these blank for the initial login; advice requires a configured model.
-4. Reopen Pi/Pendant to load the extension. Use `/advisor status`, then ask Pi to consult the advisor. `/advisor usage` shows separate usage; `/advisor cancel` stops an active request. `start` and `resume` retain a conversation reference for follow-up.
+1. Select advisors under **New sandbox → Advisors** or **Settings → Advisors**.
+   **Apply** builds the companion and restarts the development container, preserving
+   its workspace and private home.
+2. Select **Copy credentials from host** before applying, or return to
+   **Settings → Advisors** afterward and choose **Sign in**. Login becomes available
+   once the advisor is installed. Follow the CLI's browser or device-code instructions.
+3. Use **Check advisors** to check login status and available models or quota.
+   Antigravity also needs an exact Gemini model ID, quota group and matching effort;
+   enter these after login and **Apply**.
+4. Reopen Pi/Pendant, run `/advisor status`, then ask Pi to consult an advisor.
+   `/advisor usage` shows usage; `/advisor cancel` stops an active request.
+   `start` and `resume` keep a conversation reference for follow-up.
 
 Set an optional per-session call limit under **Usage and network**.
 
@@ -46,12 +54,10 @@ Antigravity's macOS Keychain entry and keyring-only Codex logins also require a
 separate login through **Settings → Advisors → Sign in**. Use **Check advisors**
 after signing in.
 
-Only credentials are copied, not CLI settings, hooks or conversation history.
-The copy lives in the advisor’s private volume; the coding agent receives only
-the advisor socket. Copies are not kept in sync. If a provider invalidates a copied
-session during renewal, open **Settings → Advisors**, select **Sign in to Codex**,
-**Sign in to Claude** or **Sign in to Antigravity**, and complete the login. Then
-use **Check advisors** and ask Pi to retry the consultation.
+Only credentials are copied; CLI settings, hooks and conversations are excluded.
+The copy stays in the advisor’s private volume and is not synchronized with the host.
+If it expires or is invalidated, use **Settings → Advisors → Sign in** for that
+provider, then **Check advisors** and ask Pi to retry.
 
 ## Choosing an advisor
 
@@ -60,11 +66,9 @@ it to check `advisor_status` for enabled providers, models and available quota,
 then choose a provider explicitly when useful. You can ask “Use Claude to review
 this change” or “Get separate opinions from Codex and Claude.”
 
-If Pi omits `provider`, the first enabled advisor is used. The TUI orders them
-Codex, Claude, Antigravity, so enabling Codex and Claude makes Codex the default.
-An existing advisor conversation keeps its original provider and model. Switching
-starts a new consultation with the context Pi supplies; there is no automatic
-fallback or transfer of the earlier conversation.
+Without an explicit `provider`, Pi uses the first enabled advisor in this order:
+Codex, Claude, Antigravity. Follow-ups keep the original provider and model;
+switching starts a new consultation with the context Pi supplies.
 
 ## Where things run
 
@@ -87,7 +91,7 @@ flowchart LR
 
 The companion has no direct network. Its gateway has a separate allowlist: enabling advisors does not widen the development container's network policy. Provider hosts are supplied as defaults; add exact hosts and ports under **Usage and network** if your account's login route requires others.
 
-Credentials stay in the advisor's private volume. The development container receives only the advisor socket. Provider tools are disabled; Pi carries out suggested work through its own tools and approval rules.
+Provider tools are disabled; Pi carries out suggested work through its own tools and approval rules.
 
 `advisor_ask` has a separate permission rule. Access to the socket permits consultations and consumes provider quota. The service accepts questions and selected context; it rejects arbitrary commands and configuration changes.
 
@@ -97,4 +101,4 @@ Login state survives stopping and rebuilding. Deleting the sandbox removes it. T
 
 Under **Settings → Advisors → Claude model**, choose `sonnet`, `opus`, `haiku` or an exact model ID and thinking effort. The default is Sonnet at medium effort. Pi can request Opus with an escalation reason or Haiku for simpler questions. `/advisor status` refreshes subscription limits and reset times through Claude's native `/usage`, without inference. Calls stop at the configured quota reserve; unavailable limits are reported as unknown. See the [advisor configuration](https://github.com/kyuz0/pi-advisor/blob/main/docs/configuration.md) for the complete model and quota policy.
 
-The companion installs Claude Code 2.1.318. Copy your host login or sign in after adding Claude; the login survives companion rebuilds and is removed when deleting the sandbox. Existing sandboxes need **Actions → Update sources and recreate…** to load a changed extension pin; reopen the editor afterwards.
+To update the installed advisor, use **Actions → Update sources and recreate…**, then reopen Pi/Pendant.

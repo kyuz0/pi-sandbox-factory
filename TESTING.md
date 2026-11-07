@@ -6,21 +6,12 @@ From the checkout, install the package into a virtual environment:
 python3 -m venv .venv
 .venv/bin/pip install -e .
 .venv/bin/python -m unittest discover -s tests -p 'test_*.py'
-node --test tests/test_provider_runtime.mjs tests/test_web_search_policy.mjs
+npm ci --prefix pi_sandbox_factory/containers/inference --ignore-scripts
+node --test tests/test_provider_runtime.mjs tests/test_web_search_policy.mjs tests/test_inference_broker.mjs
 ```
 
-The Python suite covers lifecycle, ownership, rollback, package revisions,
-subfolder exports, provider selection and terminal interactions, including 80×24 layouts. Node tests
-cover the adapter contract, preview, credential handling and refresh locking.
-Creation tests cover **Create from existing…**, optional search keys, independent
-package snapshots after source deletion, and unchanged source settings.
-Launcher tests cover Open with, terminal handoff and return, browser-editor defaults,
-startup failure and the configured working folder. Editor tests cover password
-generation, masked saved credentials, connection validation and settings changes
-without container recreation.
-These tests use fixtures and no account credentials. On macOS, place test fixtures
-under your home directory: the default system temporary directory is intentionally
-excluded from sandbox workspaces.
+These suites use fixtures without account credentials. For macOS, put fixtures
+under your home directory so Podman Machine can share them:
 
 ```sh
 export TMPDIR="$HOME/Projects/pi-sandbox-test-tmp"
@@ -28,15 +19,11 @@ mkdir -p "$TMPDIR"
 .venv/bin/python -m unittest discover -s tests -p 'test_*.py'
 ```
 
-Use `~/Projects` for container integration workspaces on macOS so Podman Machine
-can share them.
-
 ## Package installation
 
-Build a wheel, install it in a separate environment, then run `pi-sandbox-factory --help`,
-`profile list` and `provider list` from outside the checkout. Create a sandbox from
-that installation to check that container files, profiles and provider modules are
-included. Parse shipped Python files with Python 3.10 grammar when changing syntax.
+Install the wheel outside the checkout and check `--help`, `profile list` and
+`provider list`. Create a sandbox from that installation to verify bundled assets.
+Check Python 3.10 syntax compatibility when changing Python code.
 
 ```sh
 .venv/bin/pip wheel --no-deps . -w dist
@@ -79,31 +66,23 @@ It checks local discovery, preservation of unrelated models and the profile skil
 
 ## Hosted model connections
 
-The Python suite exercises provider forms at 80×24, 120×40 and 220×50, saved
-configuration, credential transport, endpoint validation and routing rollback.
-Run the broker and native-runtime checks:
+After the unit suites, run the companion and native Pi/Pendant checks:
 
 ```sh
-npm ci --prefix pi_sandbox_factory/containers/inference --ignore-scripts
-node --test tests/test_inference_broker.mjs tests/test_provider_runtime.mjs
 podman build -t localhost/factory-inference-check pi_sandbox_factory/containers/inference
 .venv/bin/python tests/inference_container.py --image localhost/factory-inference-check --dev-image YOUR_FACTORY_DEV_IMAGE
 .venv/bin/python tests/hosted_container.py --image YOUR_FACTORY_DEV_IMAGE --inference-image localhost/factory-inference-check
 .venv/bin/python tests/inference_lifecycle.py --dev-image YOUR_FACTORY_DEV_IMAGE
 ```
 
-These create and remove disposable offline containers. They check private credential
-storage, header replacement, fixed routes, redirects, cancellation, limits, restart
-persistence, and native Pi/Pendant streamed replies for OpenRouter, Together, Azure
-and Bedrock against a TLS fixture. Azure deployment mapping, Bedrock profile metadata
-and the actual Pendant worker's default model are exercised too. The lifecycle check
-uses the current development entrypoint and checks startup, key replacement without
-restarting containers, stopped-service recovery and deletion of credential volumes.
+These disposable containers use a TLS fixture to check credential isolation,
+route enforcement and streamed replies for all four providers, including Azure
+deployments and Bedrock profiles. The lifecycle test covers key replacement without
+restart, recovery and credential-volume deletion.
 
 For live verification, connect an account in **Settings → Models**, choose a model
-and use **Test selected model**. Repeat with the supported authentication methods;
-Include a temporary AWS session in IAM checks to exercise session-token signing
-and expired-session recovery.
+and use **Test selected model**. Check each supported authentication method,
+including temporary AWS credentials and expired-session recovery.
 
 ## Runtime updates
 
@@ -112,23 +91,18 @@ Pi and Pendant have independent version pins in `pi_sandbox_factory/sandbox.py` 
 before updating; then rebuild and run the worker suite. Extension fixes and unit
 tests belong in their own repositories; update the lock file here afterward.
 
-Advisor or SSH changes need their unit suites and companion tests.
-Run
-`.venv/bin/python tests/advisor_container.py --dev-image IMAGE` after installing the
-package. Use an image with the local model provider enabled. It checks isolated launchers
-and credential volumes without real login.
-Actual account login and authorized SSH access are separate checks.
+For advisor or SSH changes, run their unit suites and:
 
-Run `python tests/advisor_credentials_container.py` to check synthetic credential
-copies, file permissions, keyring persistence and companion mounts. With explicit
-authorization, add `--host-logins` to copy the host’s Codex, Claude and Antigravity
-sign-ins and check login/model status without inference. The script removes its
-disposable containers and credential volumes afterwards. On macOS, set
-`TMPDIR="$HOME/Projects/pi-sandbox-test-tmp"` as above so the fixture state is
-inside the VM share. The synthetic check reads Codex and Claude fixture files
-through the real importer, checks the macOS Keychain recovery message, and tests
-Antigravity's container keyring separately. It does not establish that a real
-provider accepts copied or renewed tokens.
+```sh
+.venv/bin/python tests/advisor_container.py --dev-image IMAGE
+.venv/bin/python tests/advisor_credentials_container.py
+```
+
+Use a development image with the local model provider enabled. These check
+isolated launchers, synthetic credential imports, permissions and keyring
+persistence. With explicit authorization, add `--host-logins` to the credential
+test to check the host’s real sign-ins without inference. On macOS, use the
+`TMPDIR` setting above. Actual account login and authorized SSH access need live checks.
 
 Use disposable state throughout. Never restart a user's sandbox or copy real credentials
 without explicit authorization. Record commands and results; distinguish fixtures from live services.
@@ -147,12 +121,9 @@ printf '%s\n' 'PROJECT_VIEWER_GUIDANCE' > "$test_root/workspace/.pi/APPEND_SYSTE
   --name pendant-check
 ```
 
-The first command checks the installed Pi CLI and Pendant worker, tool guidance
-with the project override, question handoff, retained state, two simultaneous
-browser sessions and their authenticated tab lists. Replies come from a synthetic
-model. The second stops and restarts this disposable sandbox: it checks repeated
-opens, rejected URLs and origins, shutdown with an active WebSocket, viewer repair,
-key rotation and stale descriptors after a container restart.
+The integration test checks both clients’ browser tools, injected guidance,
+handoff and concurrent sessions. The lifecycle test checks viewer repair,
+authentication and cleanup across container restarts.
 
 For the rendered check, ask the agent to open a synthetic form and show its browser.
 Open the returned link, select the tab, type and click in the screencast, then tell
@@ -163,22 +134,15 @@ Delete the disposable sandbox when finished.
 
 ## Launcher updates
 
-Unit tests mock GitHub and pipx. They cover stable-tag selection, offline startup,
-confirmation, upgrade failure, relaunch and the update notice at 80×24 and 120×40.
-Use an isolated `PIPX_HOME` and `PIPX_BIN_DIR` to check installation from GitHub and
+Use an isolated `PIPX_HOME` and `PIPX_BIN_DIR` to test GitHub installation and
 `pipx upgrade pi-sandbox-factory` without changing your normal installation.
-The GitHub workflow runs Python and provider tests, installs the built wheel,
-then versions and tags successful pushes to `main` only when package code,
-bundled assets or packaging configuration changes. Documentation, tests and
-workflow changes alone do not create a release. Full container checks remain in
-the disposable integration recipe above.
+Check the update notice, confirmation, failure handling and relaunch.
+
+CI runs unit tests and wheel installation checks. Successful pushes to `main`
+create a release only when package code, bundled assets or packaging configuration
+changes. Documentation, tests and workflows alone must not trigger a release.
 
 ## Web access
-
-`test_web_access.py` covers provider migration, active endpoint selection, private
-keys, reusable defaults, category expansion, automatic
-refresh, offline fallback and gateway rule ordering. TUI tests cover creation,
-editing, defaults, copying without keys, stopped sources and category selection. The normal suite makes no search requests.
 
 For a live check, create the disposable sandbox described above with an options
 file containing `{"web_access":{"enabled":true},"website_groups":["dev-python"]}`.
@@ -188,8 +152,7 @@ model replies, searches through keyless Exa, reads Python documentation and chec
 that an unselected website is blocked. It also checks that searches and stored
 results skip review, automatic page retrieval through search is rejected, and each
 explicit fetch produces one approval notice with its reason, including denials.
-No personal account is needed. Other paid
-services require their own credentials for live checks.
+Use authorized test credentials when checking paid search providers.
 
 For provider fallback checks, also configure SearXNG with
 `http://local-model.internal:PORT`, where PORT is the fixture port already allowed
@@ -227,8 +190,7 @@ file tools, ordinary shell writes and read-only enforcement after escalation.
 The lifecycle check changes and removes mounts, checks host ownership and SELinux
 labels, and confirms that starting-folder edits preserve the running container.
 It leaves the disposable sandbox with only `output`, mounted read-only. Delete it
-afterward. `test_folders.py` covers path validation, permissions, copies and folder
-controls at 80×24; it needs no container or account.
+afterward.
 
 ## Conversation recall
 
@@ -240,8 +202,6 @@ Repeat after changing `options.compaction_recall` to `full`, then `off`, through
 The test resumes synthetic compacted history in the installed Pi CLI and Pendant
 worker. It checks retrieval of the original message, tool availability, Full's
 hints, no hints in Lite, and no approval-review requests for history tools.
-Lite is the creation default. The Python suite also covers saved selection,
-disabling the extension and keyboard operation at 80×24.
 
 The extension and its runtime dependencies are pinned in
 `pi_sandbox_factory/containers/dev/compaction-recall/package-lock.json`.
@@ -250,30 +210,21 @@ Node runtime, which Pendant uses. Check both when updating this package.
 
 ## Terminal layout
 
-`test_tui_layout.py` checks path-control alignment, dependent-option spacing,
-visible actions, Escape cancellation, direct web-access navigation, conditional
-fields and the selected editor launch. `test_packages_ui.py` checks installation,
-item-specific updates, removal confirmation, list refresh and action placement.
-Run these with the other TUI tests.
-Review new and edited forms at 80×24 and 120×40, including expanded sections,
+Run the TUI suites, including `test_tui_layout.py` and `test_packages_ui.py`.
+Review new and edited forms at 80×24, 120×40 and 220×50, including expanded sections,
 validation errors and long paths. Inspect the rendered view as well as geometry;
 use Textual's `App.export_screenshot()` for SVG captures with fixture data.
 
 ## Communications
-
-`test_communications.py` checks token storage, copies and network rules;
-`test_communications_ui.py` checks the accordion and masked credential dialog at
-80×24 and 120×40, including errors and Escape cancellation.
 
 Create a disposable sandbox with `{"communications":{"slack":true}}` in its
 options file and the fixture port allowed. Run `tests/integration.py` with
 `--communications`. This installs an invalid synthetic bot token in that
 sandbox and checks both the actual Pi CLI and Pendant worker: eight Slack tools,
 API access through the proxy, missing search credentials, a rejected send, blocked
-credential-file reads and absent token environment variables. It uses an
-invalid token for the Slack API check and sends no messages. Delete the disposable
-sandbox afterward. Reading a real workspace and sending messages require a
-separate authorized account check.
+credential-file reads and absent token environment variables. It sends no messages.
+Delete the disposable sandbox afterward. Use a separately authorized account check
+for reading and sending real messages.
 
 The Slack extension's unit tests live in its pinned repository.
 
@@ -337,9 +288,7 @@ fake `.env` and SSH-key files outside the mounts. They also check workspace writ
 read-only mount enforcement and absence of the host-terminal command. Never replace
 the fake files with real secrets or grant the browser access to the host-private folder.
 
-The unit suite checks relay headers, origin rejection, fixed container commands,
-stream forwarding, archive integrity and the desktop/browser session lock.
-For authentication and lifecycle changes, run against the disposable sandbox:
+For authentication and lifecycle changes, run:
 
 ```sh
 .venv/bin/python tests/browser_editor_lifecycle.py --state-dir "$check_root/state" --name browser-check
@@ -365,10 +314,7 @@ Delete the disposable sandbox after stopping the launcher:
 
 ## Platform checks
 
-Run the Python and Node suites on Linux before publishing platform changes.
-`test_host_platform.py` checks platform selection, WSL paths, private-folder
-rejection, Podman connection/version validation and architecture selection with
-fixtures. It does not establish that Windows or macOS works on real hardware.
+Run the Python and Node suites on Linux, then validate on each target platform.
 
 On Windows 11 with WSL2 Ubuntu 26.04, and on an Apple Silicon Mac with rootless
 Podman Machine, install from [platform setup](docs/platforms.md) and check:
