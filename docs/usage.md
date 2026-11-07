@@ -44,6 +44,17 @@ new sandboxes.
 
 Deleting a sandbox removes its containers, private home and editor state while preserving the workspace. Closing the manager or editor leaves containers running.
 
+## Additional skills
+
+In **Skills and features**, enter a Git repository URL and the relative folder
+containing the skill’s `SKILL.md`. Any supported HTTPS or SSH Git server works.
+The form adds one skill per save. To add another, open **Settings → Configuration**
+and enter its source; previously added skills remain listed and enabled. Adding
+the same skill name again replaces that skill. Deselect an added skill to remove it.
+
+Profiles can bundle several skills and can be installed from a local folder.
+The individual additional-skill field currently accepts Git URLs only.
+
 ## Workspace and additional folders
 
 The project you select is available at `/workspace`. In **Folders**, you can

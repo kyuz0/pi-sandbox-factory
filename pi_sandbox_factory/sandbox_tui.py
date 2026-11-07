@@ -946,7 +946,7 @@ class AdvisorsScreen(Screen):
             yield Static('Choose the advisors Pi can consult. Sign-ins stay in a separate container.')
             yield AdvisorChoices(providers, 'advisor-')
             yield Static('Copying credentials replaces the selected advisor’s saved sign-in when you apply.')
-            yield Static('Use the sign-in buttons to replace a login, or Check advisors to check the saved sign-ins.' if providers else 'Sign-in is available only after the advisor has been added. Select Apply, then reopen Settings → Advisors.', id='advisor-login-help')
+            yield Static('If a copied sign-in stops working, use its Sign in button below, then Check advisors.' if providers else 'Sign-in is available only after the advisor has been added. Select Apply, then reopen Settings → Advisors.', id='advisor-login-help')
             with Horizontal(classes='buttons'):
                 yield Button('Sign in to Codex', id='advisor-login-codex', disabled='codex' not in providers)
                 yield Button('Sign in to Claude', id='advisor-login-claude', disabled='claude' not in providers)
@@ -1625,6 +1625,7 @@ class SettingsForm(Screen):
                 with Vertical(classes='setting'):
                     yield Label('Skill folder in that repository (must contain SKILL.md)')
                     yield Input(value.get('skill_path', ''), id='skill-path')
+                    yield Static('Add one skill per save. Existing skills are kept; add another through Settings → Configuration.', classes='setting-help')
             with Collapsible(title='Advanced settings', collapsed=True):
                 yield Label('Container engine')
                 yield Select([('Automatic — prefer rootless Podman', 'auto'), ('Podman', 'podman'), ('Docker', 'docker')],

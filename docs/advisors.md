@@ -43,7 +43,22 @@ if that command is missing. Keyring-only Codex logins require a separate advisor
 Only credentials are copied, not CLI settings, hooks or conversation history.
 The copy lives in the advisor’s private volume; the coding agent receives only
 the advisor socket. Copies are not kept in sync. If a provider invalidates a copied
-session during renewal, sign in separately through **Settings → Advisors**.
+session during renewal, open **Settings → Advisors**, select **Sign in to Codex**,
+**Sign in to Claude** or **Sign in to Antigravity**, and complete the login. Then
+use **Check advisors** and ask Pi to retry the consultation.
+
+## Choosing an advisor
+
+Each `advisor_ask` call selects one enabled provider. Pi’s tool instructions tell
+it to check `advisor_status` for enabled providers, models and available quota,
+then choose a provider explicitly when useful. You can ask “Use Claude to review
+this change” or “Get separate opinions from Codex and Claude.”
+
+If Pi omits `provider`, the first enabled advisor is used. The TUI orders them
+Codex, Claude, Antigravity, so enabling Codex and Claude makes Codex the default.
+An existing advisor conversation keeps its original provider and model. Switching
+starts a new consultation with the context Pi supplies; there is no automatic
+fallback or transfer of the earlier conversation.
 
 ## Where things run
 
