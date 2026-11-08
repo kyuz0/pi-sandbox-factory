@@ -129,6 +129,8 @@ saved sandbox options. Its dependency lock lives in `containers/dev/compaction-r
 
 Write short, direct documentation explaining supported behavior and actual setup.
 Each sentence should explain an action, mechanism, contract or actionable limitation.
+User setup guides describe normal installations on supported hosts. Keep test
+infrastructure and validation history in `TESTING.md`, not in user prerequisites.
 Keep prerequisites specific and examples runnable. Remove repeated explanations,
 generic cautions and statements that merely restate a control’s label. Link to
 an existing explanation instead of duplicating it.

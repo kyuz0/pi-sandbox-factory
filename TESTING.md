@@ -350,8 +350,13 @@ Podman Machine, install from [platform setup](docs/platforms.md) and check:
 For Windows, check WSL-native projects first, then a specific `/mnt/c` project.
 Test an SSH-forwarded model in WSL and, separately, a Windows-local model with
 mirrored networking. For macOS, check localhost model access, native ARM64 images
-and Chromium interaction. A Windows cloud VM needs nested virtualization for WSL2;
-use a Mac with hardware virtualization available for Podman Machine.
+and Chromium interaction.
+
+## macOS verification
+
+On a 16 GB M1 with macOS 27 and Podman 6.1.4, container creation, Pi/Pendant,
+browser tools, editor authentication, network isolation and folder permissions passed.
+Podman Machine used four CPU cores and 8 GB RAM.
 
 ## Windows verification
 

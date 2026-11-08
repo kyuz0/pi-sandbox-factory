@@ -1,17 +1,12 @@
 # Windows and macOS
 
 The manager runs in WSL2 on Windows and natively on macOS with Podman Machine.
-Both run the same Linux containers as the Linux installation. Apple Silicon has
-been tested on an M1 with macOS 27 and Podman 6.1.4: container creation, Pi/Pendant,
-browser tools, editor authentication, network isolation and folder permissions.
-Windows 11 has been tested with WSL2, Ubuntu 26.04 and Podman 5.7.
-See [platform checks](../TESTING.md#platform-checks).
+Both run the same Linux containers as the Linux installation.
 
 ## Windows
 
 Use Windows 11 with virtualization enabled. For browser-enabled sandboxes, the
 recommended setup is 24 GB RAM and at least 30 GB free on the drive holding Ubuntu.
-A Windows VM also needs nested virtualization enabled.
 
 In **PowerShell as Administrator**:
 
@@ -75,9 +70,8 @@ You need an Apple Silicon Mac with macOS 15 or newer, [Homebrew](https://docs.br
 Podman 5.6 or newer, Git and pipx. Homebrew installs Python with pipx. Safari works
 with the browser editor; installing desktop VS Code is optional.
 
-The tested setup uses a 16 GB M1 Mac with four CPU cores and 8 GB RAM assigned to
-Podman Machine. This allocation is for the development containers; local model
-inference needs additional memory.
+The commands below allocate four CPU cores and 8 GB RAM to Podman Machine.
+Allow additional memory for models running on the Mac.
 
 ```sh
 brew install podman pipx git
