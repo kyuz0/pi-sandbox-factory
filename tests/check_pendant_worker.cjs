@@ -36,7 +36,7 @@ function request(command, sessionKey) {
     const timer = setTimeout(() => { pending.delete(requestId); reject(new Error('Timed out: ' + command.type)); }, 180000);
     pending.set(requestId, { resolve, reject, timer });
     worker.send({ type: 'sdk_bridge_request', requestId, workspaceGeneration: 1,
-      ...(sessionKey ? { sessionKey, sessionGeneration: 1 } : {}), command });
+      ...(sessionKey ? { sessionKey, sessionGeneration: sessions.get(sessionKey)?.generation ?? 1 } : {}), command });
   });
 }
 worker.on('message', message => {
@@ -50,7 +50,11 @@ worker.on('message', message => {
     if (!item) return;
     pending.delete(message.requestId); clearTimeout(item.timer);
     if (message.error) item.reject(new Error(JSON.stringify(message.error)));
-    else item.resolve(message.result);
+    else {
+      if (message.result?.sessionKey && message.result?.sessionGeneration && sessions.has(message.result.sessionKey))
+        sessions.get(message.result.sessionKey).generation = message.result.sessionGeneration;
+      item.resolve(message.result);
+    }
   }
   if (message.type === 'session_event') sessions.get(message.sessionKey)?.events.push(message.event);
   if (message.type === 'extension_ui_request') {
@@ -158,6 +162,24 @@ async function main() {
     assert([1,5,6].every(i => resumedResults[i].isError),JSON.stringify(resumedResults));
     assert.equal(sessions.get('resumed-original').dialogs,0);
     console.log('PASS actual Pendant: reopen the same saved chat, reload its resources, continue approval; no dialogs');
+    await create('fork-source');
+    await request({type:'session_set_model',provider:'fixture',modelId:'fixture-model',persist:false}, 'fork-source');
+    await request({type:'session_prompt',text:'PERSIST_APPROVAL_SESSION',images:[],source:'interactive'}, 'fork-source');
+    const original = await waitForReply('fork-source', 'SANDBOX_INFERENCE_OK');
+    const originalBytes = fs.readFileSync(original.sessionFile);
+    const forked = await request({type:'session_fork',position:'at'}, 'fork-source');
+    assert.equal(forked.cancelled,false);
+    assert.notEqual(forked.sessionFile,original.sessionFile);
+    await request({type:'session_prompt',text:'/skill:approval-context RUN_APPROVAL_CONTEXT',images:[],source:'interactive'}, 'fork-source');
+    const forkState = await waitForReply('fork-source', 'APPROVAL_CONTEXT_DONE');
+    assert.notEqual(forkState.sessionId,original.sessionId);
+    const forkResults = forkState.messages.filter(m => m.role === 'toolResult');
+    assert.equal(forkResults.length,7);
+    assert([0,2,3,4].every(i => !forkResults[i].isError),JSON.stringify(forkResults));
+    assert([1,5,6].every(i => forkResults[i].isError),JSON.stringify(forkResults));
+    assert.equal(sessions.get('fork-source').dialogs,0);
+    assert.deepEqual(fs.readFileSync(original.sessionFile),originalBytes);
+    console.log('PASS actual Pendant: fork retains history, uses a new session, preserves original and reviews actions without dialogs');
     return;
   }
   if (process.argv.includes('--communications-disabled')) {
