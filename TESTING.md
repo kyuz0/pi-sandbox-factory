@@ -78,7 +78,9 @@ denials and credential-file restrictions without human dialogs or real inference
 Pendant checks also close overlapping runtime sessions and reopen the same saved
 conversation, reload its resources and continue reviewed operations. A fork must
 receive a new session ID, preserve the original saved conversation and continue
-network and command review without permission dialogs.
+network and command review without permission dialogs. Another scenario selects one
+answer in the question UI and verifies that successive network and command reviews
+receive that answer without asking for it again.
 
 ## Hosted model connections
 

@@ -68,7 +68,16 @@ class Handler(BaseHTTPRequestHandler):
         finish = 'stop'
         if reviewing and Path('/fixture/feature-mode.json').exists():
             assert json.loads(Path('/fixture/feature-mode.json').read_text())['approval'] == 'automatic', 'Unexpected model review in manual/off mode'
-        if reviewing and 'RUN_APPROVAL_CONTEXT' in content:
+        if reviewing and 'RUN_APPROVAL_ANSWER' in content:
+            current = json.loads(messages[-1]['content'])
+            evidence = current['evidence']['parentOriginalMessages']['messages']
+            answers = [m for m in evidence if m.get('source') == 'trusted-question-tool']
+            assert len(answers) == 1, 'Trusted user answer missing from current review'
+            parsed = json.loads(answers[0]['content'])
+            assert parsed['answers'][0]['answer'] == 'Run both'
+            assert 'Two read-only checks' in json.dumps(parsed)
+            delta['content'] = json.dumps({'outcome':'allow','risk_level':'low','user_authorization':'high','rationale':'The user selected both read-only checks.'})
+        elif reviewing and 'RUN_APPROVAL_CONTEXT' in content:
             assert content.count('SKILL_CONTEXT_LINE ') == 1800, ('Skill repetitions', content.count('SKILL_CONTEXT_LINE '))
             assert 'SKILL_CONTEXT_END' in content, 'Skill tail missing from reviewer context'
             assert 'SYNTHETIC_PRIVATE_VALUE' not in content, 'Denied secret reached the reviewer'
@@ -79,6 +88,22 @@ class Handler(BaseHTTPRequestHandler):
             outcome = 'deny' if ('DENY_BY_FIXTURE' in content or 'ALLOW_EXECUTED' in content) else 'defer' if 'DEFER_BY_FIXTURE' in content else 'allow'
             delta['content'] = json.dumps({'outcome': outcome, 'risk_level': 'medium',
                                           'user_authorization': 'high', 'rationale': 'Synthetic integration review: ' + outcome})
+        elif 'RUN_APPROVAL_ANSWER' in content:
+            actions = [
+                ('ask_user_question', {'questions':[{'header':'Checks','question':'Run the two read-only checks?',
+                    'options':[{'label':'Run both','description':'Two read-only checks: fetch the fixture and print a marker.'},
+                               {'label':'Cancel','description':'Do not run the checks.'}]}]}),
+                ('bash', {'command': "curl -fsS -H 'Authorization: Bearer fixture-key' http://local-model.internal:18187/v1/models/details"}),
+                ('bash_escalate', {'command':'printf ANSWER_CHECK_TWO','justification':'Second read-only check selected by the user.'}),
+            ]
+            outputs = [m for m in messages if m.get('role') == 'tool']
+            if len(outputs) < len(actions):
+                name, arguments = actions[len(outputs)]
+                delta = {'role':'assistant','tool_calls':[{'index':0,'id':'answer-check-'+str(len(outputs)),
+                    'type':'function','function':{'name':name,'arguments':json.dumps(arguments)}}]}
+                finish = 'tool_calls'
+            else:
+                delta['content'] = 'APPROVAL_ANSWER_DONE'
         elif 'RUN_APPROVAL_CONTEXT' in content:
             actions = [
                 ('read', {'path': '/opt/spikee/.venv/bin/spikee'}),

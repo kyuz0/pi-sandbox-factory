@@ -6,5 +6,8 @@
   "reviewerConversation": true,
   "investigationTools": false,
   "reasoning": "low",
-  "interactionMode": "automatic"
+  "interactionMode": "automatic",
+  "trustedQuestionTools": [
+    "ask_user_question"
+  ]
 }
