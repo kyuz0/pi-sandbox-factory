@@ -121,17 +121,43 @@ async function main() {
   assert(!fs.existsSync('/opt/pi-security/node_modules/pi-goal'), 'Legacy Goal package installed');
   assert(inventory.tools.some(t => t.name === 'ask_user_question'), 'ask_user_question tool missing');
   if (process.argv.includes('--approval-context')) {
-    await request({type:'session_set_model',provider:'fixture',modelId:'fixture-model',persist:false}, 'inventory');
-    await request({type:'session_prompt',text:'/skill:approval-context RUN_APPROVAL_CONTEXT',images:[],source:'interactive'}, 'inventory');
-    const state = await waitForReply('inventory', 'APPROVAL_CONTEXT_DONE');
+    // Pendant can create the replacement before disposing its prior session.
+    // Keep a sibling open while the original broker owner is removed.
+    await create('approval-sibling');
+    await create('approval-active');
+    await request({type:'session_dispose', reason:'replacement'}, 'inventory');
+    await request({type:'session_dispose', reason:'replacement'}, 'approval-sibling');
+    await request({type:'session_set_model',provider:'fixture',modelId:'fixture-model',persist:false}, 'approval-active');
+    await request({type:'session_prompt',text:'/skill:approval-context RUN_APPROVAL_CONTEXT',images:[],source:'interactive'}, 'approval-active');
+    const state = await waitForReply('approval-active', 'APPROVAL_CONTEXT_DONE');
     const results = state.messages.filter(m => m.role === 'toolResult');
     assert.equal(results.length, 7);
     assert([0,2,3,4].every(i => !results[i].isError), JSON.stringify(results));
     assert([1,5,6].every(i => results[i].isError), JSON.stringify(results));
     assert(JSON.stringify(results[1]).includes('Use sandboxed bash'));
     assert(!JSON.stringify(state).includes('SYNTHETIC_PRIVATE_VALUE'));
-    assert.equal(sessions.get('inventory').dialogs, 0);
-    console.log('PASS actual Pendant: expanded skill, external read, reviewed file-tool restriction and reviewed temporary write, network review, escalation, model denial and secret denial; no dialogs');
+    assert.equal(sessions.get('approval-active').dialogs, 0);
+    console.log('PASS actual Pendant: overlapping session disposal, expanded skill, network and escalation approval, denials; no dialogs');
+    await request({type:'session_dispose',reason:'replacement'}, 'approval-active');
+    await create('persist-original');
+    await request({type:'session_set_model',provider:'fixture',modelId:'fixture-model',persist:false}, 'persist-original');
+    await request({type:'session_prompt',text:'PERSIST_APPROVAL_SESSION',images:[],source:'interactive'}, 'persist-original');
+    const saved = await waitForReply('persist-original', 'SANDBOX_INFERENCE_OK');
+    assert(saved.sessionFile);
+    await request({type:'session_dispose',reason:'replacement'}, 'persist-original');
+    sessions.set('resumed-original', {events:[],dialogs:0,allowDialog:false});
+    await request({type:'session_create',target:{kind:'file',path:saved.sessionFile}}, 'resumed-original');
+    await request({type:'session_reload_resources',reason:'explicit',force:false}, 'resumed-original');
+    await request({type:'session_set_model',provider:'fixture',modelId:'fixture-model',persist:false}, 'resumed-original');
+    await request({type:'session_prompt',text:'/skill:approval-context RUN_APPROVAL_CONTEXT',images:[],source:'interactive'}, 'resumed-original');
+    const resumed = await waitForReply('resumed-original', 'APPROVAL_CONTEXT_DONE');
+    assert.equal(resumed.sessionId, saved.sessionId);
+    const resumedResults = resumed.messages.filter(m => m.role === 'toolResult');
+    assert.equal(resumedResults.length,7);
+    assert([0,2,3,4].every(i => !resumedResults[i].isError),JSON.stringify(resumedResults));
+    assert([1,5,6].every(i => resumedResults[i].isError),JSON.stringify(resumedResults));
+    assert.equal(sessions.get('resumed-original').dialogs,0);
+    console.log('PASS actual Pendant: reopen the same saved chat, reload its resources, continue approval; no dialogs');
     return;
   }
   if (process.argv.includes('--communications-disabled')) {

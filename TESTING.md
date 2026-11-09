@@ -75,6 +75,8 @@ profile, automatic approval and host-loopback port 18187 allowed:
 This expands a synthetic 32 KiB skill in Pi and the shipped Pendant worker.
 It checks network approval, exact-command escalation, temporary writes, model
 denials and credential-file restrictions without human dialogs or real inference.
+Pendant checks also close overlapping runtime sessions and reopen the same saved
+conversation, reload its resources and continue reviewed operations.
 
 ## Hosted model connections
 
