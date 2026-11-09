@@ -76,7 +76,9 @@ This expands a synthetic 32 KiB skill in Pi and the shipped Pendant worker.
 It checks network approval, exact-command escalation, temporary writes, model
 denials and credential-file restrictions without human dialogs or real inference.
 Pendant checks also close overlapping runtime sessions and reopen the same saved
-conversation, reload its resources and continue reviewed operations.
+conversation, reload its resources and continue reviewed operations. A fork must
+receive a new session ID, preserve the original saved conversation and continue
+network and command review without permission dialogs.
 
 ## Hosted model connections
 
