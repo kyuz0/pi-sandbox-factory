@@ -64,6 +64,18 @@ create a disposable reporting sandbox with local discovery on port 18082 and tha
 port allowed, then run `tests/provider_container.py --name NAME`.
 It checks local discovery, preservation of unrelated models and the profile skill.
 
+For expanded-skill approval, use a disposable sandbox with the workshop spikee
+profile, automatic approval and host-loopback port 18187 allowed:
+
+```sh
+.venv/bin/python tests/integration.py --state-dir "$test_root/state" \
+  --name approval-check --port 18187 --approval-context
+```
+
+This expands a synthetic 32 KiB skill in Pi and the shipped Pendant worker.
+It checks network approval, exact-command escalation, temporary writes, model
+denials and credential-file restrictions without human dialogs or real inference.
+
 ## Hosted model connections
 
 After the unit suites, run the companion and native Pi/Pendant checks:

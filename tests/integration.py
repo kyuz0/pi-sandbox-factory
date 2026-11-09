@@ -22,6 +22,7 @@ p.add_argument('--web-access', action='store_true', help='Live keyless Exa searc
 p.add_argument('--web-providers', action='store_true', help='Also check native fallback and Only-provider enforcement')
 p.add_argument('--folders', action='store_true', help='Check subfolder cwd and read-only/read-write mounts in both clients')
 p.add_argument('--recall', action='store_true', help='Check conversation recall in Pi and Pendant with compacted fixture history')
+p.add_argument('--approval-context', action='store_true', help='Check whole expanded skills in automatic approval through Pi and Pendant; requires workshop spikee profile and fixture port 18187')
 p.add_argument('--communications', action='store_true', help='Check Slack loading, proxy, approval and credential boundaries using an invalid fixture token')
 a=p.parse_args()
 if a.web_providers: a.web_access=True
@@ -58,14 +59,21 @@ try:
  config={'providers':{'fixture':{'baseUrl':f'http://local-model.internal:{a.port}/v1','api':'openai-completions','apiKey':'fixture-key','models':[{'id':'fixture-model','contextWindow':32000,'maxTokens':4096}]}}}
  code="from pathlib import Path;import sys;p=Path('/home/node/.pi/agent/models.json');p.write_text(sys.stdin.read());p.chmod(0o600)"
  subprocess.run(['podman','exec','-i',DEV,'python3','-c',code],input=json.dumps(config),text=True,check=True)
+ if a.approval_context:
+  assert a.port == 18187
+  assert saved_config['options']['approval'] == 'automatic'
+  prepare = "from pathlib import Path; p=Path('/home/node/.pi/agent/skills/approval-context'); p.mkdir(parents=True, exist_ok=True); (p/'SKILL.md').write_text('---\\nname: approval-context\\ndescription: Synthetic approval integration fixture\\n---\\n' + 'SKILL_CONTEXT_LINE '*1800 + 'SKILL_CONTEXT_END'); Path('/workspace/.env').write_text('KEY=SYNTHETIC_PRIVATE_VALUE')"
+  subprocess.run(['podman','exec',DEV,'python3','-c',prepare],check=True)
  if a.communications:
   subprocess.run(['podman','exec','-i',DEV,'python3','/usr/local/lib/sandbox-communications.py'], input=json.dumps({'botToken':'xoxb-sandbox-fixture-only'}), text=True, check=True)
  if a.browser_viewer:
   subprocess.run(['podman','exec',DEV,'node','/opt/betterwright/check.mjs'],check=True)
- elif not a.web_access and not a.folders and not a.recall and not a.communications:
+ elif not a.approval_context and not a.web_access and not a.folders and not a.recall and not a.communications:
   subprocess.run([sys.executable,str(ROOT/'sandbox.py'),'--state-dir',str(a.state_dir),'check',a.name,'--allowed-url',f'http://local-model.internal:{a.port}/v1/models'],check=True)
  checks = [('check_security_rpc.py',['python3','-']),('check_automation_rpc.py',['python3','-']),('check_pendant_worker.cjs',['node','-'])]
- if a.communications:
+ if a.approval_context:
+  checks = [('check_approval_context_rpc.py', ['python3', '-']), ('check_pendant_worker.cjs', ['node', '-', '--approval-context'])]
+ elif a.communications:
   checks = [('check_communications_rpc.py', ['python3', '-']), ('check_pendant_worker.cjs', ['node', '-', '--communications'])]
  elif a.recall:
   checks = [('check_recall_rpc.py', ['python3', '-']), ('check_pendant_worker.cjs', ['node', '-', '--recall'])]
@@ -120,13 +128,14 @@ try:
   assert any(p['hints'] for p in prompts) == (saved_config['options']['compaction_recall'] == 'full'), prompts
  reviews = fixture/'reviews.jsonl'
  if reviews.exists():
+  if a.approval_context: assert len(reviews.read_text().splitlines()) >= 8, 'Expected reviews from both clients'
   if a.web_access: assert len(reviews.read_text().splitlines()) == 6, 'Only the three explicit fetches in each client should invoke the reviewer'
   assert not any(json.loads(line)['question'] for line in reviews.read_text().splitlines()), 'Question tool unexpectedly invoked the reviewer'
  if a.folders:
   prompts = [json.loads(line) for line in (fixture/'folder-prompts.jsonl').read_text().splitlines()]
   assert len(prompts) == 22, len(prompts)
   print('PASS both clients received the mounted-folder map with project prompt overrides', flush=True)
- print('PASS Pi/Pendant Slack integration' if a.communications else 'PASS Pi/Pendant recall integration' if a.recall else 'PASS Pi/Pendant folder integration' if a.folders else 'PASS Pi/Pendant browser viewer integration' if a.browser_viewer else 'PASS Pendant startup and questions; no question review calls' if a.pendant_questions_only else 'PASS Pi/Pendant web access integration' if a.web_access else 'PASS real Pi/Pendant security, Goal, scheduling and transport using fixture replies',flush=True)
+ print('PASS Pi/Pendant expanded skill automatic approval' if a.approval_context else 'PASS Pi/Pendant Slack integration' if a.communications else 'PASS Pi/Pendant recall integration' if a.recall else 'PASS Pi/Pendant folder integration' if a.folders else 'PASS Pi/Pendant browser viewer integration' if a.browser_viewer else 'PASS Pendant startup and questions; no question review calls' if a.pendant_questions_only else 'PASS Pi/Pendant web access integration' if a.web_access else 'PASS real Pi/Pendant security, Goal, scheduling and transport using fixture replies',flush=True)
 finally:
  if saved_search is not None:
   subprocess.run(['podman','exec','-i',DEV,'python3','-c',search_writer],input=saved_search,text=True,check=True)

@@ -113,12 +113,27 @@ async function main() {
   assert.equal(handshake.compatibilityReport.piSdkVersion, sdkVersion);
   const inventory = await create('inventory');
   const commands = new Set(inventory.commands.map(c => c.name));
-  assert(commands.has('local-models'), 'Model discovery extension missing');
+  if (!process.argv.includes('--approval-context'))
+    assert(commands.has('local-models'), 'Model discovery extension missing');
   assert(!inventory.commands.some(c => c.sourceInfo?.path?.includes('/node_modules/pi-goal/')), 'Legacy Goal extension loaded');
   assert(!commands.has('skill:pi-goal-writer'), 'Legacy Goal skill loaded');
   assert.deepEqual(inventory.diagnostics.filter(d => d.level === 'error'), [], 'Extension errors');
   assert(!fs.existsSync('/opt/pi-security/node_modules/pi-goal'), 'Legacy Goal package installed');
   assert(inventory.tools.some(t => t.name === 'ask_user_question'), 'ask_user_question tool missing');
+  if (process.argv.includes('--approval-context')) {
+    await request({type:'session_set_model',provider:'fixture',modelId:'fixture-model',persist:false}, 'inventory');
+    await request({type:'session_prompt',text:'/skill:approval-context RUN_APPROVAL_CONTEXT',images:[],source:'interactive'}, 'inventory');
+    const state = await waitForReply('inventory', 'APPROVAL_CONTEXT_DONE');
+    const results = state.messages.filter(m => m.role === 'toolResult');
+    assert.equal(results.length, 7);
+    assert([0,2,3,4].every(i => !results[i].isError), JSON.stringify(results));
+    assert([1,5,6].every(i => results[i].isError), JSON.stringify(results));
+    assert(JSON.stringify(results[1]).includes('Use sandboxed bash'));
+    assert(!JSON.stringify(state).includes('SYNTHETIC_PRIVATE_VALUE'));
+    assert.equal(sessions.get('inventory').dialogs, 0);
+    console.log('PASS actual Pendant: expanded skill, external read, reviewed file-tool restriction and reviewed temporary write, network review, escalation, model denial and secret denial; no dialogs');
+    return;
+  }
   if (process.argv.includes('--communications-disabled')) {
     assert(!inventory.tools.some(t => t.name.startsWith('slack_')), 'Disabled Slack tools still loaded');
     console.log('PASS actual Pendant: disabling Slack removes its tools');
