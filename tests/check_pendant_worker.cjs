@@ -180,6 +180,17 @@ async function main() {
     assert.equal(sessions.get('fork-source').dialogs,0);
     assert.deepEqual(fs.readFileSync(original.sessionFile),originalBytes);
     console.log('PASS actual Pendant: fork retains history, uses a new session, preserves original and reviews actions without dialogs');
+    await create('question-approval',true);
+    sessions.get('question-approval').questionScenario='CHOICE';
+    await request({type:'session_set_model',provider:'fixture',modelId:'fixture-model',persist:false}, 'question-approval');
+    await request({type:'session_prompt',text:'RUN_APPROVAL_ANSWER Ask me before running the two checks.',images:[],source:'interactive'}, 'question-approval');
+    const answered=await waitForReply('question-approval','APPROVAL_ANSWER_DONE');
+    const answerResults=answered.messages.filter(m=>m.role==='toolResult');
+    assert.equal(answerResults.length,3);
+    assert(answerResults.every(m=>!m.isError),JSON.stringify(answerResults));
+    assert.equal(sessions.get('question-approval').dialogs,1,'Only the original question should appear');
+    console.log('PASS actual Pendant: one selected answer authorizes successive network and command reviews without re-asking');
+
     return;
   }
   if (process.argv.includes('--communications-disabled')) {
