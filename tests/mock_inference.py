@@ -68,6 +68,10 @@ class Handler(BaseHTTPRequestHandler):
         finish = 'stop'
         if reviewing and Path('/fixture/feature-mode.json').exists():
             assert json.loads(Path('/fixture/feature-mode.json').read_text())['approval'] == 'automatic', 'Unexpected model review in manual/off mode'
+        if reviewing and 'RUN_APPROVAL_CONTEXT' in content:
+            assert content.count('SKILL_CONTEXT_LINE ') == 1800, ('Skill repetitions', content.count('SKILL_CONTEXT_LINE '))
+            assert 'SKILL_CONTEXT_END' in content, 'Skill tail missing from reviewer context'
+            assert 'SYNTHETIC_PRIVATE_VALUE' not in content, 'Denied secret reached the reviewer'
         if reviewing:
             with Path('/fixture/reviews.jsonl').open('a') as audit:
                 audit.write(json.dumps({'question': 'RUN_QUESTION_' in content}) + '\n')
@@ -75,6 +79,24 @@ class Handler(BaseHTTPRequestHandler):
             outcome = 'deny' if ('DENY_BY_FIXTURE' in content or 'ALLOW_EXECUTED' in content) else 'defer' if 'DEFER_BY_FIXTURE' in content else 'allow'
             delta['content'] = json.dumps({'outcome': outcome, 'risk_level': 'medium',
                                           'user_authorization': 'high', 'rationale': 'Synthetic integration review: ' + outcome})
+        elif 'RUN_APPROVAL_CONTEXT' in content:
+            actions = [
+                ('read', {'path': '/opt/spikee/.venv/bin/spikee'}),
+                ('write', {'path': '/tmp/approval-context.txt', 'content': 'APPROVAL_CONTEXT_WRITE'}),
+                ('bash_escalate', {'command': 'printf APPROVAL_CONTEXT_WRITE > /tmp/approval-context.txt', 'justification': 'Create this synthetic temporary file using the documented exact-command review path.'}),
+                ('bash', {'command': "curl -fsS -H 'Authorization: Bearer fixture-key' http://local-model.internal:18187/v1/models/details"}),
+                ('bash_escalate', {'command': 'printf APPROVAL_CONTEXT_ESCALATE', 'justification': 'Authorized inert approval integration check.'}),
+                ('bash_escalate', {'command': 'printf DENY_BY_FIXTURE', 'justification': 'Synthetic model denial check.'}),
+                ('read', {'path': '/workspace/.env'}),
+            ]
+            outputs = [m for m in messages if m.get('role') == 'tool']
+            if len(outputs) < len(actions):
+                name, arguments = actions[len(outputs)]
+                delta = {'role': 'assistant', 'tool_calls': [{'index': 0, 'id': 'approval-context-' + str(len(outputs)),
+                    'type': 'function', 'function': {'name': name, 'arguments': json.dumps(arguments)}}]}
+                finish = 'tool_calls'
+            else:
+                delta['content'] = 'APPROVAL_CONTEXT_DONE'
         elif 'RUN_COMMUNICATIONS' in content:
             assert 'xoxb-sandbox-fixture-only' not in content, 'Credential leaked into model context'
             names = {t['function']['name'] for t in request.get('tools', [])}
