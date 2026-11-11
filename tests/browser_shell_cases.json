@@ -1,0 +1,44 @@
+[
+  {
+    "name": "wrapper bash",
+    "tool": "bash",
+    "args": {
+      "command": "sandbox-browser http://local-model.internal:18187/browser-fixture --screenshot /workspace/wrapper-browser.png",
+      "timeout": 90
+    },
+    "error": false,
+    "contains": "HTTP 407:"
+  },
+  {
+    "name": "python bash",
+    "tool": "bash",
+    "args": {
+      "command": "python /workspace/playwright_probe.py",
+      "timeout": 90
+    },
+    "error": true,
+    "contains": "HTTP_STATUS 407"
+  },
+  {
+    "name": "wrapper bash_escalate",
+    "tool": "bash_escalate",
+    "args": {
+      "command": "sandbox-browser http://local-model.internal:18187/browser-fixture --screenshot /workspace/wrapper-browser.png",
+      "timeout": 90,
+      "justification": "Launch the installed Chromium to interact with a local synthetic page and save a screenshot in the authorized test workspace."
+    },
+    "error": false,
+    "contains": "HTTP 200: Browser shell fixture"
+  },
+  {
+    "name": "python bash_escalate",
+    "tool": "bash_escalate",
+    "args": {
+      "command": "python /workspace/playwright_probe.py",
+      "timeout": 90,
+      "justification": "Launch the installed Chromium to interact with a local synthetic page and save a screenshot in the authorized test workspace."
+    },
+    "error": false,
+    "contains": "PLAYWRIGHT_INTERACTION_OK"
+  }
+]

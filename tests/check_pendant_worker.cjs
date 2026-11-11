@@ -116,6 +116,15 @@ async function main() {
   assert.equal(handshake.compatibilityReport.compatible, true);
   assert.equal(handshake.compatibilityReport.piSdkVersion, sdkVersion);
   const inventory = await create('inventory');
+  if (process.argv.includes('--question-forms-only')) {
+    const enabled = JSON.parse(fs.readFileSync('/opt/sandbox/options.json')).question_forms !== false;
+    assert.deepEqual(inventory.diagnostics.filter(d => d.level === 'error'), [], 'Extension errors');
+    assert.equal(inventory.tools.some(t => t.name === 'ask_user_question'), enabled);
+    assert(inventory.tools.some(t => t.name === 'bash_escalate'), 'Reviewed escalation missing');
+    console.log('PASS actual Pendant worker: question forms ' + enabled + ', reviewed escalation retained');
+    await request({type:'session_dispose', reason:'replacement'}, 'inventory');
+    return;
+  }
   const commands = new Set(inventory.commands.map(c => c.name));
   if (!process.argv.includes('--approval-context'))
     assert(commands.has('local-models'), 'Model discovery extension missing');
@@ -124,6 +133,25 @@ async function main() {
   assert.deepEqual(inventory.diagnostics.filter(d => d.level === 'error'), [], 'Extension errors');
   assert(!fs.existsSync('/opt/pi-security/node_modules/pi-goal'), 'Legacy Goal package installed');
   assert(inventory.tools.some(t => t.name === 'ask_user_question'), 'ask_user_question tool missing');
+  if (process.argv.includes('--skill-workflow')) {
+    assert(commands.has('skill:spikee-pentesting'), 'Spikee skill missing');
+    await request({type:'session_set_model',provider:'fixture',modelId:'fixture-model',persist:false}, 'inventory');
+    await request({type:'session_prompt',text:'/skill:spikee-pentesting RUN_SKILL_WORKFLOW',images:[],source:'interactive'}, 'inventory');
+    const state = await waitForReply('inventory', 'SKILL_WORKFLOW_DONE');
+    const results = state.messages.filter(m => m.role === 'toolResult');
+    const cases = JSON.parse(fs.readFileSync('/tmp/skill-workflow-cases.json','utf8'));
+    assert.equal(results.length,cases.length);
+    for (const [i,c] of cases.entries()) {
+      assert.equal(Boolean(results[i].isError),c.error,c.name+': '+JSON.stringify(results[i]));
+      if(c.contains) assert(JSON.stringify(results[i]).includes(c.contains),c.name+': '+JSON.stringify(results[i]));
+      console.log('PASS Pendant:',c.name);
+    }
+    assert(!JSON.stringify(state).includes('SYNTHETIC_PRIVATE_VALUE'));
+    assert(!JSON.stringify(state).includes('PRIVATE_HOME'));
+    assert.equal(sessions.get('inventory').dialogs,0);
+    console.log('PASS actual Pendant: all workflow cases; no permission dialogs');
+    return;
+  }
   if (process.argv.includes('--approval-context')) {
     // Pendant can create the replacement before disposing its prior session.
     // Keep a sibling open while the original broker owner is removed.

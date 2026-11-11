@@ -24,6 +24,9 @@ p.add_argument('--folders', action='store_true', help='Check subfolder cwd and r
 p.add_argument('--recall', action='store_true', help='Check conversation recall in Pi and Pendant with compacted fixture history')
 p.add_argument('--approval-context', action='store_true', help='Check whole expanded skills in automatic approval through Pi and Pendant; requires workshop spikee profile and fixture port 18187')
 p.add_argument('--communications', action='store_true', help='Check Slack loading, proxy, approval and credential boundaries using an invalid fixture token')
+p.add_argument('--skill-workflow', action='store_true', help='Check installed spikee skill reads, protected paths and reviewed tmux in Pi/Pendant')
+p.add_argument('--browser-shell', action='store_true', help='Check Python Playwright and sandbox-browser through both shell routes; requires spikee profile and fixture port 18187')
+p.add_argument('--credential-files', action='store_true', help='Check native tools and sandboxed Bash against the saved common credential-file protection choice')
 a=p.parse_args()
 if a.web_providers: a.web_access=True
 RUNTIME=a.artifacts or Path(tempfile.mkdtemp(prefix='pi-sandbox-factory-check-'))
@@ -34,6 +37,7 @@ fixture=RUNTIME/'fixture';fixture.mkdir(exist_ok=True)
 saved_config=json.loads((a.state_dir/a.name/'config.json').read_text())
 (fixture/'expected-profile.txt').write_text('PROJECT_VIEWER_GUIDANCE' if a.browser_viewer else (Path(saved_config['profile']['path'])/'profile.md').read_text())
 if a.recall: (fixture/'recall-mode.txt').write_text(saved_config['options']['compaction_recall'])
+if a.credential_files: (fixture/'credential-files-protected.json').write_text(json.dumps(saved_config['options']['protect_credentials']))
 source=(ROOT/'tests/mock_inference.py').read_text()
 # Each run creates its own completed jobs; preserve existing workspace history.
 source=source.replace("'automation-' +", repr('automation-'+uuid.uuid4().hex[:12]+'-')+' +')
@@ -59,7 +63,24 @@ try:
  config={'providers':{'fixture':{'baseUrl':f'http://local-model.internal:{a.port}/v1','api':'openai-completions','apiKey':'fixture-key','models':[{'id':'fixture-model','contextWindow':32000,'maxTokens':4096}]}}}
  code="from pathlib import Path;import sys;p=Path('/home/node/.pi/agent/models.json');p.write_text(sys.stdin.read());p.chmod(0o600)"
  subprocess.run(['podman','exec','-i',DEV,'python3','-c',code],input=json.dumps(config),text=True,check=True)
- if a.approval_context:
+ if a.skill_workflow or a.browser_shell:
+  assert a.port == 18187
+  assert saved_config['options']['approval'] == 'automatic'
+  cases = (ROOT/'tests'/('browser_shell_cases.json' if a.browser_shell else 'skill_workflow_cases.json')).read_text()
+  if a.browser_shell:
+   subprocess.run(['podman','exec','-i',DEV,'sh','-c','cat > /workspace/playwright_probe.py'],input=(ROOT/'tests/browser_shell_probe.py').read_text(),text=True,check=True)
+  (fixture/'skill-workflow-cases.json').write_text(cases)
+  subprocess.run(['podman','exec','-i',DEV,'sh','-c','cat > /tmp/skill-workflow-cases.json'],input=cases,text=True,check=True)
+  subprocess.run(['podman','exec',DEV,'sh','-c','printf SYNTHETIC_PRIVATE_VALUE > /workspace/.env; printf PRIVATE_HOME > /home/node/skill-check-private'],check=True)
+  subprocess.run(['podman','exec','--user','root',DEV,'ln','-sfn','/home/node/skill-check-private','/opt/skill-check-link'],check=True)
+ if a.credential_files:
+  subprocess.run(['podman','exec',DEV,'sh','-c','printf CREDENTIAL_ORIGINAL > /workspace/.env'],check=True)
+  subprocess.run(
+   ['podman','exec','-i',DEV,'sh','-c','cat > /tmp/credential-files-protected.json'],
+   input=json.dumps(saved_config['options']['protect_credentials']),text=True,check=True)
+ if a.credential_files:
+  checks = [('check_credential_files_rpc.py', ['python3', '-'])]
+ elif a.approval_context:
   assert a.port == 18187
   assert saved_config['options']['approval'] == 'automatic'
   prepare = "from pathlib import Path; p=Path('/home/node/.pi/agent/skills/approval-context'); p.mkdir(parents=True, exist_ok=True); (p/'SKILL.md').write_text('---\\nname: approval-context\\ndescription: Synthetic approval integration fixture\\n---\\n' + 'SKILL_CONTEXT_LINE '*1800 + 'SKILL_CONTEXT_END'); Path('/workspace/.env').write_text('KEY=SYNTHETIC_PRIVATE_VALUE')"
@@ -68,10 +89,13 @@ try:
   subprocess.run(['podman','exec','-i',DEV,'python3','/usr/local/lib/sandbox-communications.py'], input=json.dumps({'botToken':'xoxb-sandbox-fixture-only'}), text=True, check=True)
  if a.browser_viewer:
   subprocess.run(['podman','exec',DEV,'node','/opt/betterwright/check.mjs'],check=True)
- elif not a.approval_context and not a.web_access and not a.folders and not a.recall and not a.communications:
+ elif not a.skill_workflow and not a.browser_shell and not a.approval_context and not a.web_access and not a.folders and not a.recall and not a.communications:
   subprocess.run([sys.executable,str(ROOT/'sandbox.py'),'--state-dir',str(a.state_dir),'check',a.name,'--allowed-url',f'http://local-model.internal:{a.port}/v1/models'],check=True)
- checks = [('check_security_rpc.py',['python3','-']),('check_automation_rpc.py',['python3','-']),('check_pendant_worker.cjs',['node','-'])]
- if a.approval_context:
+ if not a.credential_files:
+  checks = [('check_security_rpc.py',['python3','-']),('check_automation_rpc.py',['python3','-']),('check_pendant_worker.cjs',['node','-'])]
+ if a.skill_workflow or a.browser_shell:
+  checks = [('check_skill_workflow_rpc.py', ['python3', '-']), ('check_pendant_worker.cjs', ['node', '-', '--skill-workflow'])]
+ elif a.approval_context:
   checks = [('check_approval_context_rpc.py', ['python3', '-']), ('check_pendant_worker.cjs', ['node', '-', '--approval-context'])]
  elif a.communications:
   checks = [('check_communications_rpc.py', ['python3', '-']), ('check_pendant_worker.cjs', ['node', '-', '--communications'])]
@@ -135,7 +159,7 @@ try:
   prompts = [json.loads(line) for line in (fixture/'folder-prompts.jsonl').read_text().splitlines()]
   assert len(prompts) == 22, len(prompts)
   print('PASS both clients received the mounted-folder map with project prompt overrides', flush=True)
- print('PASS Pi/Pendant expanded skill automatic approval' if a.approval_context else 'PASS Pi/Pendant Slack integration' if a.communications else 'PASS Pi/Pendant recall integration' if a.recall else 'PASS Pi/Pendant folder integration' if a.folders else 'PASS Pi/Pendant browser viewer integration' if a.browser_viewer else 'PASS Pendant startup and questions; no question review calls' if a.pendant_questions_only else 'PASS Pi/Pendant web access integration' if a.web_access else 'PASS real Pi/Pendant security, Goal, scheduling and transport using fixture replies',flush=True)
+ print('PASS common credential-file protection through actual Pi tools' if a.credential_files else 'PASS Pi/Pendant browser shell routes' if a.browser_shell else 'PASS Pi/Pendant workflow cases' if a.skill_workflow else 'PASS Pi/Pendant expanded skill automatic approval' if a.approval_context else 'PASS Pi/Pendant Slack integration' if a.communications else 'PASS Pi/Pendant recall integration' if a.recall else 'PASS Pi/Pendant folder integration' if a.folders else 'PASS Pi/Pendant browser viewer integration' if a.browser_viewer else 'PASS Pendant startup and questions; no question review calls' if a.pendant_questions_only else 'PASS Pi/Pendant web access integration' if a.web_access else 'PASS real Pi/Pendant security, Goal, scheduling and transport using fixture replies',flush=True)
 finally:
  if saved_search is not None:
   subprocess.run(['podman','exec','-i',DEV,'python3','-c',search_writer],input=saved_search,text=True,check=True)

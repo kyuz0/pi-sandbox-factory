@@ -489,6 +489,7 @@ def up(config, state):
     # Verify both ownership labels before starting or recovering either one.
     current = {name: inspect(config, name) for name in (proxy, dev)}
     if restricted:
+        host_platform.check_model_gateway(config)
         upgrade_gateway_config(state)
         groups = network_groups.snapshots(options(config.get('options'))['website_groups'], config.get('website_groups'))
         if groups != config.get('website_groups', {}):
@@ -811,7 +812,9 @@ def prepare_options(config, state):
         if path.name == 'permissions.json':
             value = folders.permissions(permissions(value, selected), config)
         if path.name == 'sandbox.json':
-            value.setdefault('filesystem', {})['additionalWriteRoots'] = [p for p, ro in folders.roots(config) if not ro]
+            filesystem = value.setdefault('filesystem', {})
+            filesystem['additionalWriteRoots'] = [p for p, ro in folders.roots(config) if not ro]
+            filesystem['protectCommonCredentialFiles'] = selected['protect_credentials']
         write_json(target / path.name, value)
     guide = target / 'security.md'
     guide.write_text(guidance(selected, config.get('subagents', False)) + folders.guidance(config))

@@ -1714,8 +1714,11 @@ class SettingsForm(Screen):
                             yield Button('Profile defaults', id='reset-rules')
             yield WebAccessForm(selected['web_access'], self.defaults_mode)
             yield CommunicationsForm(selected['communications'], self.defaults_mode, value.get('_communication_keys'))
-            with Collapsible(title='Agent · ' + selected['approval'].capitalize() + ' approval · Inner sandbox ' + ('on' if selected['inner_sandbox'] else 'off'), collapsed=True, id='agent-section'):
+            with Collapsible(title='Permissions and sandbox · ' + selected['approval'].capitalize() + ' approval · Inner sandbox ' + ('on' if selected['inner_sandbox'] else 'off'), collapsed=True, id='agent-section'):
                 yield Checkbox('Use inner command sandbox', value=selected['inner_sandbox'], id='inner-sandbox')
+                with Vertical(classes='setting'):
+                    yield Checkbox('Protect common credential files', value=selected['protect_credentials'], id='protect-credentials')
+                    yield Static('Blocks agent reads and writes to .env, private keys and similar files. Turn this off only when their contents may be shown to and changed by the agent.', classes='setting-help checkbox-help')
                 with Vertical(classes='setting'):
                     yield Label('Approval mode')
                     yield Select([('Automatic — never ask for approval', 'automatic'),
@@ -1723,8 +1726,8 @@ class SettingsForm(Screen):
                                   ('Ask me — human approval', 'manual'), ('No approval prompts', 'off')],
                                  value=selected['approval'], allow_blank=False, id='approval')
                     yield Static('', id='approval-help', markup=False, classes='setting-help')
-                yield Checkbox('Enable optional subagents', value=value['subagents'], id='subagents')
             with Collapsible(title='Skills and features', collapsed=True, id='skills-section'):
+                yield Checkbox('Enable optional subagents', value=value['subagents'], id='subagents')
                 with Vertical(classes='setting'):
                     yield Label('Conversation recall')
                     yield Select([('Lite — search history on demand', 'lite'),
@@ -1740,6 +1743,9 @@ class SettingsForm(Screen):
                     with Vertical(classes='setting'):
                         yield Checkbox(skill['name'] + ' — remote skill', value=True, id='extra-' + skill['name'])
                         yield Static(skill['repo'] + ' · ' + skill['commit'][:12], markup=False, classes='setting-help checkbox-help')
+                with Vertical(classes='setting'):
+                    yield Checkbox('Question forms', value=selected['question_forms'], id='question-forms')
+                    yield Static('Let Pi and Pendant ask questions with choices and free-text answers.', classes='setting-help checkbox-help')
                 yield Checkbox('Pendant goals', value=selected['goals'], id='goals')
                 yield Checkbox('Scheduled prompts in the current chat', value=selected['scheduling'], id='scheduling')
                 with Vertical(classes='setting'):
@@ -1795,7 +1801,7 @@ class SettingsForm(Screen):
             text = {'automatic': 'Shell commands use automatic review; failures return to the agent.', 'assisted': 'Shell commands use automatic review with human fallback.', 'manual': 'Shell commands ask you.',
                     'off': 'Commands run directly inside the devcontainer.'}[mode]
         self.query_one('#approval-help', Static).update(text + ' The outer container network policy still applies.')
-        self.query_one('#agent-section', Collapsible).title = ('Agent · ' + str(mode).capitalize()
+        self.query_one('#agent-section', Collapsible).title = ('Permissions and sandbox · ' + str(mode).capitalize()
             + ' approval · Inner sandbox ' + ('on' if inner else 'off'))
 
     @on(Select.Changed, '#approval')
@@ -1833,7 +1839,8 @@ class SettingsForm(Screen):
         selected['communications'], draft['_communication_keys'] = self.query_one(CommunicationsForm).collect()
         selected['website_groups'] = self.query_one(WebsiteGroups).selected()
         selected.update(approval=self.query_one('#approval', Select).value, inner_sandbox=check('inner-sandbox'),
-                        goals=check('goals'), scheduling=check('scheduling'), browser=check('browser'),
+                        protect_credentials=check('protect-credentials'),
+                        goals=check('goals'), scheduling=check('scheduling'), question_forms=check('question-forms'), browser=check('browser'),
                         compaction_recall=self.query_one('#compaction-recall', Select).value)
         selected['disabled_skills'] = [s for s in SKILLS if
             (s in PROFILE_SKILLS.get(self.profile_name, []) and not check('skill-' + s))

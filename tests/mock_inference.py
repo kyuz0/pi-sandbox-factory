@@ -9,6 +9,12 @@ import time
 
 class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
+        if self.path == '/browser-fixture':
+            self.send_response(200)
+            self.send_header('Content-Type','text/html')
+            self.end_headers()
+            self.wfile.write(b'<title>Browser shell fixture</title><input id=\'name\'><button onclick="document.querySelector(\'#result\').textContent=\'Hello \'+document.querySelector(\'#name\').value">Greet</button><p id=\'result\'></p>')
+            return
         if self.path.startswith('/search?'):
             with Path('/fixture/search-attempts.txt').open('a') as log:
                 log.write('searxng\n')
@@ -88,6 +94,33 @@ class Handler(BaseHTTPRequestHandler):
             outcome = 'deny' if ('DENY_BY_FIXTURE' in content or 'ALLOW_EXECUTED' in content) else 'defer' if 'DEFER_BY_FIXTURE' in content else 'allow'
             delta['content'] = json.dumps({'outcome': outcome, 'risk_level': 'medium',
                                           'user_authorization': 'high', 'rationale': 'Synthetic integration review: ' + outcome})
+        elif 'RUN_SKILL_WORKFLOW' in content:
+            assert 'Use bash_escalate for tmux' in content, 'Missing shell guidance'
+            assert 'Read installed skill instructions' in content, 'Missing skill guidance'
+            cases = json.loads(Path('/fixture/skill-workflow-cases.json').read_text())
+            outputs = [m for m in messages if m.get('role') == 'tool']
+            if len(outputs) < len(cases):
+                case = cases[len(outputs)]
+                delta = {'role':'assistant','tool_calls':[{'index':0,'id':'skill-workflow-'+str(len(outputs)),
+                    'type':'function','function':{'name':case['tool'],'arguments':json.dumps(case['args'])}}]}
+                finish = 'tool_calls'
+            else:
+                delta['content'] = 'SKILL_WORKFLOW_DONE'
+        elif 'RUN_CREDENTIAL_FILES' in content:
+            actions = [
+                ('read', {'path': '/workspace/.env'}),
+                ('write', {'path': '/workspace/.env', 'content': 'CREDENTIAL_NATIVE_WRITE'}),
+                ('bash', {'command': 'cat /workspace/.env'}),
+                ('bash', {'command': 'printf CREDENTIAL_BASH_WRITE > /workspace/.env'}),
+            ]
+            outputs = [m for m in messages if m.get('role') == 'tool']
+            if len(outputs) < len(actions):
+                name, arguments = actions[len(outputs)]
+                delta = {'role':'assistant','tool_calls':[{'index':0,'id':'credential-files-'+str(len(outputs)),
+                    'type':'function','function':{'name':name,'arguments':json.dumps(arguments)}}]}
+                finish = 'tool_calls'
+            else:
+                delta['content'] = 'CREDENTIAL_FILES_DONE'
         elif 'RUN_APPROVAL_ANSWER' in content:
             actions = [
                 ('ask_user_question', {'questions':[{'header':'Checks','question':'Run the two read-only checks?',

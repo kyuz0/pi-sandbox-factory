@@ -8,7 +8,11 @@ from . import web_access, network_groups, communications
 SKILLS = {}
 PROFILE_SKILLS = {'base': []}
 DEFAULTS = {'approval': 'automatic', 'inner_sandbox': True, 'goals': True,
-            'scheduling': True, 'browser': False, 'compaction_recall': 'lite', 'disabled_skills': [], 'web_access': None, 'website_groups': [], 'communications': None}
+            'scheduling': True, 'question_forms': True, 'browser': False,
+            'protect_credentials': True, 'compaction_recall': 'lite',
+            'disabled_skills': [], 'web_access': None, 'website_groups': [], 'communications': None}
+
+COMMON_CREDENTIAL_PATTERNS = ('*.pem', '*.key', '*.env', '*.env.*')
 
 
 def options(value=None):
@@ -18,7 +22,7 @@ def options(value=None):
     result = {**DEFAULTS, **value}
     if result['approval'] not in ('automatic', 'assisted', 'manual', 'off'):
         raise ValueError('Approval must be automatic, assisted, manual or off')
-    for key in ('inner_sandbox', 'goals', 'scheduling', 'browser'):
+    for key in ('inner_sandbox', 'goals', 'scheduling', 'question_forms', 'browser', 'protect_credentials'):
         if type(result[key]) is not bool:
             raise ValueError(key + ' must be a boolean')
     if result['compaction_recall'] not in ('lite', 'full', 'off'):
@@ -53,6 +57,19 @@ def permissions(template, selected):
     policy = json.loads(json.dumps(template))
     policy['authorizerChain'] = ['pi-auto-review'] if selected['approval'] in ('automatic', 'assisted') else []
     rules = policy['permission']
+    if not selected['protect_credentials']:
+        paths = rules.get('path')
+        if isinstance(paths, dict):
+            for pattern in COMMON_CREDENTIAL_PATTERNS:
+                if paths.get(pattern) == 'deny':
+                    paths.pop(pattern)
+    # Native read tools already admit these trusted image paths. Give proven
+    # shell reads the same scope; unknown effects and writes still need review.
+    reads = rules.setdefault('external_directory_read', {})
+    for path in policy.get('piInfrastructureReadPaths', []) if isinstance(reads, dict) else []:
+        if path.startswith('/') and not any(c in path for c in '*?'):
+            reads.setdefault(path.rstrip('/'), 'allow')
+            reads.setdefault(path.rstrip('/') + '/*', 'allow')
     rules['bash'] = ('allow' if selected['inner_sandbox'] or selected['approval'] == 'off' else 'ask')
     if selected['approval'] == 'off':
         rules.update({'*': 'allow', 'external_directory': 'allow'})
@@ -89,6 +106,33 @@ def guidance(selected, subagents=False):
                         'assisted': 'Shell commands use automatic review with human fallback.',
                         'manual': 'Shell commands require human approval.',
                         'off': 'Approval prompts are disabled; commands execute directly.'}[mode])
+    if inner:
+        credential_text = ('Common credential files such as .env and private keys are protected from agent reads.'
+                           if selected['protect_credentials'] else
+                           'The agent may read and write common credential files such as .env and private keys in the workspace. '
+                           'Their contents are visible to the model and the agent may change them.')
+        lines.append('Read installed skill instructions and references with read, grep, find or ls. '
+                     'Read-only shell commands can also read the trusted installed tool and skill directories. '
+                     'This does not permit changing those files. ' + credential_text)
+        lines.append('Each bash call has its own temporary directory in $TMPDIR, removed when the call ends. '
+                     'Keep files needed by later calls in the workspace, for example .tmp/.')
+        if mode != 'off':
+            lines.append('The inner sandbox blocks Unix sockets, which tmux needs. '
+                         'Use bash_escalate for tmux creation, send-keys, capture-pane, session checks and cleanup. '
+                         "Use tmux -S with the session's socket path on every call. "
+                         'Do not retry tmux in ordinary bash or change socket directories to work around the restriction. '
+                         'The reviewer must approve the exact outer-container command; a denial still stops it.')
+        else:
+            lines.append('tmux cannot run in the inner sandbox because Unix sockets are blocked. '
+                         'bash_escalate is unavailable with approval disabled; ask the user to select an approval mode if tmux is needed.')
+    if inner:
+        lines.append('For network commands in bash, keep the inherited proxy settings. '
+                     'Outbound connections are reviewed and the outer network allowlist still applies. '
+                     'Container-local services, including the inference proxy on outer-container loopback, '
+                     'may require bash_escalate because the inner shell has a separate network namespace. '
+                     'Escalation does not add destinations to the outer allowlist or reveal provider keys.')
+    if selected['browser']:
+        lines.append('Use the native browser tool for Playwright automation; do not launch a separate browser through bash.')
     lines.append('Explicit permission denials must be respected. Commands cannot execute on the physical host. '
                  'Use inherited proxy settings in restricted network mode.')
     lines.append('Standard pi-subagents are enabled with the same selected capabilities and approval rules.' if subagents

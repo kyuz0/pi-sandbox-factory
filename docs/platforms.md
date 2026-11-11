@@ -1,4 +1,21 @@
-# Windows and macOS
+# Host platforms
+
+## Linux local models
+
+Connecting to a model on the Linux host (including WSL) requires passt/pasta
+`2024_08_21.1d6142f` or newer, or a distribution backport providing
+`--map-host-loopback`. Factory checks the helper before starting the sandbox.
+This requirement does not apply when local-model access is disabled and you use
+OpenRouter or another hosted provider.
+
+Check support with `pasta --help 2>&1 | grep -- --map-host-loopback`. On Ubuntu,
+try `sudo apt update && sudo apt install --only-upgrade passt`. If the distribution
+still supplies an older version, disable **Connect to models on this host** for
+hosted-provider use, or install a supported passt package for local models.
+
+[Upstream release](https://passt.top/passt/tag/?h=2024_08_21.1d6142f).
+
+## Windows and macOS
 
 The manager runs in WSL2 on Windows and natively on macOS with Podman Machine.
 Both run the same Linux containers as the Linux installation.

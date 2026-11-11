@@ -151,6 +151,8 @@ if not inner_sandbox:
     image_resources['extensions'].remove('/opt/pi-security/packages/pi-sandbox/src/index.ts')
 if not inner_sandbox or approval == 'off':
     image_resources['extensions'].remove('/opt/pi-security/packages/pi-reviewed-escalation/index.ts')
+if not selection.get('question_forms', True):
+    image_resources['extensions'].remove('/opt/rpiv-ask-user-question/index.ts')
 if not scheduling_enabled:
     image_resources['extensions'].remove('/opt/pi-security/packages/pi-session-schedule/index.mjs')
 for key, resources in image_resources.items():

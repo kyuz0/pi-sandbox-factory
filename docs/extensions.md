@@ -23,6 +23,10 @@ Enable **Pendant goals** in Configuration to use Pendant’s built-in goals. Thi
 
 `rpiv-ask-user-question` loads by default. The agent uses `ask_user_question` to request a choice or clarification. Pendant displays native question cards; Pi displays a terminal questionnaire. Both accept option selections and free-text answers. Questions go directly to you, bypassing automatic permission review.
 
+To disable these forms, open **Settings → Configuration → Skills and features**,
+clear **Question forms**, then **Apply and recreate**. The agent can still ask
+questions in chat. This setting does not change permission approvals.
+
 To update an existing sandbox, use **Actions → Update sources and recreate…**,
 or run:
 

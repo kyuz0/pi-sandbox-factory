@@ -1,0 +1,224 @@
+[
+  {
+    "name": "read skill",
+    "tool": "read",
+    "args": {
+      "path": "/opt/spikee-skill/skill/SKILL.md"
+    },
+    "error": false,
+    "contains": "spikee"
+  },
+  {
+    "name": "read phase via cat",
+    "tool": "bash",
+    "args": {
+      "command": "cat /opt/spikee-skill/skill/01-workspace-setup.md"
+    },
+    "error": false,
+    "contains": "workspace"
+  },
+  {
+    "name": "read phase via sed",
+    "tool": "bash",
+    "args": {
+      "command": "sed -n '1,20p' /opt/spikee-skill/skill/04b-goat-attack.md"
+    },
+    "error": false,
+    "contains": null
+  },
+  {
+    "name": "search phase",
+    "tool": "bash",
+    "args": {
+      "command": "grep -n tmux /opt/spikee-skill/skill/04-testing.md"
+    },
+    "error": false,
+    "contains": "tmux"
+  },
+  {
+    "name": "list skill",
+    "tool": "bash",
+    "args": {
+      "command": "ls /opt/spikee-skill/skill"
+    },
+    "error": false,
+    "contains": "SKILL.md"
+  },
+  {
+    "name": "find reference",
+    "tool": "bash",
+    "args": {
+      "command": "find /opt/spikee-skill/skill/spikee-src/docs -maxdepth 1 -name README.md"
+    },
+    "error": false,
+    "contains": "README.md"
+  },
+  {
+    "name": "read bundled reference",
+    "tool": "bash",
+    "args": {
+      "command": "head -n 10 /opt/spikee-skill/skill/spikee-src/docs/README.md"
+    },
+    "error": false,
+    "contains": null
+  },
+  {
+    "name": "inspect installed entrypoint",
+    "tool": "bash",
+    "args": {
+      "command": "head -n 3 /opt/spikee/.venv/bin/spikee"
+    },
+    "error": false,
+    "contains": null
+  },
+  {
+    "name": "run installed tool from PATH",
+    "tool": "bash",
+    "args": {
+      "command": "spikee --version"
+    },
+    "error": false,
+    "contains": "spikee"
+  },
+  {
+    "name": "write workspace file",
+    "tool": "bash",
+    "args": {
+      "command": "mkdir -p .tmp; printf WORKSPACE_OK > .tmp/skill-check.txt; cat .tmp/skill-check.txt"
+    },
+    "error": false,
+    "contains": "WORKSPACE_OK"
+  },
+  {
+    "name": "use private temp",
+    "tool": "bash",
+    "args": {
+      "command": "printf PRIVATE_TEMP_OK > \"$TMPDIR/skill-check.txt\"; cat \"$TMPDIR/skill-check.txt\""
+    },
+    "error": false,
+    "contains": "PRIVATE_TEMP_OK"
+  },
+  {
+    "name": "protected config native",
+    "tool": "read",
+    "args": {
+      "path": "/opt/pi-security/config/permissions.json"
+    },
+    "error": true,
+    "contains": null
+  },
+  {
+    "name": "protected config shell",
+    "tool": "bash",
+    "args": {
+      "command": "cat /opt/pi-security/config/permissions.json"
+    },
+    "error": true,
+    "contains": null
+  },
+  {
+    "name": "protected credentials native",
+    "tool": "read",
+    "args": {
+      "path": "/workspace/.env"
+    },
+    "error": true,
+    "contains": null
+  },
+  {
+    "name": "protected credentials shell",
+    "tool": "bash",
+    "args": {
+      "command": "cat /workspace/.env"
+    },
+    "error": true,
+    "contains": null
+  },
+  {
+    "name": "skill writes stay restricted",
+    "tool": "write",
+    "args": {
+      "path": "/opt/spikee-skill/skill/do-not-create.txt",
+      "content": "MUST_NOT_WRITE"
+    },
+    "error": true,
+    "contains": null
+  },
+  {
+    "name": "symlink out of installed tree",
+    "tool": "bash",
+    "args": {
+      "command": "cat /opt/skill-check-link"
+    },
+    "error": true,
+    "contains": null
+  },
+  {
+    "name": "tmux blocked in inner shell",
+    "tool": "bash",
+    "args": {
+      "command": "tmux -S /workspace/.tmp/skill-inner.sock new-session -d -s skill-inner"
+    },
+    "error": true,
+    "contains": "Operation not permitted"
+  },
+  {
+    "name": "tmux create reviewed",
+    "tool": "bash_escalate",
+    "args": {
+      "command": "tmux -S /workspace/.tmp/skill-check.sock new-session -d -s skill-check",
+      "justification": "Create an inert tmux session for the authorized sandbox test."
+    },
+    "error": false,
+    "contains": null
+  },
+  {
+    "name": "tmux send reviewed",
+    "tool": "bash_escalate",
+    "args": {
+      "command": "tmux -S /workspace/.tmp/skill-check.sock send-keys -t skill-check 'printf TMUX_WORKFLOW_OK' Enter",
+      "justification": "Print an inert marker in the test session."
+    },
+    "error": false,
+    "contains": null
+  },
+  {
+    "name": "tmux inspect reviewed",
+    "tool": "bash_escalate",
+    "args": {
+      "command": "tmux -S /workspace/.tmp/skill-check.sock capture-pane -p -t skill-check",
+      "justification": "Read the test session output."
+    },
+    "error": false,
+    "contains": "TMUX_WORKFLOW_OK"
+  },
+  {
+    "name": "tmux cleanup reviewed",
+    "tool": "bash_escalate",
+    "args": {
+      "command": "tmux -S /workspace/.tmp/skill-check.sock kill-server",
+      "justification": "Stop only the test tmux server."
+    },
+    "error": false,
+    "contains": null
+  },
+  {
+    "name": "reviewed network",
+    "tool": "bash",
+    "args": {
+      "command": "curl -fsS -H 'Authorization: Bearer fixture-key' http://local-model.internal:18187/v1/models/details"
+    },
+    "error": false,
+    "contains": "fixture-model"
+  },
+  {
+    "name": "reviewer denial respected",
+    "tool": "bash_escalate",
+    "args": {
+      "command": "printf DENY_BY_FIXTURE",
+      "justification": "Verify a denied test command is not executed."
+    },
+    "error": true,
+    "contains": null
+  }
+]

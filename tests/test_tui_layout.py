@@ -356,7 +356,7 @@ class TUILayoutTests(unittest.TestCase):
                 self.assertLess(save.region.bottom, size[1] - 1)
                 self.assertNotEqual(cancel.styles.background, cancel.parent.parent.styles.background)
 
-    async def test_approval_help_is_separated_from_subagents(self):
+    async def test_permission_controls_and_subagents_are_in_their_sections(self):
         app = self.app()
         async with app.run_test(size=(120, 40)) as pilot:
             await self.ready(app, pilot)
@@ -368,7 +368,18 @@ class TUILayoutTests(unittest.TestCase):
             subagents = app.screen.query_one('#subagents', Checkbox)
             self.assertIs(approval.parent, help_text.parent)
             self.assertEqual(help_text.region.y, approval.region.bottom)
-            self.assertGreater(subagents.region.y, help_text.region.bottom)
+            self.assertIn(app.screen.query_one('#skills-section', Collapsible), subagents.ancestors)
+            questions = app.screen.query_one('#question-forms', Checkbox)
+            self.assertTrue(questions.value)
+            self.assertIn(app.screen.query_one('#skills-section', Collapsible), questions.ancestors)
+            questions.value = False
+            self.assertFalse(app.screen.collect()[0]['options']['question_forms'])
+            credentials = app.screen.query_one('#protect-credentials', Checkbox)
+            self.assertTrue(credentials.value)
+            self.assertIn(app.screen.query_one('#agent-section', Collapsible), credentials.ancestors)
+            credentials.value = False
+            self.assertFalse(app.screen.collect()[0]['options']['protect_credentials'])
+            self.assertTrue(str(app.screen.query_one('#agent-section', Collapsible).title).startswith('Permissions and sandbox'))
 
     async def test_labels_controls_and_feedback_do_not_create_empty_rows(self):
         from pi_sandbox_factory.sandbox_tui import CreateFromSandbox, Operation

@@ -39,7 +39,7 @@ including when networking is unrestricted.
 
 Developer groups come from
 [V2Fly domain-list-community](https://github.com/v2fly/domain-list-community):
-Python, npm, Rust, GitHub, Stack Exchange and Read the Docs. Broader categories
+Python, npm, Rust, GitHub, Hugging Face, Stack Exchange and Read the Docs. Broader categories
 come from [UT1 Toulouse](https://dsi.ut-capitole.fr/blacklists/), through its
 [public mirror](https://github.com/olbat/ut1-blacklists): news, financial
 information, banking and library resources.
@@ -116,8 +116,8 @@ Pass an options file during creation or as `options` in an `update` settings fil
 Save Brave’s key with the command above to activate it.
 
 Category IDs are `dev-python`, `dev-npmjs`, `dev-rust`, `dev-github`,
-`dev-stackexchange`, `dev-readthedocs`, `ut1-press`, `ut1-financial`, `ut1-bank`
-and `ut1-liste_bu`. For an existing sandbox, retain your manual rules in a file
+`dev-huggingface`, `dev-stackexchange`, `dev-readthedocs`, `ut1-press`,
+`ut1-financial`, `ut1-bank` and `ut1-liste_bu`. For an existing sandbox, retain your manual rules in a file
 and select categories with:
 
 ```sh

@@ -61,7 +61,7 @@ async def capture(size):
                 await app.workers.wait_for_complete()
                 await pilot.pause()
 
-                async def shot(name, screen=None, section=None):
+                async def shot(name, screen=None, section=None, focus=None):
                     if args.only and name not in args.only:
                         return
                     if screen:
@@ -74,6 +74,9 @@ async def capture(size):
                     await pilot.pause()
                     await app.workers.wait_for_complete()
                     await pilot.pause()
+                    if focus:
+                        app.screen.query_one(focus).focus()
+                        await pilot.pause()
                     p = out / f'{name}-{size[0]}x{size[1]}.svg'
                     p.write_text(app.export_screenshot())
                     coverage.append(dict(file=p.name, screen=type(app.screen).__name__, size=size))
@@ -91,10 +94,16 @@ async def capture(size):
                 enabled = copy.deepcopy(draft)
                 enabled['options']['web_access']['enabled'] = True
                 await shot('web-enabled', SettingsForm(enabled), 'WebAccessForm Collapsible')
-                for name, sel in [('web', 'WebAccessForm Collapsible'), ('skills', '#skills-section'), ('network', '#network-section'), ('advanced', 'Collapsible')]:
+                for name, sel in [('permissions', '#agent-section'), ('web', 'WebAccessForm Collapsible'), ('skills', '#skills-section'), ('network', '#network-section'), ('advanced', 'Collapsible')]:
                     if name == 'advanced':
                         continue
                     await shot(name, SettingsForm(copy.deepcopy(draft)), sel)
+                questions_off = copy.deepcopy(draft)
+                questions_off['options']['question_forms'] = False
+                await shot('questions-off', SettingsForm(questions_off), '#skills-section', '#question-forms')
+                credentials_off = copy.deepcopy(draft)
+                credentials_off['options']['protect_credentials'] = False
+                await shot('credentials-unprotected', SettingsForm(credentials_off), '#agent-section', '#protect-credentials')
                 await shot('categories', NetworkForm('demo', 'local-model.internal:8000', c), 'WebsiteGroups Collapsible')
                 await shot('network-edit', NetworkForm('demo', 'local-model.internal:8000', c))
                 await shot('folders', FoldersScreen(record))

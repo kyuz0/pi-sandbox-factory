@@ -126,6 +126,39 @@ def gateway_labels():
     return ['--security-opt=label=disable'] if is_mac() else []
 
 
+def check_model_gateway(config):
+    """Check host-loopback support before starting Linux local-model containers."""
+    if (is_mac() or config.get('engine') != 'podman'
+            or not config.get('local_model_gateway')):
+        return
+    advice = ('Local models on Linux require pasta --map-host-loopback support '
+              '(passt 2024_08_21.1d6142f or newer, or a distro backport). '
+              'Upgrade the passt package, or disable "Connect to models on this host" '
+              'when using OpenRouter or another hosted provider.')
+    # Prefer Podman's selected helper, which may differ from PATH.
+    executable = None
+    try:
+        result = subprocess.run(['podman', 'info', '--format', '{{json .Host.Pasta}}'],
+                                capture_output=True, text=True, timeout=15)
+        if result.returncode == 0:
+            info = json.loads(result.stdout)
+            if isinstance(info, dict):
+                executable = info.get('executable')
+    except (OSError, subprocess.TimeoutExpired, ValueError):
+        pass
+    executable = executable or shutil.which('pasta')
+    if not executable:
+        raise ValueError('pasta was not found. ' + advice)
+    try:
+        result = subprocess.run([executable, '--help'], capture_output=True,
+                                text=True, timeout=5)
+    except (OSError, subprocess.TimeoutExpired) as error:
+        raise ValueError('Could not check pasta at ' + executable + '. ' + advice) from error
+    # Some releases write help to stderr or exit nonzero for --help.
+    if '--map-host-loopback' not in result.stdout + result.stderr:
+        raise ValueError('pasta at ' + executable + ' lacks --map-host-loopback. ' + advice)
+
+
 def model_gateway_args():
     if platform.system() == 'Darwin':
         return ['--env', 'SANDBOX_MODEL_HOST=host.containers.internal']

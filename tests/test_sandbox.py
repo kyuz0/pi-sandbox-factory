@@ -786,6 +786,13 @@ class BootstrapTests(unittest.TestCase):
             self.assertEqual(settings['packages'], ['npm:other-package'])
             self.assertEqual(settings['defaultProvider'], 'kept')
             self.assertEqual(json.loads((root / 'shared/settings.json').read_text()), seed)
+            baseline = settings['extensions']
+            for enabled in (False, False, True):
+                (root / 'sandbox/options.json').write_text(json.dumps({'question_forms': enabled}))
+                self.bootstrap(root)
+                actual = json.loads((root / 'home/.pi/agent/settings.json').read_text())
+                self.assertEqual(actual['extensions'], baseline if enabled else [p for p in baseline if p != str(extension)])
+                self.assertEqual(actual['defaultProvider'], 'kept')
 
     def test_native_goal_setting_preserves_preferences_and_tracks_launcher_choice(self):
         with tempfile.TemporaryDirectory() as tmp:

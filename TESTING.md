@@ -82,6 +82,46 @@ network and command review without permission dialogs. Another scenario selects 
 answer in the question UI and verifies that successive network and command reviews
 receive that answer without asking for it again.
 
+For installed spikee skills and shell selection, use the same disposable setup:
+
+```sh
+.venv/bin/python tests/integration.py --state-dir "$test_root/state" \
+  --name approval-check --port 18187 --skill-workflow
+```
+
+This drives the actual spikee skill in Pi and Pendant with synthetic model replies.
+It checks native and shell reference reads, installed tools, workspace and temporary
+files, protected paths, a symlink outside the installed tree, and tmux creation,
+input, capture and cleanup through reviewed escalation. Inner-shell tmux and denied
+commands must fail. No paid inference or application attacks are used.
+
+## Shell-launched Playwright
+
+Use a disposable spikee-profile sandbox with automatic approval and fixture port
+18187 allowed, then run:
+
+```sh
+.venv/bin/python tests/integration.py --state-dir "$test_root/state" \
+  --name browser-check --port 18187 --browser-shell
+```
+
+Both Pi and the shipped Pendant worker launch `sandbox-browser` and Python
+Playwright through inner Bash and reviewed escalation. With the current profile,
+the inner proxy returns HTTP 407; the escalated commands load the local fixture,
+interact with its form and save screenshots. The model/reviewer replies are synthetic.
+
+## Question forms
+
+Test the enabled default, disabling forms and enabling them again in both installed
+Pi and the actual Pendant worker, without inference or network access:
+
+```sh
+.venv/bin/python tests/question_forms_container.py --image YOUR_FACTORY_DEV_IMAGE
+```
+
+The check uses a disposable container and verifies that permission and automatic
+review extensions remain registered throughout.
+
 ## Hosted model connections
 
 After the unit suites, run the companion and native Pi/Pendant checks:

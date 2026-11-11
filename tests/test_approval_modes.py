@@ -24,3 +24,15 @@ class ApprovalModeTests(unittest.TestCase):
                 self.assertEqual(config['interactionMode'],'interactive' if mode=='assisted' else 'automatic')
                 self.assertEqual(config['maxTokens'],32768)
                 self.assertEqual(config['reasoning'],'low')
+
+    def test_generated_sandbox_config_matches_credential_file_protection_choice(self):
+        source=Path(__file__).resolve().parents[1]/'pi_sandbox_factory/containers/dev'
+        with tempfile.TemporaryDirectory() as tmp:
+            state=Path(tmp)
+            for protected in (True, False):
+                sandbox.prepare_options({
+                    'common':{'path':str(source)},
+                    'options':{'protect_credentials':protected},
+                },state)
+                config=json.loads((state/'runtime-config/sandbox.json').read_text())
+                self.assertIs(config['filesystem']['protectCommonCredentialFiles'],protected)

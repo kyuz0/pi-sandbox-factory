@@ -118,6 +118,19 @@
         "productionresultssa9.blob.core.windows.net"
       ]
     },
+    "dev-huggingface": {
+      "title": "Hugging Face",
+      "description": "Hugging Face models, datasets, downloads and Spaces. Includes user-published content.",
+      "source": "V2Fly domain-list-community",
+      "url": "https://github.com/v2fly/domain-list-community",
+      "revision": "2b7ae3222f79e58e323a6b1c30c6618821068963",
+      "license": "MIT",
+      "domains": [
+        ".hf.co",
+        ".hf.space",
+        ".huggingface.co"
+      ]
+    },
     "dev-stackexchange": {
       "title": "Stack Exchange",
       "description": "Stack Overflow and the Stack Exchange network, including community posts.",

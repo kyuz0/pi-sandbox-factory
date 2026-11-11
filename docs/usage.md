@@ -36,7 +36,34 @@ new sandboxes.
 
 Deleting a sandbox removes its containers, private home and editor state while preserving the workspace. Closing the manager or editor leaves containers running.
 
+## Change approval and sandbox settings
+
+For a sandbox you have already created:
+
+1. Open `pi-sandbox-factory` on the host and select the sandbox.
+2. Open **Settings → Configuration** and expand **Permissions and sandbox**.
+3. Choose **Approval mode**, set **Use inner command sandbox**, and leave
+   **Protect common credential files** enabled unless `.env`, private keys and
+   similar workspace files may be shown to the agent.
+4. Select **Apply and recreate**, then reopen Pi or Pendant and resume your saved chat.
+
+Applying these settings stops running commands and tmux sessions. Workspace files,
+private configuration and saved conversations are preserved. Finish active work
+before applying the change.
+
+These settings are managed by Factory; Pi has no slash command to switch them.
+`/reload` does not apply a different Factory approval mode or enable/disable the
+inner sandbox. When **Protect common credential files** is disabled, the agent
+can read and write those files like other workspace files. Changing defaults on the manager's home screen affects future
+sandboxes, not existing ones.
+
+See [approval modes and shell behavior](approvals.md#configuration-and-updates).
+The outer container and its network policy still apply when the inner sandbox is off.
+
 ## Additional skills
+
+**Skills and features** also contains **Enable optional subagents**, alongside
+question forms, conversation recall, browser tools, goals and scheduled prompts.
 
 In **Skills and features**, enter a Git repository URL and the relative folder
 containing the skill’s `SKILL.md`. Any supported HTTPS or SSH Git server works.
@@ -118,7 +145,8 @@ before the command for a separate inventory. TUI defaults live in
 ### Package downloads and website categories
 
 In **Configuration → Network → Website categories**, select **Python** for PyPI,
-**npm** for JavaScript packages or **GitHub** for repositories and release downloads.
+**npm** for JavaScript packages, **GitHub** for repositories and release downloads,
+or **Hugging Face** for models and datasets.
 For an existing sandbox, use **Settings → Network → Website categories**.
 [Web access](web-access.md) describes the category sources and automatic updates.
 

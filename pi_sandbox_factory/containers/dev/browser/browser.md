@@ -22,7 +22,8 @@ network configuration and lifecycle are managed correctly.
 When the user wants to see or interact with this browser, call `browser_viewer`
 and share its link. The link opens the session's tab list; each tab opens the live
 DevTools screencast. When a manual action is needed, include the link and the action
-in `ask_user_question`, wait for the reply, then continue with the same browser tool.
+in `ask_user_question` if available, or ask in chat. Wait for the reply, then
+continue with the same browser tool.
 Reload the tab list to see new tabs. Keep viewer links private: they grant control
 of this browser and are recorded in the conversation. If a link stops loading,
 reopen the sandbox from the launcher and request a fresh link.

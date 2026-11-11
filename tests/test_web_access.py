@@ -154,6 +154,10 @@ class WebAccessTests(unittest.TestCase):
     def test_category_selection_defaults_and_validation(self):
         self.assertFalse(options()['web_access']['enabled'])
         self.assertEqual(options()['website_groups'], [])
+        self.assertEqual(options({'website_groups': ['dev-huggingface']})['website_groups'],
+                         ['dev-huggingface'])
+        self.assertEqual(groups.catalog()['dev-huggingface']['domains'],
+                         ['.hf.co', '.hf.space', '.huggingface.co'])
         with self.assertRaises(ValueError):
             options({'website_groups': ['unknown']})
         with self.assertRaises(ValueError):
