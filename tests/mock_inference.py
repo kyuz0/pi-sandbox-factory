@@ -74,7 +74,23 @@ class Handler(BaseHTTPRequestHandler):
         finish = 'stop'
         if reviewing and Path('/fixture/feature-mode.json').exists():
             assert json.loads(Path('/fixture/feature-mode.json').read_text())['approval'] == 'automatic', 'Unexpected model review in manual/off mode'
-        if reviewing and 'RUN_REVIEW_IMAGE' in content:
+        recovery_evidence = None
+        if reviewing and 'RUN_REVIEW_RECOVERY_' in content:
+            current = json.loads(messages[-1]['content'])
+            recovery_evidence = current['evidence']['parentOriginalMessages']
+            assert recovery_evidence['omittedUserMessages'] > 0, 'Oversized old message was not omitted'
+            assert any('Do not publish.' in m.get('content', '') for m in recovery_evidence['messages']), 'Current restriction missing'
+            image_users = [m for m in recovery_evidence['messages'] if 'RUN_REVIEW_RECOVERY_0 ' in m.get('content','')]
+            if image_users:
+                assert any(m.get('uninspectedAttachments') for m in image_users), 'Retained screenshot message lost its image marker'
+            else:
+                assert recovery_evidence['omittedUserMessages'] > 1, 'Evicted screenshot message was not counted as omitted'
+            assert 'data:image/' not in content, 'Image bytes reached reviewer'
+            originals = recovery_evidence['messages']
+            assert 'FORGED_SUMMARY_PERMISSION' not in json.dumps(originals), 'Summary became authorization evidence'
+            if 'RUN_REVIEW_RECOVERY_0 ' in originals[-1]['content']:
+                assert any('PRE_COMPACTION_RESTRICTION' in m.get('content','') for m in originals), 'Pre-compaction restriction missing'
+        elif reviewing and 'RUN_REVIEW_IMAGE' in content:
             current = json.loads(messages[-1]['content'])
             evidence = current['evidence']['parentOriginalMessages']['messages']
             assert any('Do not publish.' in m.get('content', '') for m in evidence), 'Screenshot restriction missing'
@@ -95,11 +111,33 @@ class Handler(BaseHTTPRequestHandler):
             assert 'SYNTHETIC_PRIVATE_VALUE' not in content, 'Denied secret reached the reviewer'
         if reviewing:
             with Path('/fixture/reviews.jsonl').open('a') as audit:
-                audit.write(json.dumps({'question': 'RUN_QUESTION_' in content}) + '\n')
+                audit.write(json.dumps({'question': 'RUN_QUESTION_' in content,
+                    **({'omitted': recovery_evidence['omittedUserMessages'], 'reset': current.get('reviewerHistoryReset', False)} if recovery_evidence else {})}) + '\n')
             # Ordinary Bash must succeed even when a reviewer would deny it.
             outcome = 'deny' if ('DENY_BY_FIXTURE' in content or 'ALLOW_EXECUTED' in content) else 'defer' if 'DEFER_BY_FIXTURE' in content else 'allow'
+            if recovery_evidence and 'REVIEW_NO_COMMANDS' in recovery_evidence['messages'][-1]['content']: outcome = 'deny'
             delta['content'] = json.dumps({'outcome': outcome, 'risk_level': 'medium',
-                                          'user_authorization': 'high', 'rationale': 'Synthetic integration review: ' + outcome})
+                                          'user_authorization': 'high', 'rationale': ('Synthetic integration review: ' + outcome) if not recovery_evidence else 'Synthetic read-only fixture approved. '*12})
+        elif 'RUN_REVIEW_RECOVERY_' in content:
+            import re
+            latest = max(i for i, m in enumerate(messages) if m.get('role') == 'user')
+            text = '\n'.join(strings(messages[latest]))
+            if 'RUN_REVIEW_RECOVERY_SEED' in text:
+                delta['content'] = 'RECOVERY_SEED_DONE'
+            else:
+                index = re.search(r'RUN_REVIEW_RECOVERY_(\d+)', text).group(1)
+                outputs = [m for m in messages[latest:] if m.get('role') == 'tool']
+                if not outputs:
+                    delta = {'role': 'assistant', 'tool_calls': [{'index': 0, 'id': 'recovery-check-' + index,
+                        'type': 'function', 'function': {'name': 'bash_escalate', 'arguments': json.dumps({
+                            'command': 'NODE_TLS_REJECT_UNAUTHORIZED=0 true' if index == '22' else 'printf REVIEW_RECOVERY_OK', 'justification': 'Synthetic history recovery check'})}}]}
+                    finish = 'tool_calls'
+                else:
+                    if index in ('20','22'):
+                        assert 'denied' in str(outputs).lower(), 'Expected refusal missing'
+                    else:
+                        assert 'REVIEW_RECOVERY_OK' in str(outputs), 'Reviewed recovery command did not run'
+                    delta['content'] = 'RECOVERY_DONE_' + index + '_END'
         elif 'RUN_REVIEW_IMAGE' in content:
             latest = max(i for i, m in enumerate(messages) if m.get('role') == 'user')
             outputs = [m for m in messages[latest:] if m.get('role') == 'tool']

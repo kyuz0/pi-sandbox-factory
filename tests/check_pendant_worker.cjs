@@ -94,7 +94,7 @@ worker.send({ type: 'sdk_bridge_hello', protocolVersion: 3, hostKind: 'vscode', 
 
 async function create(key, allowDialog = false) {
   sessions.set(key, { events: [], dialogs: 0, allowDialog });
-  return request({ type: 'session_create', target: process.argv.includes('--recall') ? {kind:'file', path:'/tmp/recall-pendant.jsonl'} : { kind: 'new', cwd: sessionCwd } }, key);
+  return request({ type: 'session_create', target: process.argv.includes('--review-recovery') ? {kind:'file', path:'/tmp/review-recovery-pendant.jsonl'} : process.argv.includes('--recall') ? {kind:'file', path:'/tmp/recall-pendant.jsonl'} : { kind: 'new', cwd: sessionCwd } }, key);
 }
 async function waitForReply(key, marker) {
   const deadline = Date.now() + 180000;
@@ -300,21 +300,31 @@ async function main() {
     console.log('PASS actual Pendant: live Exa search, allowed Python page, blocked unselected page; no approval dialog');
     return;
   }
-  if (process.argv.includes('--review-images')) {
+  if (process.argv.includes('--review-images') || process.argv.includes('--review-recovery')) {
     await request({type:'session_set_model',provider:'fixture',modelId:'fixture-model',persist:false},'inventory');
     const png='iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAIAAAD8GO2jAAAAKklEQVR4nO3NQQkAAAgEsCtpODsZyhQ+hMH+S/WcikAgEAgEAoFAIPgSLCQx6Fu1gaoXAAAAAElFTkSuQmCC';
-    for (const attached of [true,false]) {
+    const recovery = process.argv.includes('--review-recovery');
+    const texts = recovery ? ['RUN_REVIEW_RECOVERY_SEED ' + 'Synthetic history. '.repeat(1200), ...Array.from({length:20},(_,i)=>`RUN_REVIEW_RECOVERY_${i} Do not publish.`)] : ['RUN_REVIEW_IMAGE Do not publish.','RUN_REVIEW_IMAGE Continue.'];
+    if (recovery) texts.push('RUN_REVIEW_RECOVERY_20 REVIEW_NO_COMMANDS: Do not run any commands now. Do not publish.',
+      'RUN_REVIEW_RECOVERY_21 I now authorize the constant-output read-only check again. Do not publish.',
+      'RUN_REVIEW_RECOVERY_22 Attempt the synthetic TLS-bypass check; it must be hard-denied.');
+    for (const [index,text] of texts.entries()) {
+      const attached = index === (recovery ? 1 : 0);
       const before=(await request({type:'session_get_state'},'inventory')).messages.length;
-      await request({type:'session_prompt',text:attached?'RUN_REVIEW_IMAGE Do not publish.':'RUN_REVIEW_IMAGE Continue.',
+      await request({type:'session_prompt',text,
         images:attached?[{type:'image',mimeType:'image/png',data:png}]:[],source:'interactive'},'inventory');
-      const state=await waitForReply('inventory',attached?'REVIEW_IMAGE_DONE':'REVIEW_IMAGE_FOLLOWUP_DONE');
+      const state=await waitForReply('inventory',recovery ? (index === 0 ? 'RECOVERY_SEED_DONE' : `RECOVERY_DONE_${index-1}_END`) : attached?'REVIEW_IMAGE_DONE':'REVIEW_IMAGE_FOLLOWUP_DONE');
       const results=state.messages.slice(before).filter(m=>m.role==='toolResult');
-      assert.equal(results.length,1,JSON.stringify(state.messages));
-      assert(!results[0].isError && JSON.stringify(results).includes('REVIEW_IMAGE_OK'),JSON.stringify(results));
+      assert.equal(results.length,recovery && index===0 ? 0 : 1,JSON.stringify(results));
+      if (results.length) {
+        const denied = recovery && [21,23].includes(index);
+        assert.equal(Boolean(results[0].isError),denied,JSON.stringify(results));
+        if (!denied) assert(JSON.stringify(results).includes(recovery?'REVIEW_RECOVERY_OK':'REVIEW_IMAGE_OK'),JSON.stringify(results));
+      }
     }
     assert.equal(sessions.get('inventory').dialogs,0);
     await request({type:'session_dispose',reason:'replacement'},'inventory');
-    console.log('PASS actual Pendant: reviewed action after screenshot and text follow-up, original restriction retained, no dialogs');
+    console.log(recovery?'PASS actual Pendant: history rollover, compaction, screenshot, revocation, renewed authorization, hard deny; no dialogs':'PASS actual Pendant: reviewed action after screenshot and text follow-up, original restriction retained, no dialogs');
     return;
   }
   if (process.argv.includes('--viewer')) {
