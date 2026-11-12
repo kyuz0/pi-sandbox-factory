@@ -6,6 +6,17 @@ from pi_sandbox_factory import sandbox
 from pi_sandbox_factory.sandbox_options import options, permissions, guidance
 
 class ApprovalModeTests(unittest.TestCase):
+    def test_selected_browser_runs_without_review_but_downloads_keep_their_policy(self):
+        template = {'permission': {'*': 'ask', 'browser_download': 'ask'}}
+        for mode in ('automatic', 'assisted', 'manual', 'off'):
+            with self.subTest(mode=mode):
+                result = permissions(template, {'approval': mode, 'browser': True})
+                for name in ('browser', 'browser_login', 'browser_evidence'):
+                    self.assertEqual(result['permission'][name], 'allow')
+                self.assertEqual(result['permission']['browser_download'], 'ask')
+        self.assertNotIn('browser', permissions(template, {'browser': False})['permission'])
+        self.assertNotIn('browser', template['permission'])
+
     def test_default_is_automatic_and_assisted_is_explicit(self):
         self.assertEqual(options()['approval'], 'automatic')
         self.assertEqual(options({'approval':'assisted'})['approval'], 'assisted')

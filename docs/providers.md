@@ -36,7 +36,11 @@ that folder and ref. The same option is available in **Packages**.
 In **Configuration → Model services and providers**, enable the package and fill in
 its non-secret settings. Any declared development-container destinations are added to the form’s
 allowlist. Inference routes use the separate companion. Apply rebuilds the sandbox; it preserves the workspace and private home.
-Then use **Settings → Models** to check, preview, refresh or enter a credential.
+During creation, enter the provider credential in its masked field, or leave it
+empty to configure later. Providers with isolated inference store it in the
+separate companion before discovery; the key is excluded from sandbox settings
+and workstation defaults. A missing credential does not prevent opening the editor.
+Use **Settings → Models** to check, preview, refresh or replace a credential.
 
 For the CLI, put settings in a JSON file:
 

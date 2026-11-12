@@ -21,6 +21,8 @@
       "/home/node/.pi/agent/settings.json": "deny",
       "/home/node/.pi/agent/auth.json": "deny",
       "/home/node/.pi/agent/communications/*": "deny",
+      "/home/node/.betterwright/vault": "deny",
+      "/home/node/.betterwright/vault/*": "deny",
       "*.pem": "deny", "*.key": "deny",
       "*.env": "deny", "*.env.*": "deny", "*.env.example": "allow"
     }

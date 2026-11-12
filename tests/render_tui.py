@@ -19,7 +19,7 @@ root = Path(__file__).resolve().parents[1]
 sys.path[:0] = [str(root), str(root / 'tests')]
 from test_tui import FakeService
 from test_hosted_models_ui import ModelService
-from pi_sandbox_factory import sandbox
+from pi_sandbox_factory import sandbox, registry
 from pi_sandbox_factory.sandbox_tui import Cockpit, options, preset, DEFAULT_SETTINGS, NewSandbox, SettingsForm, NetworkForm, FoldersScreen, SettingsMenu, MoreActions, ModelsScreen, PackagesScreen, AdvisorsScreen, SSHScreen, CreateFromSandbox, SearchProviderDialog, Confirm, FolderPicker, InstallPackage, CopyWebAccess, Operation, web_access
 from textual.widgets import Collapsible, Input, Static, OptionList, Select
 from pi_sandbox_factory.tui_widgets import Checkbox
@@ -90,6 +90,40 @@ async def capture(size):
                 await shot('new', NewSandbox())
                 draft = preset('base', copy.deepcopy(DEFAULT_SETTINGS))
                 draft.update(name='demo', workspace=str(workspace), working_directory='.', extra_folders=[])
+                if not args.only or any(name.startswith('provider-credential') for name in args.only):
+                    info = {'description': 'Company models', 'settings': {
+                        'endpoint': {'type': 'text', 'label': 'API endpoint', 'default': 'https://models.example.com/api'},
+                        'key': {'type': 'secret', 'label': 'Company API key'}},
+                        'inference': {'origin': 'https://models.example.com', 'auth': {'type': 'bearer'}}}
+                    resolve = registry.resolve
+                    with patch.object(registry, 'choices', side_effect=lambda kind: {'base': 'Generic tools'} if kind == 'profile' else {'company': 'Company models'}), \
+                         patch.object(registry, 'manifest', return_value=info), \
+                         patch.object(registry, 'resolve', side_effect=lambda kind, name: root if kind == 'provider' else resolve(kind, name)):
+                        await app.push_screen(SettingsForm(copy.deepcopy(draft)))
+                        form = app.screen
+                        section = form.query_one('#hosted-section', Collapsible)
+                        section.collapsed = False
+                        await pilot.pause()
+                        section.scroll_visible(top=True, animate=False)
+                        form.query_one('#source-company', Checkbox).focus()
+                        await shot('provider-credential-disabled')
+                        form.query_one('#source-company', Checkbox).value = True
+                        await pilot.pause()
+                        field = form.query_one('#source-company-key', Input)
+                        field.focus(); field.scroll_visible(animate=False)
+                        await shot('provider-credential-empty')
+                        field.value = 'synthetic-credential-for-visual-review'
+                        await pilot.pause()
+                        field.cursor_position = len(field.value)
+                        await shot('provider-credential-populated')
+                        field.value = 'synthetic\0credential'
+                        await pilot.pause()
+                        try:
+                            form.collect()
+                        except ValueError:
+                            pass
+                        await shot('provider-credential-error')
+                        await app.pop_screen()
                 await shot('review', SettingsForm(copy.deepcopy(draft)))
                 enabled = copy.deepcopy(draft)
                 enabled['options']['web_access']['enabled'] = True

@@ -300,6 +300,23 @@ async function main() {
     console.log('PASS actual Pendant: live Exa search, allowed Python page, blocked unselected page; no approval dialog');
     return;
   }
+  if (process.argv.includes('--review-images')) {
+    await request({type:'session_set_model',provider:'fixture',modelId:'fixture-model',persist:false},'inventory');
+    const png='iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAIAAAD8GO2jAAAAKklEQVR4nO3NQQkAAAgEsCtpODsZyhQ+hMH+S/WcikAgEAgEAoFAIPgSLCQx6Fu1gaoXAAAAAElFTkSuQmCC';
+    for (const attached of [true,false]) {
+      const before=(await request({type:'session_get_state'},'inventory')).messages.length;
+      await request({type:'session_prompt',text:attached?'RUN_REVIEW_IMAGE Do not publish.':'RUN_REVIEW_IMAGE Continue.',
+        images:attached?[{type:'image',mimeType:'image/png',data:png}]:[],source:'interactive'},'inventory');
+      const state=await waitForReply('inventory',attached?'REVIEW_IMAGE_DONE':'REVIEW_IMAGE_FOLLOWUP_DONE');
+      const results=state.messages.slice(before).filter(m=>m.role==='toolResult');
+      assert.equal(results.length,1,JSON.stringify(state.messages));
+      assert(!results[0].isError && JSON.stringify(results).includes('REVIEW_IMAGE_OK'),JSON.stringify(results));
+    }
+    assert.equal(sessions.get('inventory').dialogs,0);
+    await request({type:'session_dispose',reason:'replacement'},'inventory');
+    console.log('PASS actual Pendant: reviewed action after screenshot and text follow-up, original restriction retained, no dialogs');
+    return;
+  }
   if (process.argv.includes('--viewer')) {
     assert(inventory.tools.some(t => t.name === 'browser_viewer'), 'Viewer tool missing');
     await request({type:'session_dispose',reason:'replacement'}, 'inventory');

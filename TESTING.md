@@ -186,6 +186,11 @@ The integration test checks both clients’ browser tools, injected guidance,
 handoff and concurrent sessions. The lifecycle test checks viewer repair,
 authentication and cleanup across container restarts.
 
+Use `--review-images` instead of `--browser-viewer` to check reviewed commands
+after an attached synthetic screenshot and a text follow-up in Pi and Pendant.
+The fixture checks that the reviewer retains the original restriction and image
+metadata without receiving binary image data.
+
 For the rendered check, ask the agent to open a synthetic form and show its browser.
 Open the returned link, select the tab, type and click in the screencast, then tell
 the agent to continue. Confirm the browser tool reads the change. Reopen the sandbox

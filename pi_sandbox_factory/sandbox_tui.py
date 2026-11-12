@@ -256,6 +256,8 @@ class Service:
             log('Slack credentials saved in the sandbox.')
 
     def setup(self, name, draft, key, log):
+        for provider, credential in draft.get('_provider_keys', {}).items():
+            self.provider(name, provider, 'refresh', credential, log)
         self.save_communication_keys(name, draft.get('_communication_keys'), log)
         if key:
             result = subprocess.run(self.command('web-key', name, '--keys-stdin'), input=json.dumps(key), text=True, capture_output=True)
@@ -1673,13 +1675,22 @@ class SettingsForm(Screen):
                     if name=='local':continue
                     info=saved_rows[name]['manifest'] if name in saved_rows else registry.manifest('provider',registry.resolve('provider',name))
                     self.provider_forms[name]=info
-                    yield Checkbox(label,value=name in configured,id='source-'+name)
+                    with Vertical(classes='setting'):
+                        yield Checkbox(label,value=name in configured,id='source-'+name)
+                        if info.get('network'):
+                            yield Static('Required network access: '+', '.join(info['network']), classes='setting-help checkbox-help')
                     for key,spec in info.get('settings',{}).items():
-                        if spec['type']=='secret':continue
-                        yield Label(spec.get('label',key))
-                        yield Input(configured.get(name,{}).get(key,spec.get('default','')),id='source-'+name+'-'+key)
-                    if info.get('network'):yield Static('Required network access: '+', '.join(info['network']))
-                yield Static('Install additional providers from the home screen’s Packages button. Enter credentials after creation in Settings → Models.')
+                        secret = spec['type']=='secret'
+                        if secret and (self.editing or self.defaults_mode):continue
+                        with Vertical(classes='setting provider-setting' + (' -provider-disabled' if name not in configured else '')):
+                            yield Label(spec.get('label',key))
+                            yield Input('' if secret else configured.get(name,{}).get(key,spec.get('default','')),
+                                        password=secret, disabled=name not in configured, id='source-'+name+'-'+key)
+                            if secret:
+                                yield Static(('Stored in the separate inference container. ' if info.get('inference') else '')
+                                             + 'Optional; configure later in Settings → Models.', classes='setting-help')
+                                yield Feedback('', id='source-'+name+'-'+key+'-error', markup=False)
+                yield Static('Install additional providers from the home screen’s Packages button.', classes='setting-help')
             if not self.editing and not self.defaults_mode:
                 with Collapsible(title='Folders · starting folder and host mounts', collapsed=not bool(value.get('extra_folders')), id='folders-section'):
                     yield FolderFields(value, self.app.state_root)
@@ -1790,6 +1801,27 @@ class SettingsForm(Screen):
     def local_models_changed(self):
         self.query_one('#model-ports', Input).disabled = not self.query_one('#local-models', Checkbox).value
 
+    @on(Checkbox.Changed)
+    def provider_selected(self, event):
+        for name, info in self.provider_forms.items():
+            if event.checkbox.id == 'source-' + name:
+                for key in info.get('settings', {}):
+                    for field in self.query('#source-' + name + '-' + key):
+                        field.disabled = not event.value
+                        field.parent.set_class(not event.value, '-provider-disabled')
+                        if not event.value:
+                            field.remove_class('-invalid-credential')
+                            for message in field.parent.query(Feedback):
+                                message.update('')
+                break
+
+    @on(Input.Changed)
+    def provider_credential_changed(self, event):
+        if event.input.parent.has_class('provider-setting'):
+            event.input.remove_class('-invalid-credential')
+            for message in event.input.parent.query(Feedback):
+                message.update('')
+
     def approval_description(self):
         mode = self.query_one('#approval', Select).value
         inner = self.query_one('#inner-sandbox', Checkbox).value
@@ -1822,14 +1854,27 @@ class SettingsForm(Screen):
         def check(id): return self.query_one('#' + id, Checkbox).value
         draft['local_model_ports'] = inp('model-ports') if check('local-models') else None
         draft['model_providers'] = {'local':{}} if check('local-models') else {}
+        draft.pop('_provider_keys', None)
         provider_rules=[]
         if not self.editing and not self.defaults_mode:
             draft['_hosted_changes'] = dict(self.query_one(HostedProviders).changes)
+            draft['_provider_keys'] = {}
         for name,info in self.provider_forms.items():
             if check('source-'+name):
                 settings={key:inp('source-'+name+'-'+key) for key,spec in info.get('settings',{}).items() if spec['type']!='secret'}
                 draft['model_providers'][name]=settings
                 provider_rules+=model_providers.required_rules([{'manifest':info,'settings':settings}])
+                if not self.editing and not self.defaults_mode:
+                    for key,spec in info.get('settings',{}).items():
+                        if spec['type']=='secret' and (credential := inp('source-'+name+'-'+key)):
+                            if any(c in credential for c in '\r\n\0'):
+                                field = self.query_one('#source-'+name+'-'+key, Input)
+                                field.add_class('-invalid-credential')
+                                field.parent.query_one(Feedback).update('Enter a single-line credential.')
+                                field.focus()
+                                field.parent.scroll_visible(animate=False)
+                                raise ValueError(spec.get('label', key) + ': enter a single-line credential.')
+                            draft['_provider_keys'][name] = credential
         if draft['local_model_ports']:
             sandbox.local_model_ports(draft['local_model_ports'])
         if not self.editing and not self.defaults_mode:
@@ -1914,6 +1959,7 @@ class SettingsForm(Screen):
                     path.write_text(self.query_one('#allowlist', TextArea).text)
                 self.notify('Allowlist ' + ('imported' if action == 'import-rules' else 'exported'))
             elif action == 'apply':
+                self.query_one('#form-error', Static).update('')
                 draft, key = self.collect()
                 if self.defaults_mode:
                     saved = {k: draft[k] for k in DEFAULT_SETTINGS if k in draft}
@@ -1937,7 +1983,8 @@ class SettingsForm(Screen):
                 else:
                     self.submit(draft, key)
         except (OSError, ValueError) as error:
-            self.query_one('#form-error', Static).update(str(error))
+            if not any(message.display for message in self.query('.provider-setting Feedback')):
+                self.query_one('#form-error', Static).update(str(error))
 
     def submit(self, draft, key):
         service = self.app.service
@@ -2000,6 +2047,9 @@ class Cockpit(App):
     .package-actions { height: 1; margin-top: 1; }
     #package-error { color: $error; height: auto; }
     .setting { height: auto; margin-bottom: 1; }
+    .provider-setting { margin: 0 0 1 2; }
+    .provider-setting.-provider-disabled { opacity: 50%; }
+    .provider-setting Input.-invalid-credential { border: tall $error; }
     .setting > Checkbox, .setting > Input, .setting > Select, .setting > TextArea { margin-bottom: 0; }
     .setting > Button, .setting > .buttons, .setting > .path-row { margin: 0; }
     AdvisorChoices .setting > .copy-login { margin: 1 0 0 2; }

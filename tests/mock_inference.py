@@ -74,7 +74,13 @@ class Handler(BaseHTTPRequestHandler):
         finish = 'stop'
         if reviewing and Path('/fixture/feature-mode.json').exists():
             assert json.loads(Path('/fixture/feature-mode.json').read_text())['approval'] == 'automatic', 'Unexpected model review in manual/off mode'
-        if reviewing and 'RUN_APPROVAL_ANSWER' in content:
+        if reviewing and 'RUN_REVIEW_IMAGE' in content:
+            current = json.loads(messages[-1]['content'])
+            evidence = current['evidence']['parentOriginalMessages']['messages']
+            assert any('Do not publish.' in m.get('content', '') for m in evidence), 'Screenshot restriction missing'
+            assert any(m.get('uninspectedAttachments') for m in evidence), 'Screenshot marker missing'
+            assert 'data:image/' not in content, 'Image bytes reached the text reviewer'
+        elif reviewing and 'RUN_APPROVAL_ANSWER' in content:
             current = json.loads(messages[-1]['content'])
             evidence = current['evidence']['parentOriginalMessages']['messages']
             answers = [m for m in evidence if m.get('source') == 'trusted-question-tool']
@@ -94,6 +100,17 @@ class Handler(BaseHTTPRequestHandler):
             outcome = 'deny' if ('DENY_BY_FIXTURE' in content or 'ALLOW_EXECUTED' in content) else 'defer' if 'DEFER_BY_FIXTURE' in content else 'allow'
             delta['content'] = json.dumps({'outcome': outcome, 'risk_level': 'medium',
                                           'user_authorization': 'high', 'rationale': 'Synthetic integration review: ' + outcome})
+        elif 'RUN_REVIEW_IMAGE' in content:
+            latest = max(i for i, m in enumerate(messages) if m.get('role') == 'user')
+            outputs = [m for m in messages[latest:] if m.get('role') == 'tool']
+            if not outputs:
+                delta = {'role': 'assistant', 'tool_calls': [{'index': 0, 'id': 'image-review-check',
+                    'type': 'function', 'function': {'name': 'bash_escalate', 'arguments': json.dumps({
+                        'command': 'printf REVIEW_IMAGE_OK', 'justification': 'Synthetic read-only screenshot approval check'})}}]}
+                finish = 'tool_calls'
+            else:
+                assert 'REVIEW_IMAGE_OK' in str(outputs), 'Reviewed command did not run'
+                delta['content'] = 'REVIEW_IMAGE_FOLLOWUP_DONE' if 'Continue.' in str(messages[latest]) else 'REVIEW_IMAGE_DONE'
         elif 'RUN_SKILL_WORKFLOW' in content:
             assert 'Use bash_escalate for tmux' in content, 'Missing shell guidance'
             assert 'Read installed skill instructions' in content, 'Missing skill guidance'

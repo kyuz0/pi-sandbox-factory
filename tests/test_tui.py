@@ -607,6 +607,60 @@ class TUITests(unittest.TestCase):
                 self.assertIn('models.example.com:443',draft['allowlist'])
 
 
+    async def test_creation_provider_credentials_are_masked_and_separate_from_settings(self):
+        from pi_sandbox_factory import registry
+        from pi_sandbox_factory.sandbox_tui import preset
+        info = {'description': 'Company models', 'settings': {'key': {'type': 'secret', 'label': 'Company API key'}},
+                'inference': {'origin': 'https://models.example.com', 'auth': {'type': 'bearer'}}}
+        resolve = registry.resolve
+        for size in ((80, 24), (120, 40), (220, 50)):
+            app = Cockpit(self.root, FakeService([]))
+            with patch.object(registry, 'choices', side_effect=lambda kind: {'base': 'Generic tools'} if kind == 'profile' else {'company': 'Company models'}), \
+                 patch.object(registry, 'manifest', return_value=info), \
+                 patch.object(registry, 'resolve', side_effect=lambda kind, name: self.root if kind == 'provider' else resolve(kind, name)):
+                async with app.run_test(size=size) as pilot:
+                    await self.ready(app, pilot)
+                    draft = preset('base', copy.deepcopy(DEFAULT_SETTINGS))
+                    draft.update(name='new-project', workspace=str(self.root), model_providers={})
+                    await app.push_screen(SettingsForm(draft))
+                    await pilot.pause()
+                    form = app.screen
+                    field = form.query_one('#source-company-key', Input)
+                    self.assertTrue(field.password)
+                    self.assertTrue(field.disabled)
+                    form.query_one('#source-company', Checkbox).value = True
+                    await pilot.pause()
+                    self.assertFalse(field.disabled)
+                    field.value = 'synthetic-secret'
+                    field.focus(); field.scroll_visible(animate=False)
+                    await pilot.pause()
+                    with patch('pi_sandbox_factory.sandbox.choose_engine', return_value='podman'):
+                        selected, _ = form.collect()
+                    self.assertEqual(selected['_provider_keys'], {'company': 'synthetic-secret'})
+                    self.assertNotIn('synthetic-secret', json.dumps(selected['model_providers']))
+                    self.assertNotIn('synthetic-secret', json.dumps(selected['options']))
+                    field.value = 'synthetic\0secret'
+                    await pilot.pause()
+                    with self.assertRaisesRegex(ValueError, 'single-line'):
+                        form.collect()
+                    await pilot.pause()
+                    self.assertIs(app.focused, field)
+                    self.assertTrue(form.query_one('#source-company-key-error').display)
+                    self.assertLessEqual(form.query_one('#source-company-key-error').region.bottom,
+                                         form.query_one('.wizard-actions').region.y)
+                    form.query_one('#source-company', Checkbox).value = False
+                    await pilot.pause()
+                    self.assertTrue(field.disabled)
+                    self.assertFalse(form.query_one('#source-company-key-error').display)
+                    with patch('pi_sandbox_factory.sandbox.choose_engine', return_value='podman'):
+                        selected, _ = form.collect()
+                    self.assertEqual(selected['_provider_keys'], {})
+                    await app.pop_screen()
+                    await app.push_screen(SettingsForm(draft, defaults=True))
+                    await pilot.pause()
+                    self.assertFalse(app.screen.query('#source-company-key'))
+
+
 class WebAccessUITests(unittest.TestCase):
     setUpClass = classmethod(TUITests.setUpClass.__func__)
     tearDownClass = classmethod(TUITests.tearDownClass.__func__)

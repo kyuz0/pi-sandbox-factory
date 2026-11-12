@@ -116,6 +116,12 @@ clear the other margins. Verify the rendered gap, not just the stylesheet.
 
 ## Changes and docs
 
+Production changes must land on `main` after testing, both here and in every
+dependency repository changed for Factory. Temporary branches are allowed, but
+publishing Factory with production work left only on a dependency branch is
+forbidden. Pinned Git dependencies must be reachable from their repository's
+`main` branch; the release checks enforce this gate.
+
 During pre-release development, use the current configuration format and defaults.
 Do not add migrations or legacy fallbacks for disposable local test sandboxes.
 

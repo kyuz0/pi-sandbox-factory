@@ -135,11 +135,15 @@ def configure(config, action="refresh", provider=None, secret=None):
         request = {"id": row["name"], "action": action}
         route = row["manifest"].get("inference")
         if route:
+            from . import inference
+            state = Path(config['state_path'])
             if secret is not None:
-                from . import inference
-                inference.credentials(config, Path(config['state_path']), {
+                inference.credentials(config, state, {
                     'id':row['name'], 'origin':route['origin'], 'auth':route['auth']['type'],
                     'credentials':{'key':secret}})
+            elif row['name'] not in inference.credentials(config, state, {'status': True})['configured']:
+                print(row['name'] + ': needs-auth — Enter the provider credential in Settings → Models.')
+                continue
         elif secret is not None:
             request["secret"] = secret
         result = sandbox.run(

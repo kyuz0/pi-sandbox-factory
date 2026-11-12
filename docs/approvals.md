@@ -18,6 +18,9 @@ The reviewer makes one model request per approval and has no tools. It judges th
 proposed action against the user’s instructions; earlier approvals do not authorize
 different actions.
 
+Enabling browser support allows native `browser` calls without per-action review.
+The outer network allowlist still applies, and downloads keep their separate approval.
+
 ## Choosing a shell
 
 | Task | Tool |
@@ -51,12 +54,13 @@ controller ignores appended compaction summaries and display metadata. New origi
 instructions or edits still invalidate an in-flight decision. Parallel reviews use separate copies; branch, model and configuration
 changes invalidate reuse.
 
-Context is bounded: up to 8 KiB of whole user messages and 2 KiB of nearby
-assistant replies, within an estimated 8,192-token reviewer input budget.
-Omissions are reported to the reviewer. When history fills, it is rebuilt from
-original instructions; if those cannot be reconstructed intact, automatic
-approval is withheld. Reviewer history is held in memory and resets on Pi
-restart.
+Original user text and nearby assistant context share an estimated 32,768-token
+reviewer input budget. Screenshot messages retain their text; images are marked
+as uninspected rather than sent to the text-only reviewer. Missing visual facts
+can require deferral when they matter to the action. Omissions are reported.
+When history fills, it is rebuilt from original instructions; if those cannot
+be reconstructed intact, automatic approval is withheld. Reviewer history is
+held in memory and resets on Pi restart.
 
 A review can produce up to 32,768 output tokens and has a ten-minute maximum
 deadline. Invalid replies, unexpected tool calls,

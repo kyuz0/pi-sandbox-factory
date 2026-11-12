@@ -71,6 +71,8 @@ def permissions(template, selected):
             reads.setdefault(path.rstrip('/'), 'allow')
             reads.setdefault(path.rstrip('/') + '/*', 'allow')
     rules['bash'] = ('allow' if selected['inner_sandbox'] or selected['approval'] == 'off' else 'ask')
+    if selected['browser']:
+        rules.update({name: 'allow' for name in ('browser', 'browser_login', 'browser_evidence')})
     if selected['approval'] == 'off':
         rules.update({'*': 'allow', 'external_directory': 'allow'})
     return policy
