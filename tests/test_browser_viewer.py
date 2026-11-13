@@ -2,7 +2,7 @@ import asyncio
 import hashlib
 import hmac
 import unittest
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, patch, Mock
 
 from pi_sandbox_factory.browser_viewer import Viewer, route
 
@@ -25,6 +25,11 @@ class RouteTests(unittest.TestCase):
         headers = (f'Origin: http://{HOST}\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n'
                    'Sec-WebSocket-Version: 13\r\nSec-WebSocket-Key: aaaaaaaaaaaaaaaaaaaaaa==\r\n')
         self.assertTrue(route(request('devtools/page/ABC123', headers), HOST, KEY)[3])
+        self.assertTrue(route(request('vnc', headers), HOST, KEY)[3])
+        for asset in ('viewer-client.js', 'viewer-license.txt'):
+            self.assertEqual(route(request(asset), HOST, KEY)[1], asset)
+            with self.assertRaises(ValueError):
+                route(request(asset, headers), HOST, KEY)
 
     def test_reject_invalid_requests(self):
         invalid = [request(host='evil.test'), request().replace(TOKEN.encode(), b'0'*64),
@@ -34,6 +39,8 @@ class RouteTests(unittest.TestCase):
                    request(headers='Transfer-Encoding: chunked\r\n'),
                    request(headers='X-Test: bad\x00value\r\n'),
                    request('devtools/page/ABC123', 'Upgrade: websocket\r\n'),
+                   request('vnc'), request('vnc', 'Upgrade: websocket\r\n'),
+                   request('viewer-client.js/extra'), request('viewer-client.js/../secrets'),
                    request('json/list'), request('devtools/browser/ABC'),
                    request('devtools/../json/list'), request('devtools/%2e%2e/json/list'),
                    request('devtools//inspector.html'), request('devtools\\inspector.html'),
@@ -71,6 +78,45 @@ class ServerTests(unittest.IsolatedAsyncioTestCase):
         response = await self.send(request(host=self.viewer.host).replace(TOKEN.encode(), b'0'*64))
         self.assertIn(b'403 Forbidden', response)
         self.viewer.connector.assert_not_called()
+
+    async def test_client_is_cached_without_container_exec(self):
+        self.viewer.assets = {'viewer-client.js': b'/* pinned viewer fixture */'}
+        self.viewer.connector = AsyncMock(side_effect=AssertionError('Must not spawn'))
+        response = await self.send(request('viewer-client.js', host=self.viewer.host))
+        self.assertIn(b'200 OK', response)
+        self.assertIn(b'Content-Type: text/javascript', response)
+        self.assertIn(b"script-src 'self'", response)
+        self.assertIn(b'X-Content-Type-Options: nosniff', response)
+        self.assertIn(b'/* pinned viewer fixture */', response)
+        self.viewer.connector.assert_not_called()
+
+    async def test_missing_client_is_not_forwarded_to_browser(self):
+        self.viewer.connector = AsyncMock(side_effect=AssertionError('Must not spawn'))
+        response = await self.send(request('viewer-client.js', host=self.viewer.host))
+        self.assertIn(b'403 Forbidden', response)
+        self.viewer.connector.assert_not_called()
+
+    def test_native_viewer_escapes_page_titles(self):
+        page = self.viewer.page('<img src=x onerror=alert(1)>', BASE + 'devtools/inspector.html', BASE)
+        self.assertIn(b'&lt;img', page)
+        self.assertNotIn(b'<img', page)
+        self.assertIn(b'Live sandbox browser', page)
+        self.assertIn(b'viewer-client.js', page)
+
+    async def test_asset_failure_keeps_viewer_available(self):
+        for error in (asyncio.TimeoutError(), ValueError('bad fixture output')):
+            proc = Mock(returncode=None)
+            proc.communicate = AsyncMock(side_effect=error)
+            self.viewer.finish = AsyncMock()
+            with patch('asyncio.create_subprocess_exec', AsyncMock(return_value=proc)):
+                await self.viewer.load_assets()
+            self.assertEqual(self.viewer.assets, {})
+            self.viewer.finish.assert_awaited_once_with(proc)
+
+    def test_zero_page_viewer_does_not_offer_dead_inspector(self):
+        page = self.viewer.page('Browser', '', BASE)
+        self.assertIn(b'Live sandbox browser', page)
+        self.assertNotIn(b'>Inspect<', page)
 
     async def test_only_first_request_forwarded(self):
         # This subprocess acts as a TCP connector, returning the request it received.

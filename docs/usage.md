@@ -183,10 +183,15 @@ an allowed endpoint to check connectivity in that mode.
 ## See and interact with the agent’s browser
 
 Enable **Browser** when creating the sandbox, then open it normally. Ask Pi or
-Pendant to show its browser. It returns a local link to the current session’s tab
-list. Select a tab to open its live DevTools screencast; use **Toggle screencast**
-in the top-left toolbar if the page is hidden. You can type, click and navigate.
-When you have finished, tell the agent to continue. It keeps the same tabs and state.
+Pendant to show its browser. Its local link opens the live browser window,
+including the tab bar and popup windows. Type, click, navigate and switch tabs
+normally. When you have finished, tell the agent to continue; it keeps the same
+browser state.
+
+Use **Observe** to stop sending mouse and keyboard input, **Paste text** or
+**Copy text** for explicit clipboard transfers, and **Reconnect** after a dropped
+connection. Small windows scale the desktop; larger windows resize it.
+Manual sign-ins are not saved automatically.
 
 The viewer starts automatically and stops with the container. It listens only on
 host loopback and requires a session-specific link. Keep that link private: it

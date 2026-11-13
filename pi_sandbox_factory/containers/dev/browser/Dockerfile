@@ -1,10 +1,15 @@
 ARG BASE_IMAGE
 FROM ${BASE_IMAGE}
 USER root
-COPY package.json package-lock.json /opt/betterwright/
-RUN npm ci --omit=dev --prefix /opt/betterwright \
+COPY package.json package-lock.json viewer-client.mjs /opt/betterwright/
+RUN npm ci --prefix /opt/betterwright \
+    && npm run build:viewer --prefix /opt/betterwright \
+    && cp /opt/betterwright/node_modules/@novnc/novnc/LICENSE.txt /opt/betterwright/viewer-license.txt \
+    && cat /opt/betterwright/node_modules/@novnc/novnc/vendor/pako/LICENSE >> /opt/betterwright/viewer-license.txt \
+    && npm prune --omit=dev --prefix /opt/betterwright \
     && node /opt/betterwright/node_modules/playwright-core/cli.js install-deps chromium \
-    && apt-get update && apt-get install -y --no-install-recommends ffmpeg \
+    && apt-get update && apt-get install -y --no-install-recommends ffmpeg tigervnc-standalone-server openbox fonts-noto-core \
+    && command -v Xvnc openbox vncconfig setpriv \
     && rm -rf /var/lib/apt/lists/*
 # The upstream installer checks the pinned browser archive's SHA-256.
 RUN if [ "$(uname -m)" = aarch64 ]; then \

@@ -52,11 +52,11 @@ def route(head, host, key):
     upgrade = headers.get('upgrade', '').lower() == 'websocket'
     if upgrade:
         if (headers.get('origin') != 'http://' + host or
-                not re.fullmatch(r'devtools/page/[A-Fa-f0-9]+', path) or
+                not (path == 'vnc' or re.fullmatch(r'devtools/page/[A-Fa-f0-9]+', path)) or
                 headers.get('sec-websocket-version') != '13' or
                 not re.fullmatch(r'[A-Za-z0-9+/]{22}==', headers.get('sec-websocket-key', ''))):
             raise ValueError('Invalid WebSocket request')
-    elif path and (not path.startswith('devtools/') or
+    elif path and path not in ('viewer-client.js', 'viewer-license.txt') and (not path.startswith('devtools/') or
                    not re.fullmatch(r'[a-zA-Z0-9_./-]+', path) or
                    any(part in ('.', '..', '') for part in path.split('/')) or
                    path.startswith(('devtools/browser/', 'devtools/page/'))):
@@ -70,14 +70,70 @@ class Viewer:
         self.host = ''
         self.connections = set()
         self.processes = set()
+        self.assets = {}
+        self.asset_retry = True
 
-    async def connector(self, session):
+    async def connector(self, session, desktop=False):
         proc = await asyncio.create_subprocess_exec(
             self.engine, 'exec', '-i', '--user', 'node', self.container,
-            'node', HELPER, 'connect', session, stdin=asyncio.subprocess.PIPE,
+            'node', HELPER, 'connect-desktop' if desktop else 'connect', session, stdin=asyncio.subprocess.PIPE,
             stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL)
         self.processes.add(proc)
         return proc
+
+    async def load_assets(self):
+        # Cache the maintained client once, avoiding a container exec per module.
+        # An existing immutable image without these assets retains its CDP viewer.
+        code = ("const fs=require('fs'),out={};"
+                "for(const name of ['viewer-client.js','viewer-license.txt']){"
+                "const p='/opt/betterwright/'+name;"
+                "if(fs.existsSync(p)&&fs.statSync(p).size<4*1024*1024)out[name]=fs.readFileSync(p).toString('base64');}"
+                "process.stdout.write(JSON.stringify(out))")
+        proc = await asyncio.create_subprocess_exec(
+            self.engine, 'exec', '--user', 'node', self.container, 'node', '-e', code,
+            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL)
+        self.processes.add(proc)
+        try:
+            output, _ = await asyncio.wait_for(proc.communicate(), 20)
+            if proc.returncode == 0 and len(output) < 12 * 1024 * 1024:
+                self.assets = {name: base64.b64decode(value, validate=True)
+                               for name, value in json.loads(output).items()
+                               if name in ('viewer-client.js', 'viewer-license.txt')}
+        except (asyncio.TimeoutError, ValueError, OSError):
+            self.assets = {}
+        finally:
+            await self.finish(proc)
+
+    def page(self, title, inspector, base):
+        return ('<!doctype html><html lang="en"><meta charset="utf-8"><title>Browser · ' + html.escape(title) + '</title>'
+                '<meta name="viewport" content="width=device-width,initial-scale=1"><link rel="icon" href="data:,"><style>'
+                '*{box-sizing:border-box}html,body{margin:0;height:100%;font:14px system-ui;background:#17191d;color:#f2f4f8}'
+                'body{display:flex;flex-direction:column}header{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:8px 14px;flex:none}'
+                'header strong{margin-right:auto}button,a{font:inherit;color:inherit;background:#30343b;border:1px solid #535a66;border-radius:5px;padding:5px 9px;text-decoration:none}'
+                'button:disabled{opacity:.45}button:not(:disabled),a{cursor:pointer}label{display:flex;align-items:center;gap:5px}'
+                '#status{color:#b8c5d6;font-size:13px}#screen{flex:1;min-height:0;overflow:hidden;max-width:3840px;max-height:2160px;align-self:center;width:100%}'
+                'dialog{width:min(32rem,90vw);border:1px solid #626976;border-radius:10px;background:#22252b;color:inherit;padding:20px}'
+                'dialog::backdrop{background:#0008}dialog h2{font-size:18px;margin:0 0 14px}textarea{width:100%;height:9rem;font:14px monospace;padding:10px}footer{display:flex;justify-content:flex-end;gap:10px;margin-top:14px}'
+                '@media(max-width:700px){header{gap:6px;padding:6px}header strong{display:none}button,a{font-size:12px;padding:5px 7px}}'
+                '</style><header><strong>Sandbox browser</strong><span id="status" role="status">Connecting</span>'
+                '<label><input id="observe" type="checkbox">Observe</label>'
+                '<button id="paste">Paste text</button><button id="copy" disabled>Copy text</button>'
+                '<button id="fullscreen">Fullscreen</button><button id="reconnect">Reconnect</button>'
+                + ('<a href="' + html.escape(inspector, quote=True) + '" target="_blank" rel="noopener">Inspect</a>' if inspector else '') + '</header>'
+                '<main id="screen" aria-label="Live sandbox browser"></main>'
+                '<dialog id="clipboard"><h2>Paste into the browser</h2><textarea aria-label="Clipboard text" spellcheck="false"></textarea>'
+                '<footer><button id="cancel">Close</button><button id="send">Paste</button></footer></dialog>'
+                '<script type="module" src="' + base + 'viewer-client.js"></script></html>').encode()
+
+    async def local_response(self, writer, body, ctype):
+        csp = ("default-src 'none'; script-src 'self'; style-src 'unsafe-inline'; "
+               "img-src 'self' data: blob:; connect-src 'self' ws://" + self.host + "; "
+               "base-uri 'none'; form-action 'none'; frame-ancestors 'none'")
+        writer.write(b'HTTP/1.1 200 OK\r\nContent-Type: ' + ctype.encode() +
+                     b'\r\nX-Content-Type-Options: nosniff\r\nReferrer-Policy: no-referrer\r\n'
+                     b'Cache-Control: no-store\r\nConnection: close\r\nContent-Security-Policy: ' + csp.encode() +
+                     b'\r\nContent-Length: ' + str(len(body)).encode() + b'\r\n\r\n' + body)
+        await writer.drain()
 
     async def finish(self, proc):
         if proc is None:
@@ -94,6 +150,9 @@ class Viewer:
         self.processes.discard(proc)
 
     async def index(self, session, base):
+        if not self.assets and self.asset_retry:
+            self.asset_retry = False
+            await self.load_assets()
         proc = await self.connector(session)
         try:
             proc.stdin.write(b'GET /json/list HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n')
@@ -106,13 +165,18 @@ class Viewer:
                 raise ValueError('Invalid tab list')
             tabs = json.loads(await asyncio.wait_for(proc.stdout.readexactly(int(length[1])), 15))
             rows = []
+            first = None
             for tab in tabs:
                 target = tab.get('id', '')
                 if tab.get('type') != 'page' or not re.fullmatch(r'[A-Fa-f0-9]+', target):
                     continue
                 ws = self.host + base + 'devtools/page/' + target
                 href = base + 'devtools/inspector.html?ws=' + ws
+                if first is None:
+                    first = (tab.get('title') or 'Browser', href)
                 rows.append(f'<li><a href="{html.escape(href, quote=True)}">{html.escape(tab.get("title") or "Untitled tab")}</a><br><small>{html.escape(tab.get("url", ""))}</small></li>')
+            if 'viewer-client.js' in self.assets:
+                return self.page(first[0] if first else 'Browser', first[1] if first else '', base)
             return ('<!doctype html><meta charset="utf-8"><title>Sandbox browser</title>'
                     '<meta name="viewport" content="width=device-width"><style>'
                     'body{font:18px system-ui;max-width:55rem;margin:3rem auto;padding:1rem}'
@@ -137,15 +201,17 @@ class Viewer:
             if len(head) > 16384:
                 raise ValueError('Headers too large')
             session, path, headers, upgrade = route(head, self.host, self.key)
+            if path in ('viewer-client.js', 'viewer-license.txt'):
+                if path not in self.assets:
+                    raise ValueError('Viewer asset unavailable')
+                await self.local_response(writer, self.assets[path], 'text/javascript' if path.endswith('.js') else 'text/plain')
+                return
             if not path:
                 token = hmac.new(self.key.encode(), session.encode(), hashlib.sha256).hexdigest()
                 body = await self.index(session, f'/v/{session}/{token}/')
-                writer.write(b'HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\n'
-                             b"Content-Security-Policy: default-src 'none'; style-src 'unsafe-inline'; frame-ancestors 'none'\r\n"
-                             b'Referrer-Policy: no-referrer\r\nCache-Control: no-store\r\nConnection: close\r\nContent-Length: ' + str(len(body)).encode() + b'\r\n\r\n' + body)
-                await writer.drain()
+                await self.local_response(writer, body, 'text/html; charset=utf-8')
                 return
-            proc = await self.connector(session)
+            proc = await self.connector(session, desktop=True) if path == 'vnc' else await self.connector(session)
             request = f'GET /{path} HTTP/1.1\r\nHost: 127.0.0.1\r\n'
             if upgrade:
                 request += ('Connection: Upgrade\r\nUpgrade: websocket\r\nSec-WebSocket-Version: 13\r\n'
@@ -222,6 +288,7 @@ class Viewer:
             self.connections.discard(task)
 
     async def serve(self, ready, stopping):
+        await self.load_assets()
         address = host_platform.automatic_address()
         server = await asyncio.start_server(self.handle, host_platform.listen_address(address), 0, limit=16384)
         self.host = address + ':' + str(server.sockets[0].getsockname()[1])

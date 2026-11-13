@@ -88,17 +88,25 @@ refused(url.replace(url.split('/')[5], '0'*64))
 # Keep a real WebSocket open during SIGTERM; shutdown must not wait for the UI.
 parsed = urllib.parse.urlsplit(url)
 target = re.search(r'devtools/page/([A-F0-9]+)',page)[1]
-ws = socket.create_connection((host_platform.listen_address(parsed.hostname),parsed.port),timeout=10)
-ws.sendall((f'GET {parsed.path}devtools/page/{target} HTTP/1.1\r\nHost: {parsed.netloc}\r\n'
-            f'Origin: http://{parsed.netloc}\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n'
-            'Sec-WebSocket-Version: 13\r\nSec-WebSocket-Key: aaaaaaaaaaaaaaaaaaaaaa==\r\n\r\n').encode())
-assert b'101 ' in ws.recv(4096)
+sockets=[]
+for path in (f'devtools/page/{target}','vnc'):
+ ws=socket.create_connection((host_platform.listen_address(parsed.hostname),parsed.port),timeout=10)
+ ws.sendall((f'GET {parsed.path}{path} HTTP/1.1\r\nHost: {parsed.netloc}\r\n'
+             f'Origin: http://{parsed.netloc}\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n'
+             'Sec-WebSocket-Version: 13\r\nSec-WebSocket-Key: aaaaaaaaaaaaaaaaaaaaaa==\r\n\r\n').encode())
+ assert b'101 ' in ws.recv(4096)
+ sockets.append(ws)
 os.kill(relay_pids()[0],signal.SIGTERM)
-wait(lambda:not relay_pids(),'Viewer hung on active WebSocket')
-ws.close()
+wait(lambda:not relay_pids(),'Viewer hung on active WebSockets')
+for ws in sockets:ws.close()
 ensure_viewer(engine,cid)
 new_url=link()
 assert new_url != url and 'Lifecycle marker' in fetch(new_url)
+try:
+ fetch(url)
+except (urllib.error.URLError,ConnectionError):
+ pass
+else:raise AssertionError('Old viewer link accepted after rotation')
 assert inside('sh','-c',"ps -eo args | grep '^node /opt/betterwright/viewer.mjs connect'",check=False).returncode != 0, 'Connector left running'
 print('PASS repeated open, authenticated routes, WebSocket shutdown, key rotation and retained browser state')
 sandbox.down(config)

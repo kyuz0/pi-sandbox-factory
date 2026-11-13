@@ -7,6 +7,9 @@ try {
   assert.deepEqual(r.result, {title:'Browser fixture',text:'Clicked'});
   r = await browser.run("return {marker:state.marker, image:await screenshot({kind:'debug',name:'sandbox-browser-check'})}");
   assert.equal(r.ok,true,JSON.stringify(r));assert.equal(r.result.marker,'persistent');
+  r = await browser.run("await page.setContent('<a download=synthetic.txt href=data:text/plain,synthetic>Download</a>'); const pending=page.waitForEvent('download',{timeout:15000}); await page.locator('a').click(); return await (await pending).failure()");
+  assert.equal(r.ok,true,JSON.stringify(r));assert.equal(r.result,'canceled');
+  assert(r.events.some(event=>event.type==='download-rejected' && /approval required/.test(event.reason)));
   if (process.argv[2]) {
     r = await browser.run(`await page.goto(${JSON.stringify(process.argv[2])}); return await page.title()`);
     assert.equal(r.ok,true,JSON.stringify(r));assert(r.result);
@@ -16,5 +19,5 @@ try {
     assert.equal(r.ok,false,'Unlisted destination must be blocked');
     assert.match(JSON.stringify(r), /TUNNEL_CONNECTION_FAILED|403|PROXY/i);
   }
-  console.log('PASS Betterwright: launch, DOM interaction, persistent state, screenshot, network policy');
+  console.log('PASS Betterwright: launch, DOM interaction, persistent state, screenshot, download denial, network policy');
 } finally { await browser.close(); }

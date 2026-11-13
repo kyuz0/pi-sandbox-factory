@@ -79,16 +79,24 @@ credentials enter through stdin and are never included in image layers.
 
 ## Browser access
 
-Browser support uses one headless Chromium per Pi session inside the development
-container. A host Python process relays authenticated viewer requests through a
-fixed container helper; it has no arbitrary destination or command interface.
-The helper checks the session endpoint format and browser identifier before connecting. The viewer
-serves a tab list and Chromium’s existing DevTools frontend, with page WebSockets
-for interaction. It rebuilds response headers and restricts frontend network requests to the viewer.
+Browser support uses one headful Chromium and private TigerVNC display per Pi
+session inside the development container. noVNC shows the same native browser
+window controlled by the agent, including tabs and popup windows. X11 TCP and
+RFB TCP listeners are disabled; display access uses a private authority cookie
+and the RFB and WebSocket bridge use owner-only Unix sockets.
+
+A host Python process relays authenticated viewer requests through a fixed
+container helper; it has no arbitrary destination or command interface. The
+helper validates the owned private profile, live Chromium endpoint and socket.
+The host caches the bundled noVNC client once, and Node's maintained `ws` transport
+bridges its connection to the private display. Clipboard transfers require user
+action and native password saving is disabled. Older immutable images retain
+their existing DevTools viewer until updated.
+
 Each viewer uses its own loopback address. Host cookies and authorization headers
 are never forwarded.
 Opening the sandbox repairs a stopped viewer; stopping the container ends it.
 The viewer key rotates on restart. Session links are capabilities, visible in
 chat history. Sessions share the container Unix user, so their identifiers prevent
 accidental mix-ups rather than providing isolation against malicious container code.
-The viewer trusts the DevTools frontend supplied by the installed browser image.
+The viewer trusts the client and DevTools frontend supplied by the installed browser image.

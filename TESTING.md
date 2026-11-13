@@ -184,14 +184,42 @@ printf '%s\n' 'PROJECT_VIEWER_GUIDANCE' > "$test_root/workspace/.pi/APPEND_SYSTE
 
 The integration test checks both clients’ browser tools, injected guidance,
 handoff and concurrent sessions. The lifecycle test checks viewer repair,
-authentication and cleanup across container restarts.
+authentication and cleanup across container restarts, with active native-display
+and CDP WebSockets. Private displays, disabled password saving, normal close and
+abrupt owner death are covered separately:
 
-For the rendered check, ask the agent to open a synthetic form and show its browser.
-Open the returned link, select the tab, type and click in the screencast, then tell
-the agent to continue. Confirm the browser tool reads the change. Reopen the sandbox
-from the launcher after stopping only its viewer; the new link must show the same
-page state. Verify that ordinary application port forwarding still works in VS Code.
-Delete the disposable sandbox when finished.
+```sh
+.venv/bin/python tests/browser_native_lifecycle.py --state-dir "$test_root/state" \
+  --name pendant-check
+```
+
+The rendered test uses Python Playwright and a locally installed Chromium:
+
+```sh
+.venv/bin/python -m pip install playwright
+.venv/bin/python -m playwright install chromium
+.venv/bin/python tests/browser_interaction.py --state-dir "$test_root/state" \
+  --name pendant-check --artifacts "$test_root/browser-interaction"
+```
+
+It opens two synthetic sessions without visiting an external website. It checks
+rendered pixels, pointer and keyboard input, “Next,” resizing, explicit clipboard
+transfer, Observe, popup sign-in, new tabs, native tab switching and reconnects.
+Oversized clipboard text receives a clear error without disconnecting.
+It rejects a token borrowed from the other session and captures desktop and small
+window screenshots, worker diagnostics and a result manifest. Use a new artifact
+directory for each run; interrupted runs must not be counted as passed. The
+fixture owns its browser processes and closes them when its input ends. Run
+these browser suites sequentially: each creates two full browsers within the
+container’s configured process limit. The dependency repository also provides
+`packages/pi-sandbox/test/browser-lifecycle-check.mjs`; run it inside this
+disposable container to exercise transient startup failure and repeated
+start/close races.
+
+Inspect both screenshots and the browser console. The native tab bar and controls
+must remain usable without overlays, and small windows must scale the desktop
+without shrinking popup dialogs. Verify that ordinary application port forwarding
+still works in VS Code. Delete the disposable sandbox when finished.
 
 ## Automatic review
 
