@@ -234,6 +234,11 @@ Run that repository's type checks and complete suite before publishing a new
 extension pin. Factory's tests below check the installed Pi RPC client and shipped
 Pendant worker, including their real session loading and permission events.
 
+For login/session policy changes, also run the extension's documented synthetic
+authentication matrix with the authorized live reviewer. It checks private
+same-service session reuse, advice, disclosure denials and unresolved helpers in
+both reviewer modes. Provider failures cannot count as successful denials.
+
 Create disposable state, workspace and an unused fixture port:
 
 ```sh

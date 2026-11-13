@@ -18,6 +18,13 @@ The reviewer makes one model request per approval and has no tools. It judges th
 proposed action against the user’s instructions; earlier approvals do not authorize
 different actions.
 
+You can authorize an interactive browser login followed by private local session
+reuse in a CLI for the same service. Session values must stay out of model output,
+logs, Git and other destinations; local session files need mode 0600 in a private
+directory. Existing browser-tool and inner-sandbox restrictions still apply.
+Advisor consultations can discuss this workflow; the actual helper or command is
+reviewed separately before execution.
+
 Enabling browser support allows native `browser` calls without per-action review.
 The outer network allowlist still applies, and downloads keep their separate approval.
 
