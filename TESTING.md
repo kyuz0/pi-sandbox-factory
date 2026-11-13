@@ -124,6 +124,11 @@ review extensions remain registered throughout.
 
 ## Hosted model connections
 
+`tests/test_provider_credentials.py` exercises creation, browser editor, desktop
+editor, Pi CLI and provider refresh/preview/status from saved configurations with
+no transient state path. Each uses a custom state directory, with and without a
+configured companion key; discovery failures must still block agent launch.
+
 After the unit suites, run the companion and native Pi/Pendant checks:
 
 ```sh

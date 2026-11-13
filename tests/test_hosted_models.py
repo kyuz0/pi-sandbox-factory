@@ -93,10 +93,10 @@ class HostedModelsTests(unittest.TestCase):
 
     def test_plugin_key_goes_only_to_companion(self):
         from pi_sandbox_factory import model_providers
-        config={'name':'test','engine':'podman','state_path':'/tmp/fixture','model_providers':[
+        config={'name':'test','engine':'podman','model_providers':[
             {'name':'company','manifest':{'inference':{'origin':'https://models.example','auth':{'type':'bearer'}}}}]}
         with patch.object(inference,'credentials') as credentials,patch.object(sandbox,'run',return_value=subprocess.CompletedProcess([],0,'{"state":"ready","message":"configured"}')) as run:
-            model_providers.configure(config,provider='company',secret='private-fixture')
+            model_providers.configure(config,Path('/tmp/fixture'),provider='company',secret='private-fixture')
         self.assertEqual(credentials.call_args.args[2]['credentials'],{'key':'private-fixture'})
         self.assertNotIn('private-fixture',str(run.call_args))
 

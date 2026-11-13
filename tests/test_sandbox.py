@@ -300,9 +300,9 @@ class LocalModelSetupTests(unittest.TestCase):
                 sandbox.configure_local_gateway({'engine':engine,'network':network},'8000',[('local-model.internal',8000)])
 
     def test_configure_invokes_local_discovery(self):
-        c={'engine':'podman','name':'example','state_path':'/tmp/example','local_model_ports':'8000'}
+        c={'engine':'podman','name':'example','local_model_ports':'8000'}
         with patch.object(sandbox,'up') as up,patch.object(sandbox,'run',return_value=subprocess.CompletedProcess([],0,'','')) as run:
-            sandbox.configure_models(c)
+            sandbox.configure_models(c, Path('/tmp/example'))
         self.assertEqual(run.call_args.args[0][-1],'/opt/pi-local-model-manager/scripts/initialize-models.mjs')
         self.assertNotIn('-it',run.call_args.args[0])
         self.assertNotIn('pi',run.call_args.args[0])
@@ -339,10 +339,10 @@ class LocalModelSetupTests(unittest.TestCase):
         config={'engine':'podman','name':'example','local_model_ports':'8000'}
         for code,error in [(3,'No usable local model'),(1,'No usable local model was discovered. Start the server.')]:
             with patch.object(sandbox,'run',return_value=subprocess.CompletedProcess([],code,'',error)), redirect_stdout(io.StringIO()) as output:
-                self.assertFalse(sandbox.initialize_models(config))
+                self.assertFalse(sandbox.initialize_models(config, Path('/tmp/example')))
             self.assertIn('Model status: Not connected',output.getvalue())
         with patch.object(sandbox,'run',return_value=subprocess.CompletedProcess([],1,'','Invalid models.json')):
-            with self.assertRaisesRegex(ValueError,'Invalid models.json'):sandbox.initialize_models(config)
+            with self.assertRaisesRegex(ValueError,'Invalid models.json'):sandbox.initialize_models(config, Path('/tmp/example'))
 
 
 

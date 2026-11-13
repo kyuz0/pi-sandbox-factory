@@ -304,4 +304,4 @@ class RegistryTests(unittest.TestCase):
             ),
         ):
             with self.assertRaisesRegex(ValueError, "Endpoint missing"):
-                model_providers.configure(config)
+                model_providers.configure(config, self.root / 'state')

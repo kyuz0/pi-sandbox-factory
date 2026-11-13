@@ -906,9 +906,9 @@ def update_network(config, state, text, groups=None):
     return updated
 
 
-def initialize_models(config, preview=False):
+def initialize_models(config, state, preview=False):
     if 'model_providers' in config:
-        model_providers.configure(config, 'preview' if preview else 'refresh')
+        model_providers.configure(config, state, 'preview' if preview else 'refresh')
         return True
     if not config.get('local_model_ports'):
         raise ValueError('Enable host-local models and choose their ports in Settings first')
@@ -931,9 +931,9 @@ def initialize_models(config, preview=False):
     return True
 
 
-def configure_models(config, preview=False):
-    up(config, Path(config['state_path']))
-    initialize_models(config, preview=preview)
+def configure_models(config, state, preview=False):
+    up(config, state)
+    initialize_models(config, state, preview=preview)
 
 
 def open_selected(config, state, mode=None):
@@ -944,7 +944,7 @@ def open_selected(config, state, mode=None):
     elif mode == 'pi':
         up(config, state)
         if config.get('local_model_ports') or config.get('model_providers'):
-            initialize_models(config)
+            initialize_models(config, state)
         tty = ['-it'] if sys.stdin.isatty() else ['-i']
         run([config['engine'], 'exec', '--workdir', folders.container_cwd(config),
              *tty, names(config)[0], 'pi'])
@@ -969,7 +969,7 @@ def open_editor(config, state):
     # A separate user-data directory avoids inheriting host dotfiles extensions,
     # credential helpers, and user customizations into an agent workspace.
     if config.get('local_model_ports') or config.get('model_providers'):
-        initialize_models(config)
+        initialize_models(config, state)
     profile = state / 'vscode'
     settings = profile / 'User/settings.json'
     settings.parent.mkdir(parents=True, exist_ok=True)
@@ -1174,7 +1174,7 @@ def main():
             if args.open:
                 open_selected(config, state)
             elif config.get('local_model_ports') or config.get('model_providers'):
-                initialize_models(config)
+                initialize_models(config, state)
         return
     if args.command == 'delete' and not (state / 'config.json').exists():
         delete_incomplete(state)
@@ -1233,9 +1233,8 @@ def main():
     elif args.command == 'open':
         open_selected(config, state, args.editor)
     elif args.command == 'configure':
-        config['state_path'] = str(state)
         if 'model_providers' not in config:
-            configure_models(config, preview=args.preview)
+            configure_models(config, state, preview=args.preview)
         else:
             if (args.key or args.key_stdin) and not args.provider:parser.error('Choose --provider when supplying a credential')
             secret=None
@@ -1246,7 +1245,7 @@ def main():
                 secret=sys.stdin.read(65537).strip()
                 if len(secret)>65536:parser.error('Credential input too large')
             up(config,state)
-            model_providers.configure(config,'status' if args.status else 'preview' if args.preview else 'refresh',args.provider,secret)
+            model_providers.configure(config,state,'status' if args.status else 'preview' if args.preview else 'refresh',args.provider,secret)
     elif args.command == 'communication-key':
         current = inspect(config, names(config)[0])
         if not current or not current['State']['Running']:
@@ -1347,7 +1346,7 @@ def main():
             if args.command == 'pi':
                 up(config, state)
                 if config.get('local_model_ports') or config.get('model_providers'):
-                    initialize_models(config)
+                    initialize_models(config, state)
                 command = ['pi'] + command
             if not command:
                 parser.error('exec requires a command after the sandbox name')

@@ -370,7 +370,7 @@ def open_browser_editor(config, state, archive=None, background=False, open_tab=
                 subprocess.run(['podman', 'exec', '--user', '0', container, 'rm', '-rf', staging],
                                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         if config.get('local_model_ports') or config.get('model_providers'):
-            sandbox.initialize_models(config)
+            sandbox.initialize_models(config, state)
         if background:
             start_background(container, folders.container_cwd(config), preferences, state, open_tab, lock.fileno())
         else:

@@ -120,7 +120,7 @@ def build(config, base, target):
         )
 
 
-def configure(config, action="refresh", provider=None, secret=None):
+def configure(config, state, action="refresh", provider=None, secret=None):
     from . import sandbox
 
     rows = selections(config)
@@ -136,7 +136,7 @@ def configure(config, action="refresh", provider=None, secret=None):
         route = row["manifest"].get("inference")
         if route:
             from . import inference
-            state = Path(config['state_path'])
+            state = Path(state)
             if secret is not None:
                 inference.credentials(config, state, {
                     'id':row['name'], 'origin':route['origin'], 'auth':route['auth']['type'],
