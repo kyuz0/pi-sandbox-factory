@@ -16,6 +16,16 @@ For GitHub or GitLab, use **Add repository…** and follow [repository setup](re
 3. Return to **SSH and repositories → SSH key**, select a key outside the workspace, and choose **Import and unlock**. Enter its passphrase directly in your terminal.
 4. Use the alias from the sandbox, for example `ssh build 'hostname && uptime'`. With the inner command sandbox enabled, Pi uses `bash_escalate`, subject to manual or automatic approval.
 
+Adding a destination configures its connection route; it does not import a key.
+Run `sandbox-ssh-status` in the container (through `bash_escalate` in Pi) to check
+the configured destinations and whether the signing agent has an unlocked key.
+`no_unlocked_key` requires **Import and unlock** or **Unlock existing key** in
+Factory. Keys stay in the companion, so an absent `~/.ssh` directory is expected.
+With the inner sandbox enabled and approval off, agent SSH commands are unavailable;
+choose an approval mode first. Without the inner sandbox, use ordinary Bash.
+Use the managed SSH configuration without overriding `GIT_SSH_COMMAND` or host-key
+checking. Inner-shell DNS and TCP probes cannot test the companion's socket route.
+
 Generate creates an unencrypted key inside the private companion volume and refuses to replace an existing key. Import replaces the companion’s saved key.
 
 Keys are loaded for eight hours. Use **Unlock existing key** after expiry or after restarting a companion with an encrypted key. Unencrypted keys load automatically when the companion starts.

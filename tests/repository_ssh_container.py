@@ -114,10 +114,21 @@ cp /fixture/hook /home/git/project.git/hooks/pre-receive
                 *ssh.mounts(config, state), '--entrypoint', 'sleep', args.dev_image, 'infinity')
             def git(command, succeeds=True):
                 result = run(engine, 'exec', client, 'bash', '-c',
-                    'export GIT_SSH_COMMAND="ssh -F /etc/sandbox-ssh/config"; ' + command, check=False)
+                    command, check=False)
                 assert (result.returncode == 0) == succeeds, (command, result.stdout, result.stderr)
                 return result
             git('git clone git@repository:/home/git/project.git /tmp/project')
+            report = json.loads(run(engine, 'exec', '-e', 'SSH_AUTH_SOCK=', client, 'sandbox-ssh-status').stdout)
+            assert report['state'] == 'key_loaded', report
+            run(engine, 'exec', '-e', 'SSH_AUTH_SOCK=', client, 'git', '-C', '/tmp/project', 'ls-remote', 'origin', 'HEAD')
+            run(engine, 'exec', client, 'python3', '/usr/local/lib/sandbox-bootstrap.py')
+            worker = Path(__file__).with_name('check_pendant_worker.cjs').read_text()
+            subprocess.run([engine, 'exec', '-i', client, 'sh', '-c', 'cat > /tmp/check-ssh-pendant.cjs'],
+                           input=worker, text=True, check=True)
+            result = subprocess.run([engine, 'exec', '-i', '-e', 'SSH_AUTH_SOCK=', client, 'python3', '-'],
+                input=Path(__file__).with_name('check_ssh_clients.py').read_text(), text=True, capture_output=True)
+            assert result.returncode == 0, (result.stdout, result.stderr)
+            print(result.stdout, end='', flush=True)
             git('cd /tmp/project && git config user.email fixture@example.test && git config user.name Fixture && '
                 'git checkout -b pi-test && echo second >> sample.txt && git commit -qam second && git push origin pi-test', succeeds=False)
             print('PASS read-only clone allowed, push rejected', flush=True)
@@ -149,6 +160,13 @@ cp /fixture/hook /home/git/project.git/hooks/pre-receive
             (fixture/'authorized_keys').write_text('command="/usr/local/bin/git-access",restrict ' + replacement + '\n')
             git('cd /tmp/project && git ls-remote origin HEAD')
             print('PASS import replaces the key and revokes the old signing identity', flush=True)
+            run(engine, 'exec', client, 'ssh-add', '-D')
+            result = run(engine, 'exec', client, 'sandbox-ssh-status', check=False)
+            assert result.returncode == 2 and json.loads(result.stdout)['state'] == 'no_unlocked_key', result
+            git('cd /tmp/project && git ls-remote origin HEAD', succeeds=False)
+            ssh.unlock(config, state)
+            git('cd /tmp/project && git ls-remote origin HEAD')
+            print('PASS unloaded key diagnosed; companion unlock restores Git without client key files', flush=True)
         finally:
             run(engine, 'rm', '-f', name + '-client', server, check=False)
             ssh.down(config, remove=True)

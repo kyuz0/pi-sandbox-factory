@@ -209,6 +209,28 @@ if profile.exists():
                      + 'Only use tools and skills actually present in this session.')
     if browser_enabled:
         guidance += '\n\n' + Path('/opt/betterwright/browser.md').read_text().rstrip()
+    ssh_targets = Path('/etc/sandbox-ssh/targets.json')
+    if ssh_targets.is_file():
+        destinations = json.loads(ssh_targets.read_text())
+        guidance += '\n\nManaged SSH destinations (alias, user, server, port):\n' + '\n'.join(
+            f'- {host["alias"]}, {host["user"]}, {host["hostname"]}, {host["port"]}' for host in destinations)
+        guidance += '\nUse the alias in Git remotes, for example USER@ALIAS:group/project.git. '
+        if inner_sandbox and approval == 'off':
+            guidance += ('Managed SSH is unavailable to agent commands with the inner sandbox enabled and approval off. '
+                         'Ask the user to select an approval mode in Factory before using SSH-backed Git. ')
+        elif inner_sandbox:
+            guidance += 'For SSH-backed Git operations and sandbox-ssh-status, use bash_escalate directly. '
+        else:
+            guidance += 'Run SSH-backed Git operations and sandbox-ssh-status through ordinary bash; the inner sandbox is disabled. '
+        guidance += (
+            'The inner shell cannot access companion sockets; its DNS/TCP probes do not test managed SSH connectivity. '
+            'The outer container uses /etc/sandbox-ssh/config automatically: fixed Unix-socket relays, '
+            'pinned host keys and a separate signing agent. Keep these defaults; do not override GIT_SSH_COMMAND, '
+            'ProxyCommand, IdentityAgent or host-key verification. Private keys are deliberately absent from ~/.ssh. '
+            'If authentication fails, use sandbox-ssh-status in the permitted outer shell. No unlocked key means the user '
+            'must import or unlock a key in Factory Settings → SSH and repositories → SSH key. '
+            'Do not generate a replacement key in this container or ask for private key/passphrase contents. '
+            'A loaded key does not guarantee server-side repository permissions. Preserve Git exit status when reporting failures.')
     contents = contents.rstrip() + '\n\n' + begin + '\n' + guidance + '\n' + end + '\n'
 if contents or append_file.exists():
     append_file.write_text(contents)

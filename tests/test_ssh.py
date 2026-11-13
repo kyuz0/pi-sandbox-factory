@@ -1,4 +1,5 @@
 import copy
+import importlib.util
 import json
 from pathlib import Path
 import tempfile
@@ -11,6 +12,33 @@ from pi_sandbox_factory import sandbox_ssh as ssh
 HOST={'alias':'build','hostname':'192.0.2.10','port':22,'user':'demo','host_keys':['ssh-ed25519 AAAA']}
 
 class SSHTests(unittest.TestCase):
+    def test_status_distinguishes_missing_route_unloaded_key_and_agent_failure(self):
+        spec = importlib.util.spec_from_file_location('ssh_status', sandbox.ROOT / 'containers/dev/ssh-status.py')
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / 'targets.json'
+            report, code = module.status(target)
+            self.assertEqual((report['state'], code), ('not_configured', 2))
+            target.write_text(json.dumps([HOST]))
+            for rc, state, expected in ((0, 'key_loaded', 0), (1, 'no_unlocked_key', 2), (2, 'agent_unavailable', 3)):
+                with patch.dict(module.os.environ, {'SSH_AUTH_SOCK': ''}), patch.object(module.subprocess, 'run', return_value=SimpleNamespace(returncode=rc, stdout=b'FINGERPRINT', stderr=b'SECRET')) as run:
+                    report, code = module.status(target)
+                    self.assertEqual(run.call_args.args[0], ['ssh-add', '-l'])
+                    self.assertEqual(run.call_args.kwargs['env']['SSH_AUTH_SOCK'], '/run/ssh-access/agent.sock')
+                self.assertEqual((report['state'], code), (state, expected))
+                self.assertEqual(report['destinations'][0]['alias'], 'build')
+                self.assertNotIn('FINGERPRINT', json.dumps(report))
+                self.assertNotIn('SECRET', json.dumps(report))
+                self.assertNotIn('host_keys', json.dumps(report))
+        for error in (OSError('PRIVATE'), ValueError('PRIVATE'), KeyError('PRIVATE'), TypeError('PRIVATE'),
+                      module.subprocess.TimeoutExpired('PRIVATE', 5)):
+            with patch.object(module, 'status', side_effect=error):
+                report, code = module.report()
+            self.assertEqual((report['state'], code), ('unavailable', 3))
+            self.assertIn('inner sandbox', report['action'])
+            self.assertNotIn('PRIVATE', json.dumps(report))
+
     def test_exact_ips_ipv6_and_hostnames(self):
         for name in ['192.0.2.10','2001:db8::1','build.example.test','build']:
             self.assertEqual(ssh.validate({'hosts':[{**HOST,'hostname':name}]})['hosts'][0]['hostname'],name)

@@ -729,10 +729,41 @@ class BootstrapTests(unittest.TestCase):
                                    ('/opt/betterwright', 'betterwright'),
                                    ('/opt/pi-compaction-recall', 'recall'),
                                    ('/opt/rpiv-ask-user-question', 'ask'),
+                                   ('/etc/sandbox-ssh', 'ssh'),
                                    ('/opt/sandbox', 'sandbox')):
             script = script.replace(original, str(root / relative))
         subprocess.run(['python3', '-c', script], check=True,
                        env=dict(os.environ, SANDBOX_SUBAGENTS='1' if subagents else '0'))
+
+    def test_managed_ssh_guidance_tracks_saved_destinations_without_keys(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            for directory in ('shared', 'pendant', 'ssh'):
+                (root / directory).mkdir()
+            (root / 'ssh/targets.json').write_text(json.dumps([
+                {'alias': 'repository', 'hostname': 'git.example.test', 'user': 'git',
+                 'port': 2222, 'host_keys': ['ssh-ed25519 PUBLIC_FIXTURE']}]))
+            self.bootstrap(root)
+            agent = root / 'home/.pi/agent/AGENTS.md'
+            prompt = agent.read_text()
+            self.assertIn('- repository, git, git.example.test, 2222', prompt)
+            for text in ('use bash_escalate directly', 'sandbox-ssh-status',
+                         'Private keys are deliberately absent', 'must import or unlock',
+                         'Preserve Git exit status'):
+                self.assertIn(text, prompt)
+            self.assertNotIn('PUBLIC_FIXTURE', prompt)
+            for options, expected in (({'inner_sandbox': True, 'approval': 'off'}, 'Managed SSH is unavailable'),
+                                      ({'inner_sandbox': False, 'approval': 'automatic'}, 'through ordinary bash')):
+                (root / 'sandbox/options.json').write_text(json.dumps(options))
+                self.bootstrap(root)
+                ssh_prompt = agent.read_text().split('Managed SSH destinations')[1]
+                self.assertIn(expected, ssh_prompt)
+                self.assertNotIn('bash_escalate', ssh_prompt)
+            agent.write_text('User guidance\n' + prompt)
+            (root / 'ssh/targets.json').unlink()
+            self.bootstrap(root)
+            self.assertIn('User guidance', agent.read_text())
+            self.assertNotIn('Managed SSH destinations', agent.read_text())
 
     def test_recall_defaults_to_lite_and_can_be_disabled(self):
         with tempfile.TemporaryDirectory() as tmp:

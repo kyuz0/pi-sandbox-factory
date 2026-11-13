@@ -574,6 +574,14 @@ keys, private-volume isolation, clone and push behaviour under read-only,
 restricted-branch and full-write server policies. Its policies are test fixtures,
 not a verification of GitHub or GitLab settings. It deletes its containers and
 volumes afterward.
+The client uses the image's default SSH configuration without a test-only
+`GIT_SSH_COMMAND` override. It also unloads the agent identity, checks
+`sandbox-ssh-status`, verifies authentication fails and restores access by unlocking
+the companion key. Bootstrap tests verify configured aliases and the SSH recovery
+instructions enter the managed agent context without host-key material.
+Actual Pi and Pendant workers receive that context and run the status check through
+reviewed escalation with synthetic model replies and no human dialog. Both status
+and Git are checked with `SSH_AUTH_SOCK` empty, matching attached desktop VS Code.
 
 For a live service check, use a disposable repository and follow
 [repository setup](docs/repository-access.md). Verify clone succeeds and push fails

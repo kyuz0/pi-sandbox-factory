@@ -116,6 +116,21 @@ async function main() {
   assert.equal(handshake.compatibilityReport.compatible, true);
   assert.equal(handshake.compatibilityReport.piSdkVersion, sdkVersion);
   const inventory = await create('inventory');
+  if (process.argv.includes('--ssh')) {
+    assert.deepEqual(inventory.diagnostics.filter(d => d.level === 'error'), []);
+    await request({type:'session_set_model',provider:'fixture',modelId:'fixture-model',persist:false}, 'inventory');
+    await request({type:'session_prompt',text:'RUN_MANAGED_SSH_STATUS',images:[],source:'interactive'}, 'inventory');
+    const state = await waitForReply('inventory', 'SSH_STATUS_DONE');
+    const results = state.messages.filter(m => m.role === 'toolResult');
+    assert.equal(results.length, 1);
+    assert.equal(results[0].toolName, 'bash_escalate');
+    assert(!results[0].isError);
+    assert(JSON.stringify(results[0].content).includes('key_loaded'));
+    assert.equal(sessions.get('inventory').dialogs, 0);
+    console.log('PASS actual Pendant: managed SSH context and reviewed status with SSH_AUTH_SOCK empty');
+    await request({type:'session_dispose',reason:'replacement'}, 'inventory');
+    return;
+  }
   if (process.argv.includes('--question-forms-only')) {
     const enabled = JSON.parse(fs.readFileSync('/opt/sandbox/options.json')).question_forms !== false;
     assert.deepEqual(inventory.diagnostics.filter(d => d.level === 'error'), [], 'Extension errors');
