@@ -29,5 +29,8 @@ const permissions = JSON.parse(readFileSync(`${root}/config/permissions.json`, '
 assert.equal(permissions.permission.ask_user_question, 'allow');
 assert.equal(permissions.permission['*'], 'ask');
 assert.equal(permissions.permission.advisor_ask, 'ask');
+assert.equal(permissions.permission.browser_session_export, 'ask');
+assert.equal(permissions.permission.path['/home/node/.local/state/pi-browser-sessions'], 'deny');
+assert.equal(permissions.permission.path['/home/node/.local/state/pi-browser-sessions/*'], 'deny');
 assert.equal(permissions.permission.external_directory, 'ask');
 console.log('Question tool is allowed directly; other permission boundaries remain reviewed.');

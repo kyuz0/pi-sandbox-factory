@@ -32,6 +32,18 @@ and share its link. The link opens the live browser window. The user can type, c
 window and complete popup sign-ins directly. When a manual action is needed, include the link and the action
 in `ask_user_question` if available, or ask in chat. Wait for the reply, then
 continue with the same browser tool.
+For a user-authorized local script login, call `browser_session_export` with the
+exact service API URL after the user signs in. This handoff receives its own
+permission review; ordinary browser interaction stays allowed. It saves only
+matching cookies as a Cookie-header value in a private file outside the workspace
+and returns its path, never the values. Pass that path to the same-service script
+through a reviewed `bash_escalate` command; ordinary Bash cannot read private home
+state. Never read or print the file with native tools, send it to another service
+or add it to Git. The target origin must already be open in this browser; HTTPS
+and literal loopback HTTP are supported. Separate API origins require opening
+that origin first. Partitioned cookies, passwords and local storage are excluded.
+Session files remain in private sandbox home until explicitly removed or the
+sandbox is deleted; export again after the service session expires.
 The Observe control stops viewer input, and Reconnect restores a dropped view.
 Clipboard transfers require an explicit user action. Pasted text remains on the
 sandbox clipboard until replaced; avoid pasting passwords when direct typing is

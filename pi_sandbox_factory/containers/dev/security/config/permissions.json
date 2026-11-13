@@ -13,6 +13,7 @@
     "history_grep": "allow",
     "history_expand": "allow",
     "history_recall": "allow", "browser_viewer": "allow",
+    "browser_session_export": "ask",
     "web_search": "allow", "get_search_content": "allow", "fetch_content": "ask",
     "external_directory": "ask",
     "path": {
@@ -23,6 +24,8 @@
       "/home/node/.pi/agent/communications/*": "deny",
       "/home/node/.betterwright/vault": "deny",
       "/home/node/.betterwright/vault/*": "deny",
+      "/home/node/.local/state/pi-browser-sessions": "deny",
+      "/home/node/.local/state/pi-browser-sessions/*": "deny",
       "*.pem": "deny", "*.key": "deny",
       "*.env": "deny", "*.env.*": "deny", "*.env.example": "allow"
     }

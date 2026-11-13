@@ -175,6 +175,47 @@ without explicit authorization. Record commands and results; distinguish fixture
 
 ## Browser viewer
 
+### Private login handoff
+
+Use a disposable sandbox with `--browser`, automatic approval and a configured
+live model. `tests/browser_session_workflow.py` requires a workspace under `/tmp`
+and Python Playwright with Chromium. Run each client sequentially, using a new
+artifact directory:
+
+```sh
+.venv/bin/python tests/browser_session_workflow.py --state-dir "$test_root/state" \
+  --name browser-check --provider PROVIDER --model MODEL --client pi \
+  --artifacts "$test_root/session-pi"
+.venv/bin/python tests/browser_session_workflow.py --state-dir "$test_root/state" \
+  --name browser-check --provider PROVIDER --model MODEL --client pendant \
+  --artifacts "$test_root/session-pendant"
+```
+
+The fixture runs only on container loopback. The real model opens the browser;
+external noVNC pointer/keyboard input completes a synthetic popup login. A reviewed
+`browser_session_export` saves scoped HttpOnly cookies privately, and an inline
+reviewed Python client must receive authenticated HTTP 200. The fixture server
+independently confirms the request. The test checks 0600/0700 storage, exclusion
+of foreign/path-mismatched cookies, no permission dialogs and no cookie values in
+tool output, audit, process logs or saved conversations. `run.json` records the
+client, model, test hash and result; transport failures cannot count as passes.
+
+For the actual native-file and inner-shell boundaries, copy
+`tests/session_worker_bridge.cjs` to `/tmp/session-worker-bridge.cjs` and
+`tests/browser_session_guards.py` into the same disposable container, then run the
+Python script there. It explicitly activates all file tools in both clients and
+checks reads, grep/find/ls, writes, edits, relative paths, symlinks and ordinary
+Bash without live inference. Unavailable tools are failures, not valid denials.
+
+The extension repository owns cookie-selection unit tests, real Chromium
+close/crash/abort lifecycle tests, and the 38-decision live authorization matrix
+for the scoped export and its negative cases. Run those alongside this workflow.
+`tests/session_inference_relay.mjs` is an optional fixed-model test relay: mount
+only a managed inference socket, never its private credential volume. Its health
+endpoint reports stream progress without request bodies or response contents.
+
+### Viewer lifecycle and interaction
+
 Create the disposable sandbox above with `--browser`. Put this synthetic project
 override in its workspace before testing:
 
