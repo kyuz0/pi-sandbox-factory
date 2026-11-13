@@ -1,4 +1,4 @@
-"""Positive website categories, refreshed from their selected upstream sources."""
+"""Positive website categories from bundled lists and selected upstream sources."""
 import copy
 import ipaddress
 import json
@@ -80,7 +80,7 @@ def expand_v2fly(name, read, stack=()):
 
 
 def snapshots(names, saved=None, cache=None, warn=print):
-    """Follow trusted sources automatically; use last available data when offline."""
+    """Use bundled rules or refresh trusted sources with offline fallback."""
     names = selected(names)
     if not names:
         return {}
@@ -93,6 +93,13 @@ def snapshots(names, saved=None, cache=None, warn=print):
         return fetch('https://raw.githubusercontent.com/v2fly/domain-list-community/master/data/' + name)
 
     for name in names:
+        if available[name].get('refresh') == 'bundled':
+            value = copy.deepcopy(available[name])
+            if not isinstance(value.get('domains'), list) or not value['domains']:
+                raise ValueError('Empty website category: ' + name)
+            value['domains'] = sorted({domain(v) for v in value['domains']})
+            result[name] = value
+            continue
         path = cache / (name + '.json')
         cached = {}
         try:

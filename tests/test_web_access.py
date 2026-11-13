@@ -163,6 +163,44 @@ class WebAccessTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             options({'website_groups': ['dev-python', 'dev-python']})
 
+    def test_microsoft_auth_is_opt_in_and_keeps_login_rules_focused(self):
+        self.assertNotIn('auth-microsoft', options()['website_groups'])
+        self.assertEqual(options({'website_groups': ['auth-microsoft']})['website_groups'], ['auth-microsoft'])
+        rules = groups.catalog()['auth-microsoft']['domains']
+        def allowed(host):
+            return any(host == rule or (rule.startswith('.') and
+                (host == rule[1:] or host.endswith(rule))) for rule in rules)
+        for host in ('aadcdn.msftauth.net', 'aadcdn.msauth.net', 'aadcdn.msftauthimages.net',
+                     'aadcdn.msauthimages.net', 'login.live.com', 'login.microsoftonline.com',
+                     'login.microsoft.com', 'ccs.login.microsoftonline.com',
+                     'device.login.microsoftonline.com', 'autologon.microsoftazuread-sso.com',
+                     'login.auth.microsoft.com', 'login.msftidentity.com', 'login.phonefactor.net'):
+            self.assertTrue(allowed(host), host)
+        for host in ('graph.microsoft.com', 'outlook.office.com', 'tenant.sharepoint.com',
+                     'login.microsoftonline.com.evil.invalid', 'evilmsauth.net',
+                     'login.live.com.evil.invalid', 'company-adfs.example.com'):
+            self.assertFalse(allowed(host), host)
+
+    def test_bundled_auth_list_never_fetches_or_inherits_stale_remote_rules(self):
+        with tempfile.TemporaryDirectory() as temp:
+            stale = {'auth-microsoft': {'domains': ['.unrelated.invalid']}}
+            (Path(temp)/'auth-microsoft.json').write_text(json.dumps({'checked_at': 99999999999,
+                'group': stale['auth-microsoft']}))
+            with patch.object(groups, 'fetch', side_effect=AssertionError('Bundled authentication list must stay offline')):
+                current = groups.snapshots(['auth-microsoft'], saved=stale, cache=temp)
+            self.assertEqual(current['auth-microsoft'], groups.catalog()['auth-microsoft'])
+            current['auth-microsoft']['domains'].append('.mutated.invalid')
+            self.assertNotIn('.mutated.invalid', groups.catalog()['auth-microsoft']['domains'])
+            with patch.object(groups, 'fetch', return_value='full:docs.example.net') as fetch:
+                mixed = groups.snapshots(['auth-microsoft', 'dev-python'], cache=temp)
+            fetch.assert_called_once_with('https://raw.githubusercontent.com/v2fly/domain-list-community/master/data/python')
+            self.assertEqual(mixed['dev-python']['domains'], ['docs.example.net'])
+            policy = sandbox.squid_config([('local-model.internal', 8000)], mixed)
+            self.assertIn('login.microsoftonline.com', policy)
+            self.assertIn('http_access deny category_hosts category_private', policy)
+            self.assertTrue(policy.endswith('http_access deny all\n'))
+            self.assertNotIn('login.microsoftonline.com', sandbox.squid_config([]))
+
     def test_updates_automatically_and_falls_back_offline(self):
         with tempfile.TemporaryDirectory() as temp:
             with patch.object(groups, 'fetch', return_value='python.org\nfull:docs.example.net\n'), patch.object(groups.time, 'time', return_value=100000):

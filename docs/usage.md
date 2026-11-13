@@ -147,6 +147,7 @@ before the command for a separate inventory. TUI defaults live in
 In **Configuration → Network → Website categories**, select **Python** for PyPI,
 **npm** for JavaScript packages, **GitHub** for repositories and release downloads,
 or **Hugging Face** for models and datasets.
+For Microsoft sign-in and MFA, select **Authentication → Microsoft Entra / Microsoft 365**.
 For an existing sandbox, use **Settings → Network → Website categories**.
 [Web access](web-access.md) describes the category sources and automatic updates.
 

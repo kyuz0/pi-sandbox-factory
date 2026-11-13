@@ -332,6 +332,18 @@ as `python.org.example.net`, an unselected site, a redirect to an unselected sit
 and a category hostname resolving to loopback. Existing explicit local-model
 ports must still work. Category refresh must not restart the development container.
 
+For the bundled Microsoft sign-in category, use the built proxy image:
+
+```sh
+.venv/bin/python tests/network_auth_categories.py
+```
+
+This creates and removes its own gateway. Without credentials, it checks live
+Microsoft discovery/CDN access and denies misleading suffixes, Graph, an
+unselected host, a nonstandard port and a category hostname mapped to loopback.
+An explicit local port remains usable; a redirect from it to an unselected host
+is blocked. No saved sandbox is changed.
+
 ## Folder mounts and starting directory
 
 Create a disposable workspace with an `app` subfolder and two separate host

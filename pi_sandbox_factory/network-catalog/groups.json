@@ -1,5 +1,42 @@
 {
   "groups": {
+    "auth-microsoft": {
+      "title": "Microsoft Entra / Microsoft 365",
+      "description": "Microsoft sign-in, MFA and login assets. Add app and company federation hosts separately.",
+      "source": "Microsoft Learn (curated)",
+      "url": "https://learn.microsoft.com/en-us/azure/azure-portal/azure-portal-safelist-urls?tabs=public-cloud",
+      "references": [
+        "https://learn.microsoft.com/en-us/microsoft-365/enterprise/urls-and-ip-address-ranges?view=o365-worldwide"
+      ],
+      "reviewed_at": "2026-11-13",
+      "refresh": "bundled",
+      "domains": [
+        ".auth.microsoft.com",
+        ".hip.live.com",
+        ".microsoftonline-p.com",
+        ".msauth.net",
+        ".msauthimages.net",
+        ".msftauth.net",
+        ".msftauthimages.net",
+        ".msftidentity.com",
+        ".msidentity.com",
+        ".phonefactor.net",
+        "account.live.com",
+        "api.passwordreset.microsoftonline.com",
+        "autologon.microsoftazuread-sso.com",
+        "ccs.login.microsoftonline.com",
+        "clientconfig.microsoftonline-p.net",
+        "device.login.microsoftonline.com",
+        "login-us.microsoftonline.com",
+        "login.live.com",
+        "login.microsoft.com",
+        "login.microsoftonline.com",
+        "login.windows.net",
+        "logincert.microsoftonline.com",
+        "loginex.microsoftonline.com",
+        "passwordreset.microsoftonline.com"
+      ]
+    },
     "dev-python": {
       "title": "Python",
       "description": "Python documentation, PyPI and hosted Python projects.",

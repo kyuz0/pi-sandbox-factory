@@ -14,3 +14,8 @@ https://github.com/olbat/ut1-blacklists
 The data is converted into hostname/suffix rules. IP addresses and invalid
 hostnames are omitted. The derived UT1 category data retains the same license.
 Source revisions are recorded in groups.json; automatic refresh follows upstream.
+
+The Microsoft authentication group is a curated list of hostnames from Microsoft's
+public-cloud authentication documentation and Microsoft 365 endpoint sets 56, 59
+and 97. Source URLs and the review date are recorded in groups.json. This group
+is updated with Factory releases rather than downloaded from V2Fly or UT1.

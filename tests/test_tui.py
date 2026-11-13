@@ -833,5 +833,21 @@ class WebAccessUITests(unittest.TestCase):
             call = app.service.calls[-1]
             self.assertEqual(call[-2:], ['--website-groups', 'ut1-press'])
 
+    async def test_microsoft_auth_category_can_be_selected_and_removed(self):
+        for initial in (False, True):
+            app = Cockpit(self.root, FakeService(self.records))
+            async with app.run_test(size=(80,24)) as pilot:
+                await self.ready(app, pilot)
+                from pi_sandbox_factory.sandbox_tui import NetworkForm
+                config = {'options': {'website_groups': ['auth-microsoft'] if initial else []}}
+                await app.push_screen(NetworkForm('alpha', '', config))
+                checkbox = app.screen.query_one('#category-auth-microsoft', Checkbox)
+                self.assertEqual(checkbox.value, initial)
+                checkbox.value = not initial
+                app.screen.query_one('#apply-network', Button).press()
+                await pilot.pause();await app.workers.wait_for_complete()
+                expected = ['--website-groups'] + ([] if initial else ['auth-microsoft'])
+                self.assertEqual(app.service.calls[-1][-len(expected):], expected)
+
 if __name__ == '__main__':
     unittest.main()

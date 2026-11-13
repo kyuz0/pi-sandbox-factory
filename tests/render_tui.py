@@ -139,6 +139,25 @@ async def capture(size):
                 credentials_off['options']['protect_credentials'] = False
                 await shot('credentials-unprotected', SettingsForm(credentials_off), '#agent-section', '#protect-credentials')
                 await shot('categories', NetworkForm('demo', 'local-model.internal:8000', c), 'WebsiteGroups Collapsible')
+                if not args.only or any(name.startswith('auth-') for name in args.only):
+                    auth = copy.deepcopy(c)
+                    auth['options']['website_groups'] = ['auth-microsoft']
+                    await shot('auth-selected', NetworkForm('demo', 'app.example.com:443', auth), 'WebsiteGroups Collapsible', '#category-auth-microsoft')
+                    await app.push_screen(NetworkForm('demo', 'https://invalid.example.com/path', auth))
+                    app.screen.query_one('#network-error', Static).update('Use hostname:port, for example app.example.com:443.')
+                    await pilot.pause()
+                    app.screen.query_one('#network-error').scroll_visible(animate=False)
+                    await shot('auth-error', focus='#apply-network')
+                    await app.pop_screen()
+                    auth_draft = copy.deepcopy(draft)
+                    auth_draft['options']['website_groups'] = ['auth-microsoft']
+                    await app.push_screen(SettingsForm(auth_draft))
+                    app.screen.query_one('#network-section', Collapsible).collapsed = False
+                    app.screen.query_one('WebsiteGroups Collapsible').collapsed = False
+                    await pilot.pause()
+                    app.screen.query_one('#category-auth-microsoft').scroll_visible(top=True, animate=False)
+                    await shot('auth-create', focus='#category-auth-microsoft')
+                    await app.pop_screen()
                 await shot('network-edit', NetworkForm('demo', 'local-model.internal:8000', c))
                 await shot('folders', FoldersScreen(record))
                 await shot('folder-add', FolderEditor(None, [], str(workspace), root))

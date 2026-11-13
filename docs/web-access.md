@@ -37,6 +37,16 @@ including when networking is unrestricted.
 
 ## Website categories
 
+Under **Authentication**, select **Microsoft Entra / Microsoft 365** for Microsoft
+public-cloud sign-in, MFA, password reset and authentication CDN hosts. This
+includes `login.microsoftonline.com`, `login.live.com` and the `aadcdn` hosts under
+Microsoft's authentication CDN domains. The bundled list follows
+[Microsoft's sign-in guidance](https://learn.microsoft.com/en-us/azure/azure-portal/azure-portal-safelist-urls?tabs=public-cloud)
+and the authentication entries in its
+[Microsoft 365 endpoint list](https://learn.microsoft.com/en-us/microsoft-365/enterprise/urls-and-ip-address-ranges?view=o365-worldwide).
+It is updated with Factory releases. Add your application's host and any
+company-specific federation/ADFS host as individual allowed destinations.
+
 Developer groups come from
 [V2Fly domain-list-community](https://github.com/v2fly/domain-list-community):
 Python, npm, Rust, GitHub, Hugging Face, Stack Exchange and Read the Docs. Broader categories
@@ -44,7 +54,7 @@ come from [UT1 Toulouse](https://dsi.ut-capitole.fr/blacklists/), through its
 [public mirror](https://github.com/olbat/ut1-blacklists): news, financial
 information, banking and library resources.
 
-Selected categories update automatically on sandbox start or network changes,
+Selected V2Fly and UT1 categories update automatically on sandbox start or network changes,
 at most once a day. If the source is unavailable, the manager uses its cached or
 bundled list.
 
@@ -115,7 +125,7 @@ Pass an options file during creation or as `options` in an `update` settings fil
 
 Save Brave’s key with the command above to activate it.
 
-Category IDs are `dev-python`, `dev-npmjs`, `dev-rust`, `dev-github`,
+Category IDs are `auth-microsoft`, `dev-python`, `dev-npmjs`, `dev-rust`, `dev-github`,
 `dev-huggingface`, `dev-stackexchange`, `dev-readthedocs`, `ut1-press`,
 `ut1-financial`, `ut1-bank` and `ut1-liste_bu`. For an existing sandbox, retain your manual rules in a file
 and select categories with:

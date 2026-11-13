@@ -335,8 +335,8 @@ class WebsiteGroups(Vertical):
 
     def compose(self):
         with Collapsible(title='Website categories · optional', collapsed=True):
-            yield Static('Categories allow HTTP/HTTPS access. Lists update automatically from V2Fly and UT1 Toulouse.', classes='section-intro')
-            for prefix, title in [('dev-', 'Developer services · V2Fly'), ('ut1-', 'Topics · UT1 Toulouse')]:
+            yield Static('Categories allow HTTP/HTTPS access. Authentication lists ship with Factory; V2Fly and UT1 lists refresh automatically.', classes='section-intro')
+            for prefix, title in [('auth-', 'Authentication · curated'), ('dev-', 'Developer services · V2Fly'), ('ut1-', 'Topics · UT1 Toulouse')]:
                 yield Label(title, classes='group-title')
                 for name, group in network_groups.catalog().items():
                     if name.startswith(prefix):
