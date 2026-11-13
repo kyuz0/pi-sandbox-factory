@@ -2,10 +2,80 @@
 from textual import on, work
 from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.screen import ModalScreen
-from textual.widgets import Button, Input, Label, Static, TextArea
+from textual.widgets import Button, Collapsible, Input, Label, Static, TextArea
 
-from . import host_platform, sandbox_ssh
-from .tui_widgets import Feedback
+from . import host_platform, sandbox_ssh, git_settings
+from .tui_widgets import Feedback, Checkbox
+
+
+class GitIdentityFields(Vertical):
+    DEFAULT_CSS = '''
+    GitIdentityFields { height: auto; }
+    GitIdentityFields #git-identity-fields { height: auto; margin: 0 0 0 2; }
+    GitIdentityFields #git-identity-fields.-identity-disabled { opacity: 50%; }
+    GitIdentityFields > .git-identity-note { height: auto; margin: 1 0 0 0; }
+    '''
+
+    def __init__(self, value=None, defaults=False, setup=False):
+        super().__init__()
+        self.value = value
+        self.defaults = defaults
+        self.setup = setup
+
+    def compose(self):
+        with Vertical(classes='setting'):
+            yield Checkbox('Set Git commit identity', value=self.value is not None, id='git-identity-enabled')
+            yield Static(('Author for commits in new sandboxes.' if self.defaults else 'Author for commits in this sandbox.')
+                         + ' Applied over global Git values at startup; repository-local settings take precedence. SSH keys authenticate separately.', classes='setting-help checkbox-help')
+        with Vertical(id='git-identity-fields'):
+            with Vertical(classes='setting'):
+                yield Label('Commit author name')
+                yield Input((self.value or {}).get('name', ''), id='git-author-name')
+            with Vertical(classes='setting'):
+                yield Label('Commit author email')
+                yield Input((self.value or {}).get('email', ''), id='git-author-email')
+                yield Static('Use an address you want recorded in Git history.', classes='setting-help')
+                yield Feedback('', id='git-identity-error', markup=False)
+        if self.setup:
+            yield Static('Configure each sandbox’s SSH destinations and keys in Settings → SSH & Git.' if self.defaults else
+                         'Configure SSH destinations and keys after creation in Settings → SSH & Git.',
+                         classes='setting-help git-identity-note')
+
+    def on_mount(self):
+        self.sync_fields()
+
+    @on(Checkbox.Changed, '#git-identity-enabled')
+    def sync_fields(self):
+        enabled = self.query_one('#git-identity-enabled', Checkbox).value
+        for field in self.query(Input):
+            field.disabled = not enabled
+        self.query_one('#git-identity-fields').set_class(not enabled, '-identity-disabled')
+        section = next((node for node in self.ancestors if isinstance(node, Collapsible)), None)
+        if section:
+            title = str(section.title).split(' · ')[0]
+            section.title = title + ' · ' + ('commit identity ' if title == 'SSH & Git' else '') + ('set' if enabled else 'not set')
+
+    @on(Input.Changed)
+    def clear_error(self, event):
+        event.input.remove_class('-invalid')
+        self.query_one(Feedback).update('')
+
+    def collect(self):
+        self.query_one(Feedback).update('')
+        if not self.query_one('#git-identity-enabled', Checkbox).value:
+            return None
+        try:
+            return git_settings.identity({'name': self.query_one('#git-author-name', Input).value.strip(),
+                                          'email': self.query_one('#git-author-email', Input).value.strip()})
+        except ValueError as error:
+            section = next((node for node in self.ancestors if isinstance(node, Collapsible)), None)
+            if section:
+                section.collapsed = False
+            self.query_one(Feedback).update('Error: ' + str(error))
+            invalid = '#git-author-name' if not self.query_one('#git-author-name', Input).value.strip() or 'name' in str(error) else '#git-author-email'
+            self.query_one(invalid, Input).add_class('-invalid')
+            self.call_after_refresh(self.query_one(Feedback).scroll_visible, animate=False)
+            raise
 
 
 class RepositorySetup(ModalScreen):

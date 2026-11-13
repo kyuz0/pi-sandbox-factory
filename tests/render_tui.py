@@ -27,7 +27,7 @@ from pi_sandbox_factory.folders_ui import FolderEditor
 from pi_sandbox_factory.editor_ui import EditorScreen, OpenWith
 from pi_sandbox_factory.models_ui import ProviderDialog, ModelDialog
 from pi_sandbox_factory.communications_ui import SlackCredentials
-from pi_sandbox_factory.repository_ui import RepositorySetup, PublicKey
+from pi_sandbox_factory.repository_ui import RepositorySetup, PublicKey, GitIdentityFields
 
 class ReviewService(FakeService):
 
@@ -90,6 +90,34 @@ async def capture(size):
                 await shot('new', NewSandbox())
                 draft = preset('base', copy.deepcopy(DEFAULT_SETTINGS))
                 draft.update(name='demo', workspace=str(workspace), working_directory='.', extra_folders=[])
+                if not args.only or any(name.startswith('git-') for name in args.only):
+                    for context in ('create', 'defaults', 'ssh'):
+                        screen = SSHScreen(record) if context == 'ssh' else SettingsForm(copy.deepcopy(draft), defaults=context == 'defaults')
+                        await app.push_screen(screen)
+                        screen.query_one('#git-identity-section', Collapsible).scroll_visible(top=True, animate=False)
+                        await shot('git-' + context + '-collapsed')
+                        section = screen.query_one('#git-identity-section', Collapsible)
+                        section.collapsed = False
+                        await pilot.pause()
+                        section.scroll_visible(top=True, animate=False)
+                        await shot('git-' + context + '-disabled', focus='#git-identity-enabled')
+                        screen.query_one('#git-identity-enabled', Checkbox).value = True
+                        screen.query_one('#git-author-name', Input).value = 'Example Developer with a longer display name'
+                        screen.query_one('#git-author-email', Input).value = 'developer.with.a.long.address@example.test'
+                        await pilot.pause()
+                        await shot('git-' + context + '-populated', focus='#git-author-email')
+                        screen.query_one('#git-author-email', Input).value = 'developer.' + 'very-long-address.' * 12 + '@example.test'
+                        screen.query_one('#git-author-email', Input).cursor_position = len(screen.query_one('#git-author-email', Input).value)
+                        await shot('git-' + context + '-overflow', focus='#git-author-email')
+                        screen.query_one('#git-author-email', Input).value = 'invalid address'
+                        await pilot.pause()
+                        try:
+                            screen.query_one(GitIdentityFields).collect()
+                        except ValueError:
+                            pass
+                        screen.query_one('#git-identity-error').scroll_visible(animate=False)
+                        await shot('git-' + context + '-error')
+                        await app.pop_screen()
                 if not args.only or any(name.startswith('provider-credential') for name in args.only):
                     info = {'description': 'Company models', 'settings': {
                         'endpoint': {'type': 'text', 'label': 'API endpoint', 'default': 'https://models.example.com/api'},
@@ -132,6 +160,23 @@ async def capture(size):
                     if name == 'advanced':
                         continue
                     await shot(name, SettingsForm(copy.deepcopy(draft)), sel)
+                if not args.only or any(name.startswith('browser-vault-') for name in args.only):
+                    for browser, protected, inner, name in (
+                        (False, True, True, 'disabled'), (True, True, True, 'protected'),
+                        (True, False, True, 'unprotected'), (True, True, False, 'outer-shell'),
+                        (True, True, False, 'unreviewed-shell')):
+                        vault_draft = copy.deepcopy(draft)
+                        vault_draft['options'].update(browser=browser, protect_browser_credentials=protected, inner_sandbox=inner)
+                        if name == 'unreviewed-shell':
+                            vault_draft['options']['approval'] = 'off'
+                        await app.push_screen(SettingsForm(vault_draft))
+                        app.screen.query_one('#skills-section', Collapsible).collapsed = False
+                        await shot('browser-vault-' + name, section='#skills-section',
+                                   focus='#protect-browser-credentials' if browser else '#browser')
+                        if size[0] == 80:
+                            app.screen.query_one('#browser-vault-shell-help').scroll_visible(top=True, animate=False)
+                            await shot('browser-vault-' + name + '-help')
+                        await app.pop_screen()
                 questions_off = copy.deepcopy(draft)
                 questions_off['options']['question_forms'] = False
                 await shot('questions-off', SettingsForm(questions_off), '#skills-section', '#question-forms')

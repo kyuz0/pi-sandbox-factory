@@ -555,7 +555,8 @@ def up(config, state):
             if 'options' in config:
                 prepare_options(config, state)
                 args += ['-v', f'{state / "runtime-config"}:/opt/pi-security/config:{host_platform.bind_mode()}',
-                         '-v', f'{state / "options.json"}:/opt/sandbox/options.json:{host_platform.bind_mode()}']
+                         '-v', f'{state / "options.json"}:/opt/sandbox/options.json:{host_platform.bind_mode()}',
+                         '-v', f'{state / "git-identity.gitconfig"}:/opt/sandbox/git-identity.gitconfig:{host_platform.bind_mode()}']
             if restricted:
                 args += ['-v', f'{socket_volume}:/run/egress:ro']
             if config.get('pi_config'):
@@ -798,8 +799,16 @@ def write_attach(config, state):
 
 
 def prepare_options(config, state):
+    from . import git_settings
     selected = options(config.get('options'))
     write_json(state / 'options.json', selected)
+    identity_file = state / 'git-identity.gitconfig'
+    temporary = identity_file.with_suffix('.new')
+    temporary.unlink(missing_ok=True)
+    with temporary.open('x') as stream:
+        temporary.chmod(0o600)
+        stream.write(git_settings.config(selected['git_identity']))
+    temporary.replace(identity_file)
     target = state / 'runtime-config'
     target.mkdir(exist_ok=True, mode=0o700)
     write_json(target / 'web-providers.json', selected['web_access'])

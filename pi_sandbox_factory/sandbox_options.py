@@ -3,16 +3,18 @@ import json
 import re
 from pathlib import Path
 from urllib.parse import urlsplit
-from . import web_access, network_groups, communications
+from . import web_access, network_groups, communications, git_settings
 
 SKILLS = {}
 PROFILE_SKILLS = {'base': []}
 DEFAULTS = {'approval': 'automatic', 'inner_sandbox': True, 'goals': True,
             'scheduling': True, 'question_forms': True, 'browser': False,
-            'protect_credentials': True, 'compaction_recall': 'lite',
-            'disabled_skills': [], 'web_access': None, 'website_groups': [], 'communications': None}
+            'protect_credentials': True, 'protect_browser_credentials': True, 'compaction_recall': 'lite',
+            'disabled_skills': [], 'web_access': None, 'website_groups': [], 'communications': None,
+            'git_identity': None}
 
 COMMON_CREDENTIAL_PATTERNS = ('*.pem', '*.key', '*.env', '*.env.*')
+BROWSER_VAULT_PATTERNS = ('/home/node/.betterwright/vault', '/home/node/.betterwright/vault/*')
 
 
 def options(value=None):
@@ -22,7 +24,7 @@ def options(value=None):
     result = {**DEFAULTS, **value}
     if result['approval'] not in ('automatic', 'assisted', 'manual', 'off'):
         raise ValueError('Approval must be automatic, assisted, manual or off')
-    for key in ('inner_sandbox', 'goals', 'scheduling', 'question_forms', 'browser', 'protect_credentials'):
+    for key in ('inner_sandbox', 'goals', 'scheduling', 'question_forms', 'browser', 'protect_credentials', 'protect_browser_credentials'):
         if type(result[key]) is not bool:
             raise ValueError(key + ' must be a boolean')
     if result['compaction_recall'] not in ('lite', 'full', 'off'):
@@ -32,6 +34,7 @@ def options(value=None):
         raise ValueError('Unknown disabled skill')
     result['web_access'] = web_access.settings(result['web_access'])
     result['communications'] = communications.settings(result['communications'])
+    result['git_identity'] = git_settings.identity(result['git_identity'])
     result['website_groups'] = network_groups.selected(result['website_groups'])
     return result
 
@@ -57,6 +60,12 @@ def permissions(template, selected):
     policy = json.loads(json.dumps(template))
     policy['authorizerChain'] = ['pi-auto-review'] if selected['approval'] in ('automatic', 'assisted') else []
     rules = policy['permission']
+    paths = rules.setdefault('path', {})
+    for pattern in BROWSER_VAULT_PATTERNS:
+        if selected['protect_browser_credentials']:
+            paths[pattern] = 'deny'
+        elif paths.get(pattern) == 'deny':
+            paths.pop(pattern)
     if not selected['protect_credentials']:
         paths = rules.get('path')
         if isinstance(paths, dict):
@@ -135,6 +144,11 @@ def guidance(selected, subagents=False):
                      'Escalation does not add destinations to the outer allowlist or reveal provider keys.')
     if selected['browser']:
         lines.append('Use the native browser tool for Playwright automation; do not launch a separate browser through bash.')
+        if selected['protect_browser_credentials']:
+            lines.append('The saved Betterwright credential vault at ~/.betterwright/vault is protected from native file tools. '
+                         'Use browser account selection and login on matching sites; do not inspect, dump or copy vault files through bash_escalate. '
+                         'An explicitly authorized browser_session_export is a separate scoped login handoff for a same-service local script, '
+                         'not permission to read the vault. Keep session values out of output, logs and Git.')
     lines.append('Explicit permission denials must be respected. Commands cannot execute on the physical host. '
                  'Use inherited proxy settings in restricted network mode.')
     lines.append('Standard pi-subagents are enabled with the same selected capabilities and approval rules.' if subagents

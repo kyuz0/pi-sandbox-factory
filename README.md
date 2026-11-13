@@ -46,6 +46,21 @@ The manager offers **Upgrade now** when a new version is available. You can also
 run `pipx upgrade pi-sandbox-factory`. Update existing sandbox images through
 **Actions → Update sources and recreate…**.
 
+When enabling **Browser · Betterwright**, **Protect saved browser vault files**
+is on by default. It blocks direct file-tool access to `~/.betterwright/vault`;
+browser account selection and login still work. Inner Bash hides private home,
+and reviewed shell commands remain subject to credential policy. An authorized
+service login can be handed privately to a local script without exposing the
+saved vault. Human logins are not saved automatically.
+
+This is an agent-tool guard, not isolation from malicious editor or Pi extensions
+running with the same user permissions. They may access container files or active
+browser sessions; see [VS Code's extension runtime security](https://code.visualstudio.com/docs/configure/extensions/extension-runtime-security).
+Disabling the option removes only the extra vault file guard;
+other sandbox and approval rules still apply.
+With the inner sandbox and approval reviews both off, Bash can read vault files;
+the checkbox continues to protect native file tools only.
+
 ## Profiles and providers
 
 A **Profile** supplies tools, skills and agent instructions. A **Provider** connects

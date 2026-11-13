@@ -295,10 +295,12 @@ class Service:
             write_json(path, settings)
             self.run(['update', name, '--settings-file', str(path)], log)
 
-    def ssh_settings(self, name, settings, log):
+    def ssh_settings(self, name, settings, log, git_identity):
         with tempfile.TemporaryDirectory(prefix='sandbox-ssh-') as temp:
             path = Path(temp) / 'settings.json'
-            write_json(path, {'ssh': settings})
+            selected = options(self.config(name).get('options'))
+            selected['git_identity'] = git_identity
+            write_json(path, {'ssh': settings, 'options': options(selected)})
             self.run(['update', name, '--settings-file', str(path)], log)
 
     def ssh_key(self, name, generate=False):
@@ -835,7 +837,7 @@ class SettingsMenu(ModalScreen[Optional[str]]):
                ('Models · endpoints and discovery', 'models'),
                ('Folders · starting folder and host mounts', 'folders'),
                ('Advisors · Codex, Claude and Antigravity', 'advisors'),
-               ('SSH and repositories · destinations and keys', 'ssh-settings'),
+               ('SSH & Git · identity, destinations and keys', 'ssh-settings'),
                ('Network · website categories and allowed destinations', 'network-settings'),
                ('Web access · search providers and API keys', 'web-access'),
                ('Communications · Slack', 'communications'),
@@ -919,10 +921,14 @@ class SSHScreen(Screen):
 
     def compose(self):
         hosts = self.record['config'].get('ssh', {}).get('hosts', [])
+        from .repository_ui import GitIdentityFields
+        identity = options(self.record['config'].get('options'))['git_identity']
         yield Header()
         with VerticalScroll(classes='form'):
-            yield Label('SSH and repositories · ' + self.record['name'], classes='title')
+            yield Label('SSH & Git · ' + self.record['name'], classes='title')
             yield Static('Keys stay in a separate SSH container. The remote account or deploy key determines what the sandbox can do.', classes='section-intro')
+            with Collapsible(title='Git commit identity · ' + ('set' if identity else 'not set'), collapsed=True, id='git-identity-section'):
+                yield GitIdentityFields(identity)
             with Vertical(classes='setting'):
                 yield Label('Destinations · alias username hostname-or-IP port')
                 yield TextArea('\n'.join(f'{h["alias"]} {h["user"]} {h["hostname"]} {h["port"]}' for h in hosts), id='ssh-hosts')
@@ -989,6 +995,8 @@ class SSHScreen(Screen):
                 with self.app.suspend():
                     subprocess.run(self.app.service.command(*args), check=False)
             elif action == 'ssh-apply':
+                from .repository_ui import GitIdentityFields
+                identity = self.query_one(GitIdentityFields).collect()
                 text = self.query_one('#ssh-hosts', TextArea).text
                 old = self.record['config'].get('ssh', {'hosts': []})
                 old_text = '\n'.join(f'{h["alias"]} {h["user"]} {h["hostname"]} {h["port"]}' for h in old['hosts'])
@@ -998,8 +1006,8 @@ class SSHScreen(Screen):
                 def apply(yes):
                     if not yes: return
                     self.app.pop_screen()
-                    self.app.push_screen(Operation('SSH destinations · ' + name, lambda log: service.ssh_settings(name, settings, log)))
-                self.app.push_screen(Confirm('Apply SSH destinations?\nActive sandbox processes restart. Workspace and private key are preserved.\nThe key will be restricted to these users and trusted host identities.', 'Apply'), apply)
+                    self.app.push_screen(Operation('SSH & Git settings · ' + name, lambda log: service.ssh_settings(name, settings, log, identity)))
+                self.app.push_screen(Confirm('Apply SSH & Git settings?\nActive sandbox processes restart. Workspace and private key are preserved.\nSSH destinations restrict the key; commit identity sets the name and email recorded on commits.', 'Apply'), apply)
         except (OSError, ValueError, subprocess.SubprocessError) as error:
             self.notify(safe_text(error), severity='error')
 
@@ -1695,6 +1703,11 @@ class SettingsForm(Screen):
                 with Collapsible(title='Folders · starting folder and host mounts', collapsed=not bool(value.get('extra_folders')), id='folders-section'):
                     yield FolderFields(value, self.app.state_root)
             if not self.editing and not self.defaults_mode:
+                from .repository_ui import GitIdentityFields
+                identity = selected['git_identity']
+                with Collapsible(title='SSH & Git · commit identity ' + ('set' if identity else 'not set'), collapsed=True, id='git-identity-section'):
+                    yield GitIdentityFields(identity, setup=True)
+            if not self.editing and not self.defaults_mode:
                 with Collapsible(title='Advisors · Codex / Claude / Antigravity', collapsed=True, id='new-advisors-section'):
                     providers = value.get('advisors', {}).get('providers', [])
                     yield AdvisorChoices(providers, 'new-advisor-')
@@ -1705,6 +1718,9 @@ class SettingsForm(Screen):
                              allow_blank=False, id='default-profile')
                 yield Label('Workspace parent folder')
                 yield Input(value.get('workspace_parent', ''), id='workspace-parent')
+                from .repository_ui import GitIdentityFields
+                with Collapsible(title='SSH & Git · commit identity ' + ('set' if selected['git_identity'] else 'not set'), collapsed=True, id='git-identity-section'):
+                    yield GitIdentityFields(selected['git_identity'], defaults=True, setup=True)
             with Collapsible(title='Network · ' + ('Restricted' if value['network'] == 'allowlist' else 'Unrestricted'), collapsed=True, id='network-section'):
                 yield Label('Outer container network')
                 yield Select([('Restricted — only allowed destinations', 'allowlist'),
@@ -1747,7 +1763,12 @@ class SettingsForm(Screen):
                     yield Static('Full adds automatic hints and may reduce prefix-cache reuse.', classes='setting-help')
                 with Vertical(classes='setting'):
                     yield Checkbox('Browser · Betterwright', value=selected['browser'], id='browser')
-                    yield Static('Adds a headless browser with a live viewer for you to see and interact with its pages.', classes='setting-help checkbox-help')
+                    yield Static('Adds a browser with a live viewer for you to see and interact with its pages.', classes='setting-help checkbox-help')
+                with Vertical(classes='setting browser-vault-setting', id='browser-vault-setting'):
+                    yield Checkbox('Protect saved browser vault files', value=selected['protect_browser_credentials'], id='protect-browser-credentials')
+                    yield Static('Blocks native file tools from the saved vault; browser account selection and login still work.', classes='setting-help checkbox-help')
+                    yield Static('', id='browser-vault-shell-help', classes='setting-help checkbox-help')
+                    yield Static('Not isolation from malicious editor or Pi extensions with the same user permissions. Active browser sessions remain accessible to browser automation.', classes='setting-help checkbox-help')
                 for skill in PROFILE_SKILLS.get(self.profile_name, []):
                     yield Checkbox(SKILLS[skill][0], value=skill not in selected['disabled_skills'], id='skill-' + skill)
                 for skill in value.get('extra_skills', []):
@@ -1790,6 +1811,7 @@ class SettingsForm(Screen):
         self.approval_description()
         self.network_changed()
         self.local_models_changed()
+        self.browser_changed()
         if self.initial_section:
             section = self.query_one('#' + self.initial_section, Collapsible)
             section.collapsed = False
@@ -1800,6 +1822,19 @@ class SettingsForm(Screen):
     @on(Checkbox.Changed, '#local-models')
     def local_models_changed(self):
         self.query_one('#model-ports', Input).disabled = not self.query_one('#local-models', Checkbox).value
+
+    @on(Checkbox.Changed, '#browser')
+    def browser_changed(self):
+        enabled = self.query_one('#browser', Checkbox).value
+        self.query_one('#protect-browser-credentials', Checkbox).disabled = not enabled
+        self.query_one('#browser-vault-setting').set_class(not enabled, '-browser-disabled')
+        inner = self.query_one('#inner-sandbox', Checkbox).value
+        mode = self.query_one('#approval', Select).value
+        text = ('Inner Bash hides private home. Reviewed outer-shell commands still follow credential policy.' if inner else
+                'Bash runs in the outer container under approval rules; there is no inner filesystem barrier.')
+        if not inner and mode == 'off':
+            text = 'Inner sandbox and reviews are off: Bash can read vault files. This checkbox does not protect shell access.'
+        self.query_one('#browser-vault-shell-help', Static).update(text)
 
     @on(Checkbox.Changed)
     def provider_selected(self, event):
@@ -1840,6 +1875,7 @@ class SettingsForm(Screen):
     @on(Checkbox.Changed, '#inner-sandbox')
     def approval_changed(self):
         self.approval_description()
+        self.browser_changed()
 
     @on(Select.Changed, '#network')
     def network_changed(self):
@@ -1880,11 +1916,15 @@ class SettingsForm(Screen):
         if not self.editing and not self.defaults_mode:
             draft.update(self.query_one(FolderFields).collect(private_paths=[inp('pi-config')]))
         selected = options(draft.get('options'))
+        if not self.editing:
+            from .repository_ui import GitIdentityFields
+            selected['git_identity'] = self.query_one(GitIdentityFields).collect()
         selected['web_access'], key = self.query_one(WebAccessForm).collect()
         selected['communications'], draft['_communication_keys'] = self.query_one(CommunicationsForm).collect()
         selected['website_groups'] = self.query_one(WebsiteGroups).selected()
         selected.update(approval=self.query_one('#approval', Select).value, inner_sandbox=check('inner-sandbox'),
                         protect_credentials=check('protect-credentials'),
+                        protect_browser_credentials=check('protect-browser-credentials'),
                         goals=check('goals'), scheduling=check('scheduling'), question_forms=check('question-forms'), browser=check('browser'),
                         compaction_recall=self.query_one('#compaction-recall', Select).value)
         selected['disabled_skills'] = [s for s in SKILLS if
@@ -2047,6 +2087,13 @@ class Cockpit(App):
     .package-actions { height: 1; margin-top: 1; }
     #package-error { color: $error; height: auto; }
     .setting { height: auto; margin-bottom: 1; }
+    .browser-vault-setting { margin: 0 0 1 2; }
+    .browser-vault-setting.-browser-disabled { opacity: 50%; }
+    GitIdentityFields #git-identity-fields > .setting:last-child { margin: 0 0 0 0; }
+    GitIdentityFields Input { border: solid #707780; }
+    GitIdentityFields Input:focus { border: solid $primary; }
+    GitIdentityFields Input.-invalid, GitIdentityFields Input.-invalid:focus { border: double $error; }
+    #git-identity-error { color: #f1f3f5; text-style: bold; }
     .provider-setting { margin: 0 0 1 2; }
     .provider-setting.-provider-disabled { opacity: 50%; }
     .provider-setting Input.-invalid-credential { border: tall $error; }

@@ -122,10 +122,13 @@ async function main() {
     await request({type:'session_prompt',text:'RUN_MANAGED_SSH_STATUS',images:[],source:'interactive'}, 'inventory');
     const state = await waitForReply('inventory', 'SSH_STATUS_DONE');
     const results = state.messages.filter(m => m.role === 'toolResult');
-    assert.equal(results.length, 1);
+    assert.equal(results.length, 2);
     assert.equal(results[0].toolName, 'bash_escalate');
     assert(!results[0].isError);
     assert(JSON.stringify(results[0].content).includes('key_loaded'));
+    assert.equal(results[1].toolName, 'bash');
+    assert(!results[1].isError);
+    assert(JSON.stringify(results[1].content).includes('Fixture Author <fixture@example.test>'));
     assert.equal(sessions.get('inventory').dialogs, 0);
     console.log('PASS actual Pendant: managed SSH context and reviewed status with SSH_AUTH_SOCK empty');
     await request({type:'session_dispose',reason:'replacement'}, 'inventory');

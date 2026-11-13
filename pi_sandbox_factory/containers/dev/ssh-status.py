@@ -16,7 +16,7 @@ def status(targets=Path('/etc/sandbox-ssh/targets.json')):
     if result.returncode == 0:
         state, action, code = 'key_loaded', 'Use Git/SSH normally with a configured alias; repository permissions are checked by the server.', 0
     elif result.returncode == 1:
-        state, action, code = 'no_unlocked_key', 'Import a key in Factory Settings → SSH and repositories → SSH key, or unlock an existing key there. Do not generate keys in the development container.', 2
+        state, action, code = 'no_unlocked_key', 'Import a key in Factory Settings → SSH & Git → SSH key, or unlock an existing key there. Do not generate keys in the development container.', 2
     else:
         state, action, code = 'agent_unavailable', 'If this ran in the inner sandbox, rerun through bash_escalate when available. If it already ran in the outer container, ask the user to check the SSH companion in Factory.', 3
     return {'state': state, 'destinations': destinations, 'action': action}, code

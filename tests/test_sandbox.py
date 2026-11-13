@@ -510,6 +510,21 @@ class RecoveryTests(LifecycleTestCase):
     def container(self, running=True):
         return {'Config': {'Labels': {sandbox.LABEL: 'demo'}}, 'State': {'Running': running}}
 
+    def test_saved_git_identity_is_mounted_readonly_in_the_development_container(self):
+        config = dict(self.config, network='unrestricted', uid=1000, gid=1000, options={
+            'git_identity': {'name': 'Fixture Author', 'email': 'fixture@example.test'}},
+            common={'path': str(sandbox.ROOT / 'containers/dev')})
+        with tempfile.TemporaryDirectory() as tmp:
+            state = Path(tmp)
+            (state / 'allowlist.txt').write_text('')
+            with patch.object(sandbox, 'inspect', return_value=None), \
+                    patch.object(sandbox, 'image_names', return_value=('dev-image', 'proxy-image')), \
+                    patch.object(sandbox, 'run', return_value=subprocess.CompletedProcess([], 0)) as run:
+                sandbox.up(config, state)
+            command = next(call.args[0] for call in run.call_args_list if call.args[0][1] == 'run')
+            self.assertIn(f'{state / "git-identity.gitconfig"}:/opt/sandbox/git-identity.gitconfig:ro,Z', command)
+            self.assertIn('fixture@example.test', (state / 'git-identity.gitconfig').read_text())
+
     def test_unrestricted_container_has_no_proxy_or_proxy_environment(self):
         config = dict(self.config, network='unrestricted', uid=1000, gid=1000,
                       memory='4g', workspace='/absolute/path/to/project')
@@ -717,6 +732,49 @@ class EditorTests(unittest.TestCase):
 
 
 class BootstrapTests(unittest.TestCase):
+    def test_git_identity_applies_to_new_commits_and_preserves_local_overrides(self):
+        from pi_sandbox_factory import git_settings
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            for directory in ('shared', 'pendant', 'home', 'sandbox', 'repo'):
+                (root / directory).mkdir()
+            (root / 'home/.gitconfig').write_text('[user]\nname = Previous\nemail = previous@example.test\n[alias]\nst = status\n')
+            identity = root / 'sandbox/git-identity.gitconfig'
+            identity.write_text(git_settings.config({'name': 'Fixture Author', 'email': 'fixture@example.test'}))
+            self.bootstrap(root)
+            self.bootstrap(root)
+            env = {'PATH': os.environ['PATH'], 'HOME': str(root / 'home'), 'GIT_CONFIG_NOSYSTEM': '1'}
+            def git(*args):
+                return subprocess.check_output(['git', '-C', str(root / 'repo'), *args], env=env, text=True).strip()
+            git('init', '-q')
+            self.assertEqual(git('config', 'user.name'), 'Fixture Author')
+            self.assertEqual(git('config', 'alias.st'), 'status')
+            git('-c', 'commit.gpgsign=false', '-c', 'core.hooksPath=/dev/null', 'commit', '--allow-empty', '-qm', 'fixture')
+            self.assertEqual(git('log', '-1', '--format=%an <%ae>'), 'Fixture Author <fixture@example.test>')
+            self.assertEqual(len(git('config', '--global', '--get-all', 'include.path').splitlines()), 1)
+            git('config', '--local', 'user.name', 'Repository Author')
+            self.assertEqual(git('config', 'user.name'), 'Repository Author')
+            identity.write_text(git_settings.config(None))
+            self.bootstrap(root)
+            self.assertEqual(git('config', 'user.name'), 'Repository Author')
+            git('config', '--local', '--unset', 'user.name')
+            self.assertEqual(git('config', 'user.name'), 'Previous')
+            self.assertEqual(git('config', 'user.email'), 'previous@example.test')
+            (root / 'home/.gitconfig').unlink()
+            identity.write_text(git_settings.config({'name': 'Fixture Author', 'email': 'fixture@example.test'}))
+            self.bootstrap(root)
+            self.assertEqual(git('config', 'user.name'), 'Fixture Author')
+            git('config', '--global', 'user.name', 'Manual Global Author')
+            self.assertEqual(git('config', 'user.name'), 'Manual Global Author')
+            self.bootstrap(root)
+            self.assertEqual(git('config', 'user.name'), 'Fixture Author')
+            identity.write_text(git_settings.config(None))
+            self.bootstrap(root)
+            self.assertEqual(git('config', 'user.name'), 'Manual Global Author')
+            (root / 'home/.gitconfig').write_text('[malformed\n')
+            self.bootstrap(root)
+            self.assertEqual((root / 'home/.gitconfig').read_text(), '[malformed\n')
+
     def bootstrap(self, root, subagents=False):
         script = (sandbox.ROOT / 'containers/dev/bootstrap.py').read_text()
         shutil.copytree(sandbox.ROOT / 'containers/dev/editor-startup', root / 'editor-extensions/pi-sandbox-factory.editor-startup-1.0.0', dirs_exist_ok=True)

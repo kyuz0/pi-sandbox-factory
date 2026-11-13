@@ -5,9 +5,10 @@ from pathlib import Path
 import queue
 import subprocess
 import threading
+import sys
 
 secret = 'SYNTHETIC_PRIVATE_SESSION_GUARD_VALUE'
-root = Path('/home/node/.local/state/pi-browser-sessions/session-guard')
+root = Path('/home/node/.betterwright/vault/session-guard' if '--vault' in sys.argv else '/home/node/.local/state/pi-browser-sessions/session-guard')
 root.mkdir(parents=True, exist_ok=True, mode=0o700)
 target = root / 'cookies.txt'
 target.write_text(secret + '\n'); target.chmod(0o600)
@@ -15,8 +16,8 @@ link = Path('/workspace/session-guard-link')
 link.symlink_to(root, target_is_directory=True)
 cases = [(name, arguments) for name, arguments in [
     ('read', {'path': str(target)}),
-    ('read', {'path': '~/.local/state/pi-browser-sessions/session-guard/cookies.txt'}),
-    ('read', {'path': '../home/node/.local/state/pi-browser-sessions/session-guard/cookies.txt'}),
+    ('read', {'path': str(target).replace('/home/node', '~', 1)}),
+    ('read', {'path': '../' + str(target).lstrip('/')}),
     ('read', {'path': str(link / 'cookies.txt')}),
     ('grep', {'pattern': 'PRIVATE', 'path': str(root)}),
     ('find', {'pattern': '*', 'path': str(root)}),

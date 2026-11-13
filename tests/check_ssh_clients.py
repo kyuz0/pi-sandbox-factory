@@ -31,8 +31,17 @@ class Handler(BaseHTTPRequestHandler):
             assert 'Managed SSH destinations' in text and alias in text, text[:1000]
             assert 'use bash_escalate directly' in text and 'sandbox-ssh-status' in text
             contexts.append(True)
-            if any(m.get('role') == 'tool' for m in messages):
+            outputs = [m for m in messages if m.get('role') == 'tool']
+            if len(outputs) == 2:
+                assert 'Fixture Author <fixture@example.test>' in json.dumps(outputs[-1]), 'Commit identity missing in inner Bash'
                 delta['content'] = 'SSH_STATUS_DONE'
+            elif outputs:
+                delta['tool_calls'] = [{'index': 0, 'id': 'git-identity-check', 'type': 'function',
+                    'function': {'name': 'bash', 'arguments': json.dumps({'command':
+                        'mkdir -p /workspace/git-identity-fixture && cd /workspace/git-identity-fixture && '
+                        'git init -q && git -c core.hooksPath=/dev/null -c commit.gpgsign=false commit --allow-empty -qm fixture && '
+                        'git log -1 --format="%an <%ae>"'})}}]
+                finish = 'tool_calls'
             else:
                 delta['tool_calls'] = [{'index': 0, 'id': 'ssh-status-check', 'type': 'function',
                     'function': {'name': 'bash_escalate', 'arguments': json.dumps({
@@ -80,15 +89,16 @@ try:
         if event.get('type') == 'agent_settled':
             break
     results = [e for e in events if e.get('type') == 'tool_execution_end']
-    assert len(results) == 1 and results[0]['toolName'] == 'bash_escalate', results
+    assert len(results) == 2 and results[0]['toolName'] == 'bash_escalate' and results[1]['toolName'] == 'bash', results
     assert not results[0].get('isError') and 'key_loaded' in json.dumps(results[0]), results
-    assert len(reviews) == 1 and len(contexts) == 2, (reviews, contexts)
+    assert not results[1].get('isError') and 'Fixture Author <fixture@example.test>' in json.dumps(results[1]), results
+    assert len(reviews) == 1 and len(contexts) == 3, (reviews, contexts)
     print('PASS actual Pi: managed SSH context and reviewed status with SSH_AUTH_SOCK empty', flush=True)
     process.terminate()
     process.wait(timeout=15)
     process = None
     subprocess.run(['node', '/tmp/check-ssh-pendant.cjs', '--ssh'], check=True, timeout=240)
-    assert len(reviews) == 2 and len(contexts) == 4, (reviews, contexts)
+    assert len(reviews) == 2 and len(contexts) == 6, (reviews, contexts)
 finally:
     if process:
         process.terminate()

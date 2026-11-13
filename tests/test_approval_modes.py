@@ -6,6 +6,25 @@ from pi_sandbox_factory import sandbox
 from pi_sandbox_factory.sandbox_options import options, permissions, guidance
 
 class ApprovalModeTests(unittest.TestCase):
+    def test_browser_vault_guard_is_independent_of_shell_and_common_file_settings(self):
+        self.assertIs(options()['protect_browser_credentials'], True)
+        template = {'permission': {'path': {'*.key': 'deny', '/private/other': 'deny'}}}
+        for mode in ('automatic', 'assisted', 'manual', 'off'):
+            for inner in (True, False):
+                for protected in (True, False):
+                    selected = {'approval': mode, 'inner_sandbox': inner, 'browser': True,
+                                'protect_credentials': False, 'protect_browser_credentials': protected}
+                    paths = permissions(template, selected)['permission']['path']
+                    for pattern in ('/home/node/.betterwright/vault', '/home/node/.betterwright/vault/*'):
+                        self.assertEqual(paths.get(pattern), 'deny' if protected else None)
+                    self.assertEqual(paths['/private/other'], 'deny')
+                    self.assertNotIn('*.key', paths)
+                    text = guidance(selected)
+                    self.assertEqual('saved Betterwright credential vault' in text, protected)
+        self.assertNotIn('/home/node/.betterwright/vault', template['permission']['path'])
+        with self.assertRaises(ValueError):
+            options({'protect_browser_credentials': 'yes'})
+
     def test_selected_browser_runs_without_review_but_downloads_keep_their_policy(self):
         template = {'permission': {'*': 'ask', 'browser_download': 'ask'}}
         for mode in ('automatic', 'assisted', 'manual', 'off'):

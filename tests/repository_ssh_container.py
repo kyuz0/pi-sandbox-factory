@@ -8,7 +8,7 @@ import tempfile
 import uuid
 from unittest.mock import patch
 
-from pi_sandbox_factory import sandbox, sandbox_ssh as ssh
+from pi_sandbox_factory import sandbox, sandbox_ssh as ssh, git_settings
 
 SERVER = '''FROM docker.io/library/debian:bookworm-slim
 RUN apt-get update && apt-get install -y --no-install-recommends openssh-server git python3 && rm -rf /var/lib/apt/lists/* \\
@@ -109,8 +109,12 @@ cp /fixture/hook /home/git/project.git/hooks/pre-receive
             assert ssh.repository_key(config, state) == before
             print('PASS generate/show/refuse replacement', flush=True)
             client = name + '-client'
+            identity_file = state / 'git-identity.gitconfig'
+            identity_file.write_text(git_settings.config({'name': 'Fixture Author', 'email': 'fixture@example.test'}))
+            identity_file.chmod(0o600)
             run(engine, 'run', '-d', '--name', client, '--network=none', '--userns=keep-id:uid=1000,gid=1000',
                 '--cap-drop=ALL', '--security-opt=no-new-privileges', '--security-opt=label=disable',
+                '-v', str(identity_file) + ':/opt/sandbox/git-identity.gitconfig:ro',
                 *ssh.mounts(config, state), '--entrypoint', 'sleep', args.dev_image, 'infinity')
             def git(command, succeeds=True):
                 result = run(engine, 'exec', client, 'bash', '-c',

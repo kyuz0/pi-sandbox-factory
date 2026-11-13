@@ -206,6 +206,9 @@ For the actual native-file and inner-shell boundaries, copy
 Python script there. It explicitly activates all file tools in both clients and
 checks reads, grep/find/ls, writes, edits, relative paths, symlinks and ordinary
 Bash without live inference. Unavailable tools are failures, not valid denials.
+Repeat with `--vault` to exercise the saved Betterwright vault path. The browser
+vault option's policy tests cover all approval modes with inner sandbox on/off;
+the control removes only its extra native-file guard when disabled.
 
 The extension repository owns cookie-selection unit tests, real Chromium
 close/crash/abort lifecycle tests, and the 38-decision live authorization matrix
@@ -623,6 +626,11 @@ instructions enter the managed agent context without host-key material.
 Actual Pi and Pendant workers receive that context and run the status check through
 reviewed escalation with synthetic model replies and no human dialog. Both status
 and Git are checked with `SSH_AUTH_SOCK` empty, matching attached desktop VS Code.
+Both clients also create a commit through ordinary inner Bash and verify its
+author name and email. Run `tests/test_git_settings.py` and the bootstrap suite
+for identity validation, quoting, local overrides, disabling and repeated startup.
+The TUI identity fixtures cover disabled, populated and error states for creation,
+defaults and SSH & Git settings at all three review sizes.
 
 For a live service check, use a disposable repository and follow
 [repository setup](docs/repository-access.md). Verify clone succeeds and push fails

@@ -4,6 +4,7 @@ import os
 from pathlib import Path
 import shutil
 import subprocess
+import sys
 
 os.umask(0o077)
 agent = Path('/home/node/.pi/agent')
@@ -44,6 +45,26 @@ inner_sandbox = selection.get('inner_sandbox', True)
 goals_enabled = selection.get('goals', True)
 scheduling_enabled = selection.get('scheduling', True)
 browser_enabled = selection.get('browser', False)
+
+# A read-only include supplies the saved identity. Repository-local values
+# retain Git's normal precedence; disabling this
+# setting empties the include without deleting the user's own configuration.
+git_identity = Path('/opt/sandbox/git-identity.gitconfig')
+if git_identity.exists():
+    global_git = Path('/home/node/.gitconfig')
+    includes = subprocess.run(['git', 'config', '--file', str(global_git), '--get-all', 'include.path'],
+                              capture_output=True)
+    footer = '\n[include]\n\tpath = ' + json.dumps(str(git_identity)) + '\n'
+    if includes.returncode not in (0, 1):
+        print('Warning: sandbox ~/.gitconfig is invalid; Git commit identity was not applied. Fix that file before using Git.', file=sys.stderr)
+    elif not global_git.exists() or not global_git.read_bytes().rstrip().endswith(footer.encode().strip()):
+        if str(git_identity).encode() in includes.stdout.splitlines():
+            subprocess.run(['git', 'config', '--file', str(global_git), '--fixed-value', '--unset-all',
+                            'include.path', str(git_identity)], check=True)
+        # Append a separate include section: git config --add can insert into an
+        # earlier section, which would leave later global values in control.
+        with global_git.open('ab') as stream:
+            stream.write(footer.encode())
 
 # Register installed resources through Pi's native configuration.
 settings_file = agent / 'settings.json'
@@ -228,7 +249,7 @@ if profile.exists():
             'pinned host keys and a separate signing agent. Keep these defaults; do not override GIT_SSH_COMMAND, '
             'ProxyCommand, IdentityAgent or host-key verification. Private keys are deliberately absent from ~/.ssh. '
             'If authentication fails, use sandbox-ssh-status in the permitted outer shell. No unlocked key means the user '
-            'must import or unlock a key in Factory Settings → SSH and repositories → SSH key. '
+            'must import or unlock a key in Factory Settings → SSH & Git → SSH key. '
             'Do not generate a replacement key in this container or ask for private key/passphrase contents. '
             'A loaded key does not guarantee server-side repository permissions. Preserve Git exit status when reporting failures.')
     contents = contents.rstrip() + '\n\n' + begin + '\n' + guidance + '\n' + end + '\n'

@@ -308,6 +308,79 @@ class TUITests(unittest.TestCase):
             self.assertFalse(service.calls)
             await pilot.press('q')
 
+    async def test_git_identity_is_optional_validated_and_saved_with_ssh_settings(self):
+        from pi_sandbox_factory.sandbox_tui import SSHScreen, preset
+        from pi_sandbox_factory.repository_ui import GitIdentityFields
+        from textual.widgets import Collapsible
+        for size in ((80, 24), (120, 40), (220, 50)):
+            service = FakeService(self.records)
+            service.ssh_settings = lambda name, settings, log, identity: service.calls.append(['ssh-git', identity])
+            app = Cockpit(self.root, service)
+            async with app.run_test(size=size) as pilot:
+                await self.ready(app, pilot)
+                await app.push_screen(SSHScreen(self.records[0]))
+                section = app.screen.query_one('#git-identity-section', Collapsible)
+                section.collapsed = False
+                await pilot.pause()
+                self.assertTrue(app.screen.query_one('#git-author-name', Input).disabled)
+                app.screen.query_one('#git-identity-enabled', Checkbox).value = True
+                await pilot.pause()
+                fields = app.screen.query_one(GitIdentityFields)
+                self.assertFalse(app.screen.query_one('#git-author-name', Input).disabled)
+                section.collapsed = True
+                with self.assertRaises(ValueError):
+                    fields.collect()
+                self.assertFalse(section.collapsed)
+                self.assertTrue(app.screen.query_one('#git-identity-error').display)
+                app.screen.query_one('#git-author-name', Input).value = 'Fixture Author'
+                app.screen.query_one('#git-author-email', Input).value = 'fixture@example.test'
+                self.assertEqual(fields.collect(), {'name': 'Fixture Author', 'email': 'fixture@example.test'})
+                self.assertLess(app.screen.query_one('#ssh-apply', Button).region.bottom, size[1])
+                await pilot.click('#ssh-apply')
+                self.assertIsInstance(app.screen, Confirm)
+                await pilot.click('#yes'); await self.ready(app, pilot)
+                self.assertEqual(service.calls, [['ssh-git', {'name': 'Fixture Author', 'email': 'fixture@example.test'}]])
+                await app.pop_screen()
+                draft = preset('base', copy.deepcopy(DEFAULT_SETTINGS))
+                draft.update(name='demo', workspace=str(self.root), options={**draft['options'], 'git_identity': {'name': 'Fixture Author', 'email': 'fixture@example.test'}})
+                await app.push_screen(SettingsForm(draft))
+                self.assertEqual(app.screen.query_one(GitIdentityFields).collect()['name'], 'Fixture Author')
+                self.assertEqual(app.screen.collect()[0]['options']['git_identity']['email'], 'fixture@example.test')
+                app.screen.query_one('#git-identity-enabled', Checkbox).value = False
+                await pilot.pause()
+                self.assertIsNone(app.screen.collect()[0]['options']['git_identity'])
+
+    async def test_browser_vault_option_follows_browser_selection_and_is_saved(self):
+        from pi_sandbox_factory.sandbox_tui import preset
+        from textual.widgets import Collapsible, Select, Static
+        for size in ((80, 24), (120, 40), (220, 50)):
+            app = Cockpit(self.root, FakeService(self.records))
+            async with app.run_test(size=size) as pilot:
+                await self.ready(app, pilot)
+                draft = preset('base', copy.deepcopy(DEFAULT_SETTINGS))
+                draft.update(name='demo', workspace=str(self.root))
+                await app.push_screen(SettingsForm(draft))
+                app.screen.query_one('#skills-section', Collapsible).collapsed = False
+                await pilot.pause()
+                protection = app.screen.query_one('#protect-browser-credentials', Checkbox)
+                self.assertTrue(protection.value)
+                self.assertTrue(protection.disabled)
+                app.screen.query_one('#browser', Checkbox).value = True
+                await pilot.pause()
+                self.assertFalse(protection.disabled)
+                self.assertTrue(app.screen.collect()[0]['options']['protect_browser_credentials'])
+                protection.value = False
+                await pilot.pause()
+                self.assertFalse(app.screen.collect()[0]['options']['protect_browser_credentials'])
+                app.screen.query_one('#inner-sandbox', Checkbox).value = False
+                app.screen.query_one('#approval', Select).value = 'off'
+                await pilot.pause()
+                self.assertIn('Bash can read vault files', str(app.screen.query_one('#browser-vault-shell-help', Static).render()))
+                app.screen.query_one('#browser', Checkbox).value = False
+                await pilot.pause()
+                self.assertTrue(protection.disabled)
+                self.assertFalse(protection.value)
+
     async def test_selection_delete_cancel_and_preserved_other_entry(self):
         service=FakeService(self.records);app=Cockpit(self.root,service)
         async with app.run_test(size=(100,32)) as pilot:

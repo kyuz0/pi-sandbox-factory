@@ -1,5 +1,21 @@
 # SSH and Git repositories
 
+## Commit identity
+
+During creation, expand **SSH & Git** and enable **Set Git commit identity**.
+Enter the name and email to record on commits. For an existing sandbox, use
+**Settings → SSH & Git → Git commit identity**, then apply the settings.
+You can also set this under **Defaults for new sandboxes**.
+
+The identity applies over sandbox-global Git values at startup. Factory leaves host Git
+settings unchanged and preserves repository-local `user.name` and `user.email`
+overrides. Turning the setting off removes its default without deleting manually
+configured Git values. The identity is optional and is not copied from the host
+automatically.
+
+Creating a commit needs no SSH key or network access. SSH keys authenticate
+clone, fetch and push; cryptographic commit signing is configured separately.
+
 ## GitHub over HTTPS
 
 Enable **GitHub** under **Settings → Network → Website categories** for repository
@@ -11,9 +27,9 @@ For authenticated Git operations with an isolated private key, use SSH.
 
 For GitHub or GitLab, use **Add repository…** and follow [repository setup](repository-access.md).
 
-1. Open **Settings → SSH and repositories**. Import aliases from your host's SSH configuration, or enter one destination per line: `alias username hostname port`.
+1. Open **Settings → SSH & Git**. Import aliases from your host's SSH configuration, or enter one destination per line: `alias username hostname port`.
 2. Supply trusted host keys through your existing `known_hosts` file, then **Apply**. Applying destinations restarts the sandbox processes and preserves the workspace and private home.
-3. Return to **SSH and repositories → SSH key**, select a key outside the workspace, and choose **Import and unlock**. Enter its passphrase directly in your terminal.
+3. Return to **SSH & Git → SSH key**, select a key outside the workspace, and choose **Import and unlock**. Enter its passphrase directly in your terminal.
 4. Use the alias from the sandbox, for example `ssh build 'hostname && uptime'`. With the inner command sandbox enabled, Pi uses `bash_escalate`, subject to manual or automatic approval.
 
 Adding a destination configures its connection route; it does not import a key.
