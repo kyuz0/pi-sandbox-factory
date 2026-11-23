@@ -1,7 +1,0 @@
-{
-  "id": "ssh",
-  "title": "SSH & Git",
-  "description": "Configure SSH destinations, repository access and Git commit identity.",
-  "available": true,
-  "documentation": "Choose the SSH hosts and Git repositories this sandbox can access. Verify the server host keys and authorize the sandbox public key on the server. A separate SSH companion holds the private key."
-}

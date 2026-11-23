@@ -1,9 +1,0 @@
-{
-  "version": 1,
-  "name": "local-knowledge",
-  "description": "Local Knowledge",
-  "summary": "Research your files with citations. Web Search starts off. Choose a search mode in Review sandbox → Document search.",
-  "defaults": {
-    "web_search": false
-  }
-}

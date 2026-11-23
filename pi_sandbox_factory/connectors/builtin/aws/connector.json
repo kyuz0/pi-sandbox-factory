@@ -1,7 +1,0 @@
-{
-  "id": "aws",
-  "title": "AWS",
-  "description": "Choose an AWS access profile for this sandbox.",
-  "available": true,
-  "documentation": "Choose a saved AWS access profile, or create one with a host AWS profile, IAM role, region and permissions. Factory sends restricted role sessions to a separate signing container."
-}

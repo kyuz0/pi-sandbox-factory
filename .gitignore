@@ -1,16 +1,6 @@
-.venv/
 __pycache__/
 *.pyc
-.env
-.env.*
-!.env.example
-.pytest_cache/
-node_modules/
+*.egg-info/
+.venv/
 build/
 dist/
-*.egg-info/
-
-.ruff_cache/
-
-# Internal experiments belong outside this public checkout.
-/research/

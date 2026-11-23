@@ -1,3 +1,0 @@
-ARG BASE_IMAGE
-FROM ${BASE_IMAGE}
-COPY --from=primary-controller /usr/local/bin/factory-agent /usr/local/bin/factory-agent

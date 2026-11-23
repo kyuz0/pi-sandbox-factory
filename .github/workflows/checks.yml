@@ -1,162 +1,19 @@
-name: Checks and release
-on:
-  push:
-    branches: [main]
-    paths:
-      - 'pi_sandbox_factory/**'
-      - 'pyproject.toml'
-      - 'MANIFEST.in'
-  pull_request:
-  workflow_dispatch:
+name: Migration launcher checks
+on: [push, pull_request, workflow_dispatch]
 permissions:
   contents: read
-concurrency:
-  group: checks-${{ github.ref }}
-  cancel-in-progress: false
 jobs:
-  python:
-    name: Python tests ${{ matrix.group }}
-    runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        group: [1, 2, 3, 4, 5, 6, 7, 8]
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-      - run: python -m pip install -e .
-      - run: python tests/check_button_heights.py --shard ${{ matrix.group }} ${{ strategy.job-total }}
-  package:
-    runs-on: ubuntu-latest
-    outputs:
-      package_changed: ${{ steps.package.outputs.changed }}
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - name: Check for package changes
-        id: package
-        if: github.event_name == 'push'
-        env:
-          BEFORE: ${{ github.event.before }}
-          AFTER: ${{ github.sha }}
-        run: |
-          # Include package changes left unpublished by an earlier failed run.
-          if release=$(git describe --tags --abbrev=0 --first-parent --match 'v[0-9]*' "$AFTER" 2>/dev/null); then
-            baseline=$release
-          elif [[ "$BEFORE" =~ ^0+$ ]]; then
-            baseline=$(git hash-object -t tree /dev/null)
-          else
-            baseline=$BEFORE
-          fi
-          status=0
-          git diff --quiet "$baseline" "$AFTER" -- pi_sandbox_factory/ pyproject.toml MANIFEST.in || status=$?
-          case "$status" in
-            0) echo 'changed=false' >> "$GITHUB_OUTPUT" ;;
-            1) echo 'changed=true' >> "$GITHUB_OUTPUT" ;;
-            *) exit "$status" ;;
-          esac
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-      - name: Require dependency pins on main
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-        run: python scripts/check_dependency_main.py
-      - run: npm ci --prefix pi_sandbox_factory/containers/inference --ignore-scripts
-      - run: node --test tests/test_knowledge_policy.mjs tests/test_provider_runtime.mjs tests/test_web_search_policy.mjs tests/test_inference_broker.mjs tests/test_editor_watch_fallback.cjs
-      - run: |
-          python -m pip wheel --no-deps . -w dist
-          python -m venv /tmp/factory-package
-          /tmp/factory-package/bin/pip install dist/pi_sandbox_factory-*.whl
-          cd /tmp
-          /tmp/factory-package/bin/pi-sandbox-factory --version
-          /tmp/factory-package/bin/pi-sandbox-factory profile list
-          /tmp/factory-package/bin/pi-sandbox-factory provider list
-  fresh-sandbox:
-    name: Fresh Pi and FrostPi sandbox
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-      - name: Install browser test prerequisites
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y podman socat
-          python -m pip install -e . playwright
-          python -m playwright install --with-deps chromium
-      - name: Check fresh project startup and mounted-folder permissions
-        run: python tests/fresh_sandbox.py --output /tmp/factory-fresh-sandbox
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: fresh-sandbox
-          path: /tmp/factory-fresh-sandbox
   test:
-    needs: [python, package, fresh-sandbox]
-    if: always()
     runs-on: ubuntu-latest
-    steps:
-      - name: Require all checks to pass
-        run: test "${{ needs.python.result }}" = success && test "${{ needs.package.result }}" = success && test "${{ needs.fresh-sandbox.result }}" = success
-  release:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.package.outputs.package_changed == 'true'
-    needs: [test, package]
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
         with:
-          ref: ${{ github.sha }}
-          fetch-depth: 0
-      - name: Version and tag
-        run: |
-          python - <<'PYTHON'
-          from datetime import datetime, timezone
-          from pathlib import Path
-          import re, subprocess
-
-          def git(*args, check=True):
-              return subprocess.run(['git', *args], check=check)
-
-          def revision(ref):
-              return subprocess.check_output(['git', 'rev-parse', ref], text=True).strip()
-
-          tested = revision('HEAD')
-          git('config', 'user.name', 'github-actions[bot]')
-          git('config', 'user.email', '41898282+github-actions[bot]@users.noreply.github.com')
-          git('fetch', 'origin', 'main')
-          for attempt in range(3):
-              latest = revision('FETCH_HEAD')
-              git('merge-base', '--is-ancestor', tested, latest)
-              # Docs may have landed since the tests started. Release only the tested package.
-              diff = git('diff', '--quiet', tested, latest, '--',
-                         'pi_sandbox_factory/', 'pyproject.toml', 'MANIFEST.in', check=False)
-              if diff.returncode == 1:
-                  print('Main has newer package changes. The newer push will run its own release checks.')
-                  break
-              diff.check_returncode()
-
-              git('checkout', '--detach', latest)
-              now = datetime.now(timezone.utc)
-              version = f'{now.year}.{now.month}.{now.day}.{int(now.strftime("%H%M%S"))}'
-              path = Path('pyproject.toml')
-              path.write_text(re.sub(r'^version = ".*"$', f'version = "{version}"',
-                                     path.read_text(), flags=re.M))
-              git('add', 'pyproject.toml')
-              git('commit', '-m', f'Release {version}')
-              push = git('push', '--atomic', 'origin', 'HEAD:main', f'HEAD:refs/tags/v{version}', check=False)
-              if push.returncode == 0:
-                  break
-              git('fetch', 'origin', 'main')
-              if attempt == 2 or latest == revision('FETCH_HEAD'):
-                  push.check_returncode()
-          PYTHON
+          python-version: '3.12'
+      - run: python -m unittest discover -s tests
+      - run: python -m pip wheel --no-deps . -w dist
+      - run: |
+          python -m venv /tmp/launcher-check
+          /tmp/launcher-check/bin/pip install dist/pi_sandbox_factory-*.whl
+          cd /tmp
+          /tmp/launcher-check/bin/python -I -c 'import pi_factory_migration, pi_sandbox_factory.sandbox'

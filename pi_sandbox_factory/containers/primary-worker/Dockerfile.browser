@@ -1,8 +1,0 @@
-ARG BASE_IMAGE
-FROM ${BASE_IMAGE} AS sources
-USER root
-COPY --from=primary-dev security/fetch.py security/sources.json /opt/pi-security/
-RUN python3 /opt/pi-security/fetch.py
-
-FROM ${BASE_IMAGE}
-COPY --from=sources /opt/pi-security/packages/pi-sandbox/src/browser/ /opt/pi-security/packages/pi-sandbox/src/browser/

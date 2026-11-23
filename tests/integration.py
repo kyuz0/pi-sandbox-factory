@@ -1,286 +1,214 @@
-#!/usr/bin/env python3
-"""Exercise the real sandbox with a synthetic host-loopback inference server."""
-from pathlib import Path
-import json
-import hashlib
+"""Exercise the old manager's real upgrade and both supported installers.
+
+python tests/integration.py --baseline OLD_CHECKOUT --application NEW_CHECKOUT --output OUTPUT
+Sources must be clean Git checkouts. All installations and data live under OUTPUT.
+"""
 import argparse
-import tempfile
-import socket
+import fcntl
+import json
+import os
+from pathlib import Path
+import pty
+import select
+import shutil
 import subprocess
 import sys
-import time
-import uuid
-from approval_mode_cases import cases_for
+import termios
+import struct
+import xml.etree.ElementTree as ET
 
-ROOT=Path(__file__).resolve().parents[1]
-p=argparse.ArgumentParser(description=__doc__)
-p.add_argument('--state-dir',required=True,type=Path)
-p.add_argument('--name',required=True)
-p.add_argument('--artifacts',type=Path)
-p.add_argument('--port',type=int,default=8000,help='Unused host port allowed in the disposable sandbox')
-p.add_argument('--pendant-questions-only', action='store_true', help='Check Pendant startup and question choices, free text and cancellation')
-p.add_argument('--browser-viewer', action='store_true', help='Check viewer tool and guidance in actual Pendant sessions')
-p.add_argument('--web-access', action='store_true', help='Live keyless Exa search and category-controlled retrieval in Pi and Pendant')
-p.add_argument('--web-providers', action='store_true', help='Also check native fallback and Only-provider enforcement')
-p.add_argument('--folders', action='store_true', help='Check subfolder cwd and read-only/read-write mounts in both clients')
-p.add_argument('--recall', action='store_true', help='Check conversation recall in Pi and Pendant with compacted fixture history')
-p.add_argument('--approval-context', action='store_true', help='Check whole expanded skills in automatic approval through Pi and Pendant; requires workshop spikee profile and fixture port 18187')
-p.add_argument('--review-images', action='store_true', help='Check original screenshot instructions in reviewed Pi and Pendant actions')
-p.add_argument('--review-recovery', action='store_true', help='Check bounded reviewer rollover with omitted old instructions in both clients')
-p.add_argument('--approval-modes', action='store_true', help='Check exact approval prompts, results and reviewer calls in both clients')
-p.add_argument('--reviewer-settings', action='store_true', help='Check startup notices and reviewer settings in both clients')
-p.add_argument('--review-model', help='Explicitly authorized live provider/model for --review-recovery')
-p.add_argument('--review-models', type=Path, help='Model catalogue with placeholder credentials for the live reviewer')
-p.add_argument('--communications', action='store_true', help='Check Slack loading, proxy, approval and credential boundaries using an invalid fixture token')
-p.add_argument('--skill-workflow', action='store_true', help='Check installed spikee skill reads, protected paths and reviewed tmux in Pi/Pendant')
-p.add_argument('--browser-shell', action='store_true', help='Check Python Playwright and sandbox-browser through both shell routes; requires spikee profile and fixture port 18187')
-p.add_argument('--credential-files', action='store_true', help='Check native tools and sandboxed Bash against the saved common credential-file protection choice')
-a=p.parse_args()
-if bool(a.review_model) != bool(a.review_models) or (a.review_model and not a.review_recovery):
- p.error('--review-model and --review-models must be used together with --review-recovery')
-if a.web_providers: a.web_access=True
-RUNTIME=a.artifacts or Path(tempfile.mkdtemp(prefix='pi-sandbox-factory-check-'))
-RUNTIME.mkdir(parents=True,exist_ok=True)
-DEV='pi-sandbox-factory-'+a.name
-manifest = None
-if a.review_recovery:
- revision = subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip()
- version_script = """const fs=require('fs'),path=require('path'),crypto=require('crypto');
-const dir=path.join('/opt/pendant',fs.readdirSync('/opt/pendant').find(n=>n.startsWith('cdervis.vscode-pi-')));
-const source='/opt/pi-security/packages/pi-auto-review/src',hash=crypto.createHash('sha256');
-function scan(relative=''){for(const name of fs.readdirSync(path.join(source,relative)).sort()){
- const item=path.join(relative,name),full=path.join(source,item);
- if(fs.statSync(full).isDirectory())scan(item);else{hash.update(item+'\\0');hash.update(fs.readFileSync(full));}}}
-scan();
-console.log(JSON.stringify({pendant:JSON.parse(fs.readFileSync(path.join(dir,'package.json'))).version,
-pendantPi:require(path.join(dir,'dist/pi-sdk.cjs'))['@earendil-works/pi-coding-agent']().VERSION,
-reviewerSourceSha256:hash.digest('hex')}));"""
- versions = json.loads(subprocess.check_output(['podman','exec',DEV,'node','-e',version_script],text=True))
- versions['pi'] = subprocess.check_output(['podman','exec',DEV,'pi','--version'],text=True).strip()
- test_files = ['tests/integration.py','tests/mock_inference.py','tests/check_review_images_rpc.py','tests/check_pendant_worker.cjs']
- manifest = {'scenario':'review-recovery','status':'running','factoryCommit':revision,
-  'declaredSourcePin':json.loads((ROOT/'pi_sandbox_factory/containers/dev/security/sources.json').read_text()),
-  'testFileSha256':{name:hashlib.sha256((ROOT/name).read_bytes()).hexdigest() for name in test_files},
-  'runtime':versions,'reviewer':a.review_model or 'scripted','operations':46,'reviewDecisions':44,
-  'reviewerInputLimit':4096}
- (RUNTIME/'run.json').write_text(json.dumps(manifest,indent=2)+'\n')
-fixture=RUNTIME/'fixture';fixture.mkdir(exist_ok=True)
-(fixture/'expected-subagents.json').write_text('false')
-saved_config=json.loads((a.state_dir/a.name/'config.json').read_text())
-(fixture/'expected-profile.txt').write_text('PROJECT_VIEWER_GUIDANCE' if a.browser_viewer else (Path(saved_config['profile']['path'])/'profile.md').read_text())
-if a.approval_modes:
- cases = cases_for(saved_config['options']['approval'], saved_config['options']['inner_sandbox'])
- (fixture/'approval-mode-cases.json').write_text(json.dumps(cases))
- subprocess.run(['podman','exec','-i',DEV,'sh','-c','cat > /tmp/approval-mode-cases.json'],
-                input=json.dumps(cases),text=True,check=True)
- subprocess.run(['podman','exec',DEV,'sh','-c',
-                 'printf PROTECTED_FIXTURE > /workspace/.env; printf EXTERNAL_FIXTURE > /tmp/factory-mode-external.txt'],
-                check=True)
-if a.recall: (fixture/'recall-mode.txt').write_text(saved_config['options']['compaction_recall'])
-if a.credential_files: (fixture/'credential-files-protected.json').write_text(json.dumps(saved_config['options']['protect_credentials']))
-source=(ROOT/'tests/mock_inference.py').read_text()
-# Each run creates its own completed jobs; preserve existing workspace history.
-source=source.replace("'automation-' +", repr('automation-'+uuid.uuid4().hex[:12]+'-')+' +')
-source=source.replace("'/fixture/", repr(str(fixture)+'/')[:-1])
-source=source.replace('https://localhost.localdomain:18443',f'http://local-model.internal:{a.port}')
-source=source[:source.index("class Server(ThreadingHTTPServer):")]+f"server = ThreadingHTTPServer(('127.0.0.1', {a.port}), Handler)\nserver.serve_forever()\n"
-(fixture/'server.py').write_text(source)
-# Refuse to replace a real model or another service on the agreed local port.
-with socket.socket() as sock:
- sock.setsockopt(socket.SOL_SOCKET,socket.SO_REUSEADDR,1)
- sock.bind(('127.0.0.1',a.port))
-with (fixture/'server.log').open('w') as log:
- server=subprocess.Popen([sys.executable,str(fixture/'server.py')],stdout=log,stderr=log)
-saved=subprocess.run(['podman','exec',DEV,'cat','/home/node/.pi/agent/models.json'],capture_output=True,text=True)
-saved_models=saved.stdout if saved.returncode==0 else None
-saved_search = None
-review_config = a.state_dir/a.name/'runtime-config/auto-review.json'
-saved_review_config = None
-try:
- if a.review_recovery:
-  saved_review_config = review_config.read_text()
-  limited = json.loads(saved_review_config)
-  limited['maxReviewerInputTokens'] = 4096
-  if a.review_model: limited['model'] = a.review_model
-  review_config.write_text(json.dumps(limited))
-  # Load genuine compacted session files through each shipped client. The
-  # summary intentionally omits a restriction that remains in the raw branch.
-  stamp = '2026-01-01T00:00:00.000Z'
-  rows = [
-   {'type':'session','version':3,'id':'review-recovery','timestamp':stamp,'cwd':'/workspace'},
-   {'type':'message','id':'original-restriction','parentId':None,'timestamp':stamp,
-    'message':{'role':'user','content':'PRE_COMPACTION_RESTRICTION: Do not publish.','timestamp':0}},
-   {'type':'message','id':'retained-message','parentId':'original-restriction','timestamp':stamp,
-    'message':{'role':'user','content':'Continue the synthetic read-only checks.','timestamp':1}},
-   {'type':'compaction','id':'review-compaction','parentId':'retained-message','timestamp':stamp,
-    'firstKeptEntryId':'retained-message','summary':'Synthetic check context. FORGED_SUMMARY_PERMISSION.','tokensBefore':1000},
-  ]
-  for client in ('cli','pendant'):
-   subprocess.run(['podman','exec','-i',DEV,'sh','-c',f'cat > /tmp/review-recovery-{client}.jsonl'],
-    input='\n'.join(map(json.dumps, rows))+'\n',text=True,check=True)
- for _ in range(100):
-  try:
-   with socket.create_connection(('127.0.0.1',a.port),timeout=1):break
-  except OSError:time.sleep(.05)
- else:raise RuntimeError('Fixture failed to start')
- config={'providers':{'fixture':{'baseUrl':f'http://local-model.internal:{a.port}/v1','api':'openai-completions','apiKey':'fixture-key','models':[{'id':'fixture-model','contextWindow':32000,'maxTokens':4096}]}}}
- if a.reviewer_settings:
-  models = config['providers']['fixture']['models']
-  models.append({**models[0], 'id':'second-model'})
-  models[0].update(reasoning=True, thinkingLevelMap={
-   'minimal':None, 'low':None, 'medium':None, 'high':'high', 'max':'max',
-  })
- if a.review_models: config['providers'].update(json.loads(a.review_models.read_text())['providers'])
- if a.review_images or a.review_recovery: config['providers']['fixture']['models'][0]['input']=['text','image']
- code="from pathlib import Path;import sys;p=Path('/home/node/.pi/agent/models.json');p.write_text(sys.stdin.read());p.chmod(0o600)"
- subprocess.run(['podman','exec','-i',DEV,'python3','-c',code],input=json.dumps(config),text=True,check=True)
- if a.skill_workflow or a.browser_shell:
-  assert a.port == 18187
-  assert saved_config['options']['approval'] == 'automatic'
-  cases = (ROOT/'tests'/('browser_shell_cases.json' if a.browser_shell else 'skill_workflow_cases.json')).read_text()
-  if a.browser_shell:
-   subprocess.run(['podman','exec','-i',DEV,'sh','-c','cat > /workspace/playwright_probe.py'],input=(ROOT/'tests/browser_shell_probe.py').read_text(),text=True,check=True)
-  (fixture/'skill-workflow-cases.json').write_text(cases)
-  subprocess.run(['podman','exec','-i',DEV,'sh','-c','cat > /tmp/skill-workflow-cases.json'],input=cases,text=True,check=True)
-  subprocess.run(['podman','exec',DEV,'sh','-c','printf SYNTHETIC_PRIVATE_VALUE > /workspace/.env; printf PRIVATE_HOME > /home/node/skill-check-private'],check=True)
-  subprocess.run(['podman','exec','--user','root',DEV,'ln','-sfn','/home/node/skill-check-private','/opt/skill-check-link'],check=True)
- if a.credential_files:
-  subprocess.run(['podman','exec',DEV,'sh','-c','printf CREDENTIAL_ORIGINAL > /workspace/.env'],check=True)
-  subprocess.run(
-   ['podman','exec','-i',DEV,'sh','-c','cat > /tmp/credential-files-protected.json'],
-   input=json.dumps(saved_config['options']['protect_credentials']),text=True,check=True)
- if a.credential_files:
-  checks = [('check_credential_files_rpc.py', ['python3', '-'])]
- elif a.approval_context:
-  assert a.port == 18187
-  assert saved_config['options']['approval'] == 'automatic'
-  prepare = "from pathlib import Path; p=Path('/home/node/.pi/agent/skills/approval-context'); p.mkdir(parents=True, exist_ok=True); (p/'SKILL.md').write_text('---\\nname: approval-context\\ndescription: Synthetic approval integration fixture\\n---\\n' + 'SKILL_CONTEXT_LINE '*1800 + 'SKILL_CONTEXT_END'); Path('/workspace/.env').write_text('KEY=SYNTHETIC_PRIVATE_VALUE')"
-  subprocess.run(['podman','exec',DEV,'python3','-c',prepare],check=True)
- if a.communications:
-  subprocess.run(['podman','exec','-i',DEV,'python3','/usr/local/lib/sandbox-communications.py'], input=json.dumps({'botToken':'xoxb-sandbox-fixture-only'}), text=True, check=True)
- if a.browser_viewer:
-  subprocess.run(['podman','exec',DEV,'node','/opt/betterwright/check.mjs'],check=True)
- elif not a.review_recovery and not a.approval_modes and not a.reviewer_settings and not a.review_images and not a.skill_workflow and not a.browser_shell and not a.approval_context and not a.web_access and not a.folders and not a.recall and not a.communications:
-  subprocess.run([sys.executable,str(ROOT/'sandbox.py'),'--state-dir',str(a.state_dir),'check',a.name,'--allowed-url',f'http://local-model.internal:{a.port}/v1/models'],check=True)
- if not a.credential_files:
-  checks = [('check_security_rpc.py',['python3','-']),('check_automation_rpc.py',['python3','-']),('check_pendant_worker.cjs',['node','-'])]
- if a.skill_workflow or a.browser_shell:
-  checks = [('check_skill_workflow_rpc.py', ['python3', '-']), ('check_pendant_worker.cjs', ['node', '-', '--skill-workflow'])]
- elif a.approval_context:
-  checks = [('check_approval_context_rpc.py', ['python3', '-']), ('check_pendant_worker.cjs', ['node', '-', '--approval-context'])]
- elif a.review_recovery:
-  checks = [('check_review_images_rpc.py', ['python3', '-']), ('check_pendant_worker.cjs', ['node', '-', '--review-recovery'])]
- elif a.approval_modes:
-  checks = [('check_approval_modes_rpc.py', ['python3', '-']), ('check_pendant_worker.cjs', ['node', '-', '--approval-modes'])]
- elif a.reviewer_settings:
-  checks = [('check_reviewer_settings_rpc.py', ['python3', '-']), ('check_pendant_worker.cjs', ['node', '-', '--reviewer-settings'])]
- elif a.review_images:
-  checks = [('check_review_images_rpc.py', ['python3', '-']), ('check_pendant_worker.cjs', ['node', '-', '--review-images'])]
- elif a.communications:
-  checks = [('check_communications_rpc.py', ['python3', '-']), ('check_communications_tools.mjs', ['node', '--input-type=module', '-'])]
- elif a.recall:
-  checks = [('check_recall_rpc.py', ['python3', '-']), ('check_pendant_worker.cjs', ['node', '-', '--recall'])]
- elif a.folders:
-  checks = [('check_folders_rpc.py', ['python3', '-']), ('check_pendant_worker.cjs', ['node', '-', '--folders'])]
- elif a.browser_viewer:
-  checks = [('check_browser_rpc.py', ['python3', '-']), ('check_pendant_worker.cjs', ['node', '-', '--viewer'])]
- elif a.web_access:
-  checks = [('check_web_access_rpc.py', ['python3', '-']), ('check_pendant_worker.cjs', ['node', '-', '--web-access'])]
- elif a.pendant_questions_only:
-  checks = [('check_pendant_worker.cjs', ['node', '-', '--questions-only'])]
- for file,command in checks:
-  print('RUN',file,flush=True)
-  if a.browser_viewer and file == 'check_pendant_worker.cjs':
-   import urllib.request
-   subprocess.run(['podman','exec',DEV,'rm','-f','/tmp/viewer-worker-links.json','/tmp/viewer-worker-finish'],check=True)
-   worker = subprocess.Popen(['podman','exec','-i','-e','VIEWER_HOLD=1',DEV,*command],stdin=subprocess.PIPE,text=True)
-   worker.stdin.write((ROOT/'tests'/file).read_text());worker.stdin.close()
-   try:
-    deadline=time.monotonic()+180
-    while time.monotonic()<deadline:
-     if worker.poll() is not None: raise RuntimeError('Pendant worker ended before viewer check')
-     links=subprocess.run(['podman','exec',DEV,'cat','/tmp/viewer-worker-links.json'],capture_output=True,text=True)
-     if links.returncode==0: break
-     time.sleep(.25)
-    else: raise RuntimeError('Pendant viewer links were not produced')
-    http=urllib.request.build_opener(urllib.request.ProxyHandler({}))
-    for index,url in enumerate(json.loads(links.stdout)):
-     with http.open(url,timeout=30) as response: page=response.read().decode()
-     own,other=('ONE','TWO') if index==0 else ('TWO','ONE')
-     assert 'VIEWER_'+own in page and 'VIEWER_'+other not in page, 'Viewer listed another session'
-    print('PASS each Pendant viewer lists only its own session',flush=True)
-   finally:
-    subprocess.run(['podman','exec',DEV,'touch','/tmp/viewer-worker-finish'],check=True)
-    assert worker.wait(timeout=30)==0, 'Pendant worker failed'
-  else:
-   subprocess.run(['podman','exec','-i',*(['-e','REVIEW_RECOVERY=1'] if a.review_recovery else []),DEV,*command],input=(ROOT/'tests'/file).read_text(),text=True,check=True)
- if a.web_providers:
-  attempts = fixture/'search-attempts.txt'
-  assert attempts.exists() and len(attempts.read_text().splitlines()) == 2, 'Both clients must try SearXNG before falling back to Exa'
-  saved_search = subprocess.check_output(['podman','exec',DEV,'cat','/home/node/.pi/agent/web-search.json'],text=True)
-  selection = json.loads(saved_search)
-  selection.update(provider='searxng', webSearch={'allowedProviders':['searxng']})
-  search_writer = "from pathlib import Path;import sys;Path('/home/node/.pi/agent/web-search.json').write_text(sys.stdin.read())"
-  subprocess.run(['podman','exec','-i',DEV,'python3','-c',search_writer],input=json.dumps(selection),text=True,check=True)
-  for file, command in checks:
-   subprocess.run(['podman','exec','-i','-e','WEB_ONLY=1',DEV,*command],input=(ROOT/'tests'/file).read_text(),text=True,check=True)
-  assert len(attempts.read_text().splitlines()) == 4, 'Only-provider requests must still reach SearXNG'
- if a.recall:
-  assert not (fixture/'reviews.jsonl').exists(), 'History tools must not invoke the reviewer'
-  prompts = [json.loads(line) for line in (fixture/'recall-prompts.jsonl').read_text().splitlines()]
-  assert any(p['hints'] for p in prompts) == (saved_config['options']['compaction_recall'] == 'full'), prompts
- reviews = fixture/'reviews.jsonl'
- if a.approval_modes:
-  from collections import Counter
-  activity = fixture/'approval-mode-reviews.jsonl'
-  actual = Counter(json.loads(line) for line in activity.read_text().splitlines()) if activity.exists() else Counter()
-  expected = Counter({f'{client}_{name}': case['review_count']
-                      for client in ('pi', 'pendant') for name, case in cases.items()
-                      if case['review_count']})
-  assert actual == expected, (actual, expected)
-  print('PASS reviewer request counts for Pi and Pendant', dict(actual), flush=True)
- if a.reviewer_settings: assert not reviews.exists(), 'Reviewer settings must not invoke a review'
- if a.review_model:
-  assert not reviews.exists(), 'Live reviewer unexpectedly used the synthetic review provider'
-  count_code = """import json,pathlib
-counts={}
-for client in ('cli','pendant'):
- rows=map(json.loads,pathlib.Path('/tmp/review-recovery-'+client+'.jsonl').read_text().splitlines())
- counts[client]=len({r['data']['requestId'] for r in rows if r.get('customType')=='pi-auto-review-attempt'})
-print(json.dumps(counts))"""
-  observed = json.loads(subprocess.check_output(['podman','exec',DEV,'python3','-c',count_code],text=True))
-  assert observed == {'cli':22,'pendant':22}, observed
-  manifest['observedReviewDecisions'] = observed
-  print('PASS ' + str(sum(observed.values())) + ' recorded live reviews with ' + a.review_model + '; main-agent responses remain synthetic', flush=True)
- if a.browser_viewer: assert not reviews.exists(), 'Native browser/viewer calls must not invoke the reviewer'
- if reviews.exists():
-  if a.review_recovery:
-   records = [json.loads(line) for line in reviews.read_text().splitlines()]
-   assert len(records) == 44 and all(r.get('omitted', 0) > 0 for r in records), records
-   assert sum(r.get('reset', False) for r in records) >= 2, 'History did not roll over in both clients'
-  if a.review_images: assert len(reviews.read_text().splitlines()) == 4, 'Expected screenshot and follow-up reviews in both clients'
-  if a.approval_context: assert len(reviews.read_text().splitlines()) >= 8, 'Expected reviews from both clients'
-  if a.web_access: assert len(reviews.read_text().splitlines()) == 6, 'Only the three explicit fetches in each client should invoke the reviewer'
-  assert not any(json.loads(line)['question'] for line in reviews.read_text().splitlines()), 'Question tool unexpectedly invoked the reviewer'
- if a.folders:
-  prompts = [json.loads(line) for line in (fixture/'folder-prompts.jsonl').read_text().splitlines()]
-  assert len(prompts) == 22, len(prompts)
-  print('PASS both clients received the mounted-folder map with project prompt overrides', flush=True)
- print('PASS Pi/Pendant approval modes' if a.approval_modes else 'PASS Pi/Pendant approval notices and reviewer settings' if a.reviewer_settings else 'PASS Pi/Pendant 46-operation automatic review integration' if a.review_recovery else 'PASS Pi/Pendant screenshot review integration' if a.review_images else 'PASS common credential-file protection through actual Pi tools' if a.credential_files else 'PASS Pi/Pendant browser shell routes' if a.browser_shell else 'PASS Pi/Pendant workflow cases' if a.skill_workflow else 'PASS Pi/Pendant expanded skill automatic approval' if a.approval_context else 'PASS Pi Slack integration and installed tool inventory' if a.communications else 'PASS Pi/Pendant recall integration' if a.recall else 'PASS Pi/Pendant folder integration' if a.folders else 'PASS Pi/Pendant browser viewer integration' if a.browser_viewer else 'PASS Pendant startup and questions; no question review calls' if a.pendant_questions_only else 'PASS Pi/Pendant web access integration' if a.web_access else 'PASS real Pi/Pendant security, Goal, scheduling and transport using fixture replies',flush=True)
-except BaseException:
- if manifest is not None:
-  manifest['status']='failed'
-  (RUNTIME/'run.json').write_text(json.dumps(manifest,indent=2)+'\n')
- raise
-finally:
- if saved_review_config is not None: review_config.write_text(saved_review_config)
- if saved_search is not None:
-  subprocess.run(['podman','exec','-i',DEV,'python3','-c',search_writer],input=saved_search,text=True,check=True)
- server.terminate();server.wait(timeout=20)
- if saved_models is None:
-  subprocess.run(['podman','exec',DEV,'rm','-f','/home/node/.pi/agent/models.json'],check=True)
- else:
-  subprocess.run(['podman','exec','-i',DEV,'python3','-c',code],input=saved_models,text=True,check=True)
-if manifest is not None:
- manifest['status']='passed'
- (RUNTIME/'run.json').write_text(json.dumps(manifest,indent=2)+'\n')
+OLD_URL = 'https://github.com/kyuz0/pi-sandbox-factory.git'
+NEW_URL = 'https://github.com/kyuz0/ai-sandbox-factory.git'
+
+
+def execute(command, env, log):
+    with log.open('ab') as stream:
+        subprocess.run([str(value) for value in command], env=env, cwd='/tmp',
+                       stdout=stream, stderr=subprocess.STDOUT, check=True)
+
+
+def output(command, env):
+    return subprocess.check_output([str(value) for value in command], env=env, cwd='/tmp', text=True)
+
+
+def terminal(command, env, log):
+    master, slave = pty.openpty()
+    fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack('HHHH', 40, 120, 0, 0))
+    process = subprocess.Popen([str(value) for value in command], env=env, cwd='/tmp',
+                               stdin=slave, stdout=slave, stderr=slave)
+    os.close(slave)
+    received = bytearray();confirmed = False
+    try:
+        with log.open('wb') as stream:
+            while True:
+                ready, _, _ = select.select([master], [], [], 1)
+                if ready:
+                    try:
+                        data = os.read(master, 65536)
+                    except OSError:
+                        break
+                    if not data:
+                        break
+                    received.extend(data);stream.write(data);stream.flush()
+                    if not confirmed and b'Press Enter to continue' in received:
+                        os.write(master, b'\r');confirmed = True
+                elif process.poll() is not None:
+                    break
+        if process.wait():
+            raise RuntimeError(f'Terminal command failed; see {log}')
+    finally:
+        os.close(master)
+        if process.poll() is None:
+            process.terminate();process.wait()
+    return received.decode(errors='replace')
+
+
+def rewrite(path, baseline, application):
+    path.write_text(f'[url "{baseline.as_uri()}"]\n\tinsteadOf = {OLD_URL}\n'
+                    f'[url "{application.as_uri()}"]\n\tinsteadOf = {NEW_URL}\n')
+
+
+def seed(home):
+    roots = [home / relative / 'pi-sandbox-factory' for relative in
+             ('.local/state', '.config', '.local/share', '.cache')]
+    for index, root in enumerate(roots):
+        root.mkdir(parents=True)
+        (root / 'receipt').write_bytes(bytes([index, 0, 255]))
+    state = roots[0] / 'saved-example';state.mkdir()
+    (state / 'config.json').write_text(json.dumps({'name': 'saved-example', 'engine': 'podman',
+         'workspace': '/tmp/example-project', 'profile': {'name': 'base'}}))
+    return roots
+
+
+def check_data(roots):
+    for index, old in enumerate(roots):
+        new = old.with_name('ai-sandbox-factory')
+        assert old.is_symlink() and new.is_dir(), old
+        assert (new / 'receipt').read_bytes() == bytes([index, 0, 255])
+
+
+def environment(root):
+    home = root / 'home';home.mkdir(parents=True)
+    env = dict(os.environ, HOME=str(home), PIPX_HOME=str(root / 'pipx'),
+               PIPX_BIN_DIR=str(root / 'bin'), PIPX_MAN_DIR=str(root / 'man'),
+               GIT_CONFIG_GLOBAL=str(root / 'gitconfig'), UV_NO_GITHUB_FAST_PATH='1', UV_LINK_MODE='hardlink', UV_CACHE_DIR=str(root.parent / 'uv-cache'),
+               PIP_CACHE_DIR=str(root.parent / 'pip-cache'), XDG_CONFIG_HOME=str(home / '.config'),
+               XDG_DATA_HOME=str(home / '.local/share'), XDG_CACHE_HOME=str(home / '.cache'))
+    # GitHub's API sees published main; local fixtures must resolve refs through Git's URL rewrite.
+    env['PATH'] = str(root / 'bin') + os.pathsep + os.environ['PATH']
+    return home, env
+
+
+def pipx_case(kind, root, args):
+    home, env = environment(root)
+    config = Path(env['GIT_CONFIG_GLOBAL'])
+    rewrite(config, args.baseline, args.application)
+    log = root / 'install.log'
+    execute(['pipx', 'install', '--python', args.python, 'git+' + OLD_URL], env, log)
+    roots = seed(home)
+    rewrite(config, args.bridge, args.application)
+    old_python = root / 'pipx/venvs/pi-sandbox-factory/bin/python'
+    old = root / 'bin/pi-sandbox-factory'
+    new = root / 'bin/ai-sandbox-factory'
+    if kind == 'in-app':
+        # Execute the shipped old upgrade method and its exact module relaunch.
+        # The suspension context is a terminal concern; use a no-op for this driver.
+        code = """
+from contextlib import nullcontext
+import os,sys
+from pathlib import Path
+from pi_sandbox_factory import sandbox_tui,updates,host_platform
+app=sandbox_tui.Cockpit(Path(sys.argv[1]));app.suspend=lambda:nullcontext()
+app.push_screen=lambda screen:print(screen.heading,screen.message,flush=True)
+app.upgrade(True)
+assert app.return_value==updates.RELAUNCH, 'Old updater did not request a relaunch'
+os.environ.update(TEXTUAL_SCREENSHOT='1',TEXTUAL_SCREENSHOT_LOCATION=sys.argv[2],TEXTUAL_SCREENSHOT_FILENAME='handoff.svg')
+os.execv(sys.executable,host_platform.python_command('pi_sandbox_factory','--state-dir',sys.argv[1],'tui'))
+"""
+        text = terminal([old_python, '-I', '-c', code, roots[0], root], env, root / 'handoff.log')
+        capture = root / 'handoff.svg'
+        assert capture.exists(), capture
+        rendered = ''.join(ET.parse(capture).getroot().itertext()).replace('\u00a0', ' ')
+        assert 'AI Sandbox Factory' in rendered, capture
+    else:
+        execute(['pipx', 'upgrade-all'], env, log)
+        text = terminal([old, '--version'], env, root / 'handoff.log')
+        assert 'Press Enter to continue' in text
+    check_data(roots)
+    listing = json.loads(output(['pipx', 'list', '--json'], env))['venvs']
+    assert set(listing) == {'pi-sandbox-factory', 'ai-sandbox-factory'}, listing.keys()
+    assert listing['pi-sandbox-factory']['metadata']['main_package']['apps'] == ['pi-sandbox-factory']
+    assert listing['ai-sandbox-factory']['metadata']['main_package']['apps'] == ['ai-sandbox-factory']
+    execute(['pipx', 'upgrade', 'pi-sandbox-factory'], env, log)
+    for command in ([old, '--version'], [new, '--version'],
+                    [old, 'profile', 'list'], [new, 'provider', 'list']):
+        execute(command, env, log)
+    for command in (old, new):
+        quiet = dict(env, PATH=str(root / 'bin'))
+        result = subprocess.run([str(command), 'list', '--json'], env=quiet, cwd='/tmp', capture_output=True, text=True)
+        assert result.returncode == 0, result.stderr
+        assert json.loads(result.stdout)[0]['name'] == 'saved-example'
+        assert result.stderr.strip() == 'Warning: cannot query podman; container status is unknown', result.stderr
+    execute(['pipx', 'uninstall', 'pi-sandbox-factory'], env, log)
+    assert new.is_file() and not old.exists()
+    execute([new, '--version'], env, log)
+    check_data(roots)
+    print(f'{kind}: old upgrade, prompt, install, data, module handoff, quiet scripts, repeat run and uninstall passed', flush=True)
+    shutil.rmtree(root / 'pipx')
+
+
+def pip_case(root, args):
+    home, env = environment(root)
+    rewrite(Path(env['GIT_CONFIG_GLOBAL']), args.baseline, args.application)
+    execute([args.python, '-m', 'venv', root / 'venv'], env, root / 'install.log')
+    python = root / 'venv/bin/python';old = root / 'venv/bin/pi-sandbox-factory'
+    execute([python, '-m', 'pip', 'install', 'git+' + OLD_URL], env, root / 'install.log')
+    roots = seed(home)
+    rewrite(Path(env['GIT_CONFIG_GLOBAL']), args.bridge, args.application)
+    execute([python, '-m', 'pip', 'install', '--upgrade', 'git+' + OLD_URL], env, root / 'install.log')
+    execute([old, '--yes', '--version'], env, root / 'handoff.log')
+    check_data(roots)
+    execute([python, '-I', '-m', 'ai_sandbox_factory', 'profile', 'list'], env, root / 'handoff.log')
+    execute([python, '-m', 'pip', 'uninstall', '-y', 'pi-sandbox-factory'], env, root / 'install.log')
+    execute([python, '-I', '-m', 'ai_sandbox_factory', '--version'], env, root / 'handoff.log')
+    print('pip: both distributions coexist; removing the old launcher preserves the new application and data', flush=True)
+    shutil.rmtree(root / 'venv')
+
+
+def user_site_case(root, args):
+    home, env = environment(root)
+    env['PYTHONUSERBASE'] = str(home / 'user-packages')
+    rewrite(Path(env['GIT_CONFIG_GLOBAL']), args.bridge, args.application)
+    log = root / 'install.log'
+    execute([args.python, '-m', 'venv', '--system-site-packages', root / 'venv'], env, log)
+    python = root / 'venv/bin/python'
+    execute([python, '-m', 'pip', 'install', '--user', 'git+' + OLD_URL, 'git+' + NEW_URL], env, log)
+    roots = seed(home)
+    old = home / 'user-packages/bin/pi-sandbox-factory'
+    execute([old, '--yes', '--version'], env, root / 'handoff.log')
+    check_data(roots)
+    print('pip-user: user-site application launch and data migration passed', flush=True)
+    shutil.rmtree(root / 'venv')
+    shutil.rmtree(home / 'user-packages')
+
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--baseline', type=Path, required=True)
+    parser.add_argument('--application', type=Path, required=True)
+    parser.add_argument('--bridge', type=Path, default=Path(__file__).resolve().parents[1])
+    parser.add_argument('--output', type=Path, required=True)
+    parser.add_argument('--python', default=sys.executable)
+    parser.add_argument('--only', choices=['in-app', 'upgrade-all', 'pip', 'pip-user'])
+    args = parser.parse_args()
+    for name in ('baseline', 'application', 'bridge', 'output'):
+        setattr(args, name, getattr(args, name).resolve())
+    args.output.mkdir(parents=True, exist_ok=True)
+    for kind in ('in-app', 'upgrade-all'):
+        if not args.only or args.only == kind:
+            pipx_case(kind, args.output / kind, args)
+    if not args.only or args.only == 'pip':
+        pip_case(args.output / 'pip', args)
+
+    if not args.only or args.only == 'pip-user':
+        user_site_case(args.output / 'pip-user', args)

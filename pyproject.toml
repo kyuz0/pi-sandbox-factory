@@ -4,34 +4,17 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pi-sandbox-factory"
-version = "2026.11.23.164935"
-description = "Manage isolated Pi and FrostPi workspaces with installable profiles and model providers"
+version = "2026.11.23.190523"
+description = "Migration launcher for AI Sandbox Factory"
 readme = "README.md"
 requires-python = ">=3.10"
-dependencies = ["textual==8.1.1", "textual-fspicker==1.0.1", "pyfiglet>=1.0.2,<2", "packaging>=24", "argon2-cffi>=23.1,<26", "PyYAML>=6,<7", "keyring>=25.7,<26"]
 
 [project.urls]
-Homepage = "https://github.com/kyuz0/pi-sandbox-factory"
+Homepage = "https://github.com/kyuz0/ai-sandbox-factory"
 Repository = "https://github.com/kyuz0/pi-sandbox-factory"
-Issues = "https://github.com/kyuz0/pi-sandbox-factory/issues"
 
 [project.scripts]
-pi-sandbox-factory = "pi_sandbox_factory.sandbox:main"
+pi-sandbox-factory = "pi_factory_migration:main"
 
 [tool.setuptools]
-packages = [
-    "pi_sandbox_factory",
-    "pi_sandbox_factory.connectors",
-    "pi_sandbox_factory.connectors.builtin",
-    "pi_sandbox_factory.connectors.builtin.ssh",
-    "pi_sandbox_factory.connectors.builtin.aws",
-]
-include-package-data = true
-
-[tool.setuptools.package-data]
-pi_sandbox_factory = ["containers/**/*", "profiles/**/*", "providers/**/*", "checks/*", "network-catalog/*"]
-
-"pi_sandbox_factory.connectors" = ["builtin/*/*.json", "companion/*"]
-
-[tool.setuptools.exclude-package-data]
-"*" = ["**/__pycache__/*", "**/*.pyc", "**/*.pyo", "containers/inference/node_modules/*"]
+packages = ["pi_factory_migration", "pi_sandbox_factory"]

@@ -1,7 +1,0 @@
-{
-  "version": 1,
-  "name": "deep-research",
-  "description": "Deep Web Research",
-  "summary": "Use the web for cited reports. Web Search and subagents start on.",
-  "defaults": {"web_search": true, "subagents": true}
-}
