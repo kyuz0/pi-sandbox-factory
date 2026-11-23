@@ -74,6 +74,11 @@ def seed(home):
     for index, root in enumerate(roots):
         root.mkdir(parents=True)
         (root / 'receipt').write_bytes(bytes([index, 0, 255]))
+    initialized = home / '.config/ai-sandbox-factory/packages'
+    initialized.mkdir(parents=True)
+    (initialized / 'registry.lock').touch()
+    cache = home / '.cache/ai-sandbox-factory';cache.mkdir(parents=True)
+    (cache / 'new-download').write_text('keep the new cache')
     state = roots[0] / 'saved-example';state.mkdir()
     (state / 'config.json').write_text(json.dumps({'name': 'saved-example', 'engine': 'podman',
          'workspace': '/tmp/example-project', 'profile': {'name': 'base'}}))
@@ -83,8 +88,13 @@ def seed(home):
 def check_data(roots):
     for index, old in enumerate(roots):
         new = old.with_name('ai-sandbox-factory')
-        assert old.is_symlink() and new.is_dir(), old
-        assert (new / 'receipt').read_bytes() == bytes([index, 0, 255])
+        if index == 3:
+            assert old.is_dir() and not old.is_symlink(), old
+            assert (old / 'receipt').read_bytes() == bytes([index, 0, 255])
+            assert (new / 'new-download').read_text() == 'keep the new cache'
+        else:
+            assert old.is_symlink() and new.is_dir(), old
+            assert (new / 'receipt').read_bytes() == bytes([index, 0, 255])
 
 
 def environment(root):
@@ -203,6 +213,9 @@ if __name__ == '__main__':
     args = parser.parse_args()
     for name in ('baseline', 'application', 'bridge', 'output'):
         setattr(args, name, getattr(args, name).resolve())
+    for source in (args.baseline, args.application, args.bridge):
+        if not (source / '.git').exists():
+            parser.error(f'{source} must be a Git checkout, not an unversioned source export')
     args.output.mkdir(parents=True, exist_ok=True)
     for kind in ('in-app', 'upgrade-all'):
         if not args.only or args.only == kind:

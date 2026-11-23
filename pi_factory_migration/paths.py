@@ -3,10 +3,17 @@ import hashlib
 import os
 from pathlib import Path
 import stat
-from . import journal
+from . import journal, initialization
 
 OLD = 'pi-sandbox-factory'
 NEW = 'ai-sandbox-factory'
+
+
+class Location(tuple):
+    def __new__(cls, old, new, *, cache_only=False):
+        value = super().__new__(cls, (old, new))
+        value.cache_only = cache_only
+        return value
 
 
 def locations(home=None, environment=None):
@@ -16,12 +23,19 @@ def locations(home=None, environment=None):
                Path(env.get('XDG_CONFIG_HOME') or home / '.config').expanduser(),
                Path(env.get('XDG_DATA_HOME') or home / '.local/share').expanduser(),
                Path(env.get('XDG_CACHE_HOME') or home / '.cache').expanduser()]
-    return list(dict.fromkeys((parent / OLD, parent / NEW) for parent in parents))
+    data_parents = set(parents[:3])
+    return [Location(parent / OLD, parent / NEW, cache_only=parent not in data_parents)
+            for parent in dict.fromkeys(parents)]
 
 
 def plan(pairs):
     moves = []
-    for old, new in pairs:
+    for pair in pairs:
+        old, new = pair
+        # Caches are replaceable downloads, not saved configuration or conversations.
+        # Keep both when the new application already has a cache; never merge or delete either.
+        if getattr(pair, 'cache_only', False) and old.is_dir() and new.is_dir():
+            continue
         if old.is_symlink():
             if old.resolve() == new.resolve() and new.is_dir():
                 continue
@@ -30,7 +44,7 @@ def plan(pairs):
             continue
         if not old.is_dir():
             raise ValueError(f'Cannot migrate {old}: expected a directory. It was not changed.')
-        if os.path.lexists(new):
+        if os.path.lexists(new) and not initialization.disposable(new):
             raise ValueError(f'Cannot migrate {old} to {new}: both locations exist. Neither was changed. '
                              'Keep both folders and resolve the destination before retrying; this launcher never merges or overwrites them.')
         moves.append((old, new))
@@ -79,6 +93,8 @@ def migrate(pairs):
             link.symlink_to(target.name)
             created_links.append(link)
         for old, new in moves:
+            if new.exists():
+                initialization.clear(new)
             old.rename(new)
             moved.append((old, new))
             old.symlink_to(new.name, target_is_directory=True)

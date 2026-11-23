@@ -4,6 +4,7 @@ import os
 from pathlib import Path
 import stat
 import tempfile
+from . import initialization
 
 
 def location(pairs):
@@ -53,7 +54,7 @@ def recover(pairs):
         if not os.path.lexists(old) and new.is_dir() and not new.is_symlink():
             old.symlink_to(new.name, target_is_directory=True)
             sync_directory(old.parent)
-        elif old.is_dir() and not old.is_symlink() and not os.path.lexists(new):
+        elif old.is_dir() and not old.is_symlink() and (not os.path.lexists(new) or initialization.disposable(new)):
             continue
         elif old.is_symlink() and old.resolve() == new.resolve() and new.is_dir():
             continue

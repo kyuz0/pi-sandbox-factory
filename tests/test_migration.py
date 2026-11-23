@@ -68,12 +68,37 @@ class MigrationTests(unittest.TestCase):
 
     def test_destination_conflict_changes_nothing(self):
         self.seed()
-        self.pairs[-1][1].mkdir()
+        self.pairs[1][1].mkdir()
+        (self.pairs[1][1] / 'settings.json').write_text('preserve existing settings')
         with self.assertRaisesRegex(ValueError, 'both locations exist'):
             paths.migrate(self.pairs)
         for old, _ in self.pairs:
             self.assertFalse(old.is_symlink())
             self.assertTrue((old / 'receipt').exists())
+
+    def test_empty_initialization_and_registry_lock_do_not_block_real_settings(self):
+        self.seed()
+        for index, (old, new) in enumerate(self.pairs[:3]):
+            new.mkdir(parents=True)
+            if index == 1:
+                (new / 'packages').mkdir()
+                (new / 'packages/registry.lock').touch()
+        paths.migrate(self.pairs)
+        for old, new in self.pairs:
+            self.assertTrue(old.is_symlink())
+            self.assertEqual((old / 'receipt').read_bytes(), (new / 'receipt').read_bytes())
+
+    def test_existing_new_cache_is_reused_without_merging_or_removing_old_cache(self):
+        self.seed()
+        old_cache, new_cache = self.pairs[-1]
+        new_cache.mkdir(parents=True)
+        (new_cache / 'download').write_text('new cached download')
+        paths.migrate(self.pairs)
+        self.assertFalse(old_cache.is_symlink())
+        self.assertEqual((old_cache / 'receipt').read_bytes(), bytes([3, 0, 255]))
+        self.assertEqual((new_cache / 'download').read_text(), 'new cached download')
+        for old, new in self.pairs[:3]:
+            self.assertTrue(old.is_symlink())
 
     def test_foreign_symlink_is_not_followed_or_moved(self):
         old, _ = self.pairs[0]

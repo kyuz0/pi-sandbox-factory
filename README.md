@@ -32,8 +32,10 @@ application's own environment. Uninstalling this launcher with
 
 For unattended migration, run `pi-sandbox-factory --yes`. Without that flag, a
 first launch without a terminal stops with instructions instead of waiting for input.
-If both an old folder and its new destination exist, the launcher reports both
-paths and changes neither. It never merges or overwrites existing data.
+Empty initialization folders and their empty registry lock do not block migration.
+If both cache folders exist, the new cache is reused and the old cache is kept.
+If both locations contain saved configuration or other data, the launcher reports
+both paths and changes neither. It never merges or overwrites that data.
 
 Windows users run Factory inside WSL2. Linux and macOS use their usual home
 folder and any configured XDG locations.

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pi-sandbox-factory"
-version = "2026.11.23.190523"
+version = "2026.11.23.192109"
 description = "Migration launcher for AI Sandbox Factory"
 readme = "README.md"
 requires-python = ">=3.10"
